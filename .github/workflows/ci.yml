@@ -1,0 +1,32 @@
+name: Verify Shotwise
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run lint && npm test && npm run build
+      - name: Start isolated local database and API
+        run: npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1
+      - run: npm run test:db
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: browser-failure-evidence
+          path: test-results/
+          retention-days: 7
+      - name: Stop local services
+        if: always()
+        run: npx supabase stop
