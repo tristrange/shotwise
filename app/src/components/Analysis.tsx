@@ -93,11 +93,12 @@ export function Analysis({
     <>
       <div className="section-heading">
         <div>
-          <span className="eyebrow">YOUR GAME, IN CONTEXT</span>
+          <span className="eyebrow">Ball flight</span>
           <h1>{initialMode === 'progress' ? 'Progress' : 'Your overview'}</h1>
           <p>
-            Understand the shots you have, with the context to read them
-            clearly.
+            {initialMode === 'progress'
+              ? 'Median carry for each session, oldest first.'
+              : 'Median carry by club, with the sample size behind each figure.'}
           </p>
         </div>
       </div>
@@ -210,12 +211,12 @@ export function Analysis({
       )}
       <div className="stat-grid">
         <div className="stat">
-          <span>SHOTS</span>
+          <span>Shots</span>
           <strong>{summary.n}</strong>
           <small>Across {summary.sessions} sessions</small>
         </div>
         <div className="stat">
-          <span>MEDIAN CARRY</span>
+          <span>Median carry</span>
           <strong>
             {fmt(summary.carry.median)} <em>m</em>
           </strong>
@@ -224,7 +225,7 @@ export function Analysis({
           </small>
         </div>
         <div className="stat">
-          <span>MEDIAN BALL SPEED</span>
+          <span>Median ball speed</span>
           <strong>
             {fmt(summary.speed.median)} <em>kph</em>
           </strong>
@@ -233,7 +234,7 @@ export function Analysis({
           </small>
         </div>
         <div className="stat">
-          <span>MEDIAN APEX</span>
+          <span>Median apex</span>
           <strong>
             {fmt(summary.apex.median)} <em>m</em>
           </strong>
@@ -246,7 +247,7 @@ export function Analysis({
         <section className="panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">SESSION BY SESSION</span>
+              <span className="eyebrow">Session by session</span>
               <h2>Carry over time</h2>
             </div>
             <span className="pill">Medians</span>
@@ -289,7 +290,7 @@ export function Analysis({
         <section className="panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">CLUB COMPARISON</span>
+              <span className="eyebrow">Club comparison</span>
               <h2>Median carry by club</h2>
             </div>
             <span className="pill">{BASES[basis].label}</span>
@@ -305,7 +306,7 @@ export function Analysis({
                   data={rows}
                   margin={{ top: 15, right: 20, bottom: 0, left: -15 }}
                 >
-                  <CartesianGrid vertical={false} stroke="#e6e9df" />
+                  <CartesianGrid vertical={false} stroke="#e9efe6" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} />
                   <Tooltip />
@@ -313,7 +314,7 @@ export function Analysis({
                     isAnimationActive={false}
                     dataKey="carry"
                     name="Median carry (m)"
-                    fill="#315a43"
+                    fill="#244b36"
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -365,7 +366,7 @@ export function Analysis({
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">THE DETAILS</span>
+            <span className="eyebrow">Distribution</span>
             <h2>Shot distribution</h2>
           </div>
         </div>
