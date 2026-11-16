@@ -44,3 +44,17 @@ Choose checks appropriate to the change. Add behavior-focused tests for calculat
 - Agents may implement, commit, push, open PRs, run checks, review results, and address feedback. Keep unrelated work out of the same PR.
 - Review the final diff and explain the change and verification in the PR. Do not claim a PR is ready or checks passed without evidence.
 - Only the repository owner may merge. Never merge a PR, enable auto-merge, or otherwise integrate into the target branch without the owner's explicit authorization. Do not close or abandon PRs without authorization.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in this repo's GitHub Issues (`tristrange/shotwise`), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles, with label strings equal to their names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` at the repo root and `docs/adr/`, both created lazily when terms or decisions are resolved. See `docs/agents/domain.md`.
