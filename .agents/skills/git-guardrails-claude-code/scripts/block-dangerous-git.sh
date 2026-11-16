@@ -3,6 +3,9 @@
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command')
 
+# Strip git global options so "git -C <path> push" matches the same patterns as "git push".
+COMMAND=$(printf '%s' "$COMMAND" | sed -E 's/-C[[:space:]]+("[^"]*"|[^[:space:]]+)//g; s/-c[[:space:]]+("[^"]*"|[^[:space:]]+)//g; s/[[:space:]]+/ /g')
+
 DANGEROUS_PATTERNS=(
   "git push"
   "git reset --hard"
