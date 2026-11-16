@@ -5,6 +5,7 @@ import {
   isWedge,
   shiftDate,
   type Basis,
+  type Dataset,
   type MetricKey,
   type Review,
   type Session,
@@ -271,4 +272,83 @@ export function clubFlags(
     }
   }
   return flags;
+}
+
+export type MostImproved = {
+  club: string;
+  delta: number;
+  recentMedian: number;
+  baselineMedian: number;
+  recentShots: number;
+  baselineShots: number;
+  recentDate: string;
+};
+
+const MIN_RECENT_SHOTS = 3;
+const MIN_BASELINE_SHOTS = 10;
+
+/** Club with the biggest carry gain in the latest session versus its earlier sessions. */
+export function mostImprovedClub(
+  data: Dataset,
+  basis: Basis,
+): MostImproved | null {
+  const sessions = new Map(
+    data.sessions.filter((s) => !s.archived).map((s) => [s.id, s]),
+  );
+  const included = data.shots.filter(
+    (s) =>
+      sessions.has(s.sessionId) && s.review.exclusion.kind === 'included',
+  );
+  const latest = [...sessions.values()].sort(
+    (a, b) =>
+      b.date.localeCompare(a.date) ||
+      (b.time ?? '').localeCompare(a.time ?? '') ||
+      b.id.localeCompare(a.id),
+  )[0];
+  if (!latest) return null;
+
+  const recent = included.filter((s) => s.sessionId === latest.id);
+  const earlier = included.filter((s) => {
+    const session = sessions.get(s.sessionId);
+    return (
+      session !== undefined && session.id !== latest.id && session.date <= latest.date
+    );
+  });
+  const key = BASES[basis].carry;
+  const values = (shots: Shot[]) =>
+    shots.flatMap((s) =>
+      s.measurements[key] === null ? [] : [s.measurements[key]],
+    );
+
+  let best: MostImproved | null = null;
+  for (const club of new Set(recent.map(effectiveClub))) {
+    if (isUnknownClub(club)) continue;
+    const recentValues = values(
+      recent.filter((s) => effectiveClub(s) === club),
+    );
+    const baselineValues = values(
+      earlier.filter((s) => effectiveClub(s) === club),
+    );
+    if (
+      recentValues.length < MIN_RECENT_SHOTS ||
+      baselineValues.length < MIN_BASELINE_SHOTS
+    )
+      continue;
+    const recentMedian = quantile(recentValues, 0.5);
+    const baselineMedian = quantile(baselineValues, 0.5);
+    if (recentMedian === null || baselineMedian === null) continue;
+    const delta = recentMedian - baselineMedian;
+    if (delta <= 0) continue;
+    if (!best || delta > best.delta)
+      best = {
+        club,
+        delta,
+        recentMedian,
+        baselineMedian,
+        recentShots: recentValues.length,
+        baselineShots: baselineValues.length,
+        recentDate: latest.date,
+      };
+  }
+  return best;
 }

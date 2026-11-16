@@ -5,9 +5,12 @@ import {
   quantile,
   selectCohort,
   clubFlags,
+  mostImprovedClub,
   reviewCoverage,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
+import { emptyDataset } from './model';
+import type { Review } from './model';
 
 describe('lossless CSV boundary', () => {
   it('preserves bytes, extra cells, row order, duplicate source numbers, zero and signed metrics', async () => {
@@ -249,5 +252,83 @@ describe('conservative club-label suggestions', () => {
         sessions.map((s) => ({ ...s, date: '2026-11-06', time: null })),
       ).has(high.id),
     ).toBe(false);
+  });
+});
+
+describe('most improved club', () => {
+  const earlier = makeSession({ id: crypto.randomUUID(), date: '2026-11-01' });
+  const latest = makeSession({ id: crypto.randomUUID(), date: '2026-11-08' });
+  const sessions = [earlier, latest];
+
+  function shotsFor(
+    sessionId: string,
+    club: string,
+    count: number,
+    premium: number,
+    range: number,
+    review: Partial<Review> = {},
+  ) {
+    return Array.from({ length: count }, (_, i) =>
+      makeShot({
+        sessionId,
+        recordedClub: club,
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: premium, flatCarryRange: range },
+        review,
+      }),
+    );
+  }
+
+  it('picks the largest positive median gain with enough shots on both sides', () => {
+    const shots = [
+      ...shotsFor(earlier.id, '7i', 10, 150, 150),
+      ...shotsFor(earlier.id, '5i', 10, 200, 200),
+      ...shotsFor(latest.id, '7i', 3, 170, 170),
+      ...shotsFor(latest.id, '5i', 3, 205, 205),
+    ];
+    expect(
+      mostImprovedClub({ ...emptyDataset, sessions, shots }, 'premium-flat'),
+    ).toMatchObject({
+      club: '7i',
+      delta: 20,
+      recentMedian: 170,
+      baselineMedian: 150,
+      recentDate: '2026-11-08',
+    });
+  });
+
+  it('returns nothing when sample sizes or improvement are absent', () => {
+    const sparse = [
+      ...shotsFor(earlier.id, '7i', 10, 150, 150),
+      ...shotsFor(latest.id, '7i', 2, 180, 180),
+    ];
+    expect(
+      mostImprovedClub({ ...emptyDataset, sessions, shots: sparse }, 'premium-flat'),
+    ).toBeNull();
+    const regressing = [
+      ...shotsFor(earlier.id, '7i', 10, 150, 150),
+      ...shotsFor(latest.id, '7i', 3, 140, 140),
+    ];
+    expect(
+      mostImprovedClub(
+        { ...emptyDataset, sessions, shots: regressing },
+        'premium-flat',
+      ),
+    ).toBeNull();
+  });
+
+  it('uses the selected measurement basis and ignores excluded shots', () => {
+    const shots = [
+      ...shotsFor(earlier.id, '7i', 10, 150, 150),
+      ...shotsFor(earlier.id, '5i', 10, 200, 200),
+      ...shotsFor(latest.id, '7i', 3, 170, 145),
+      ...shotsFor(latest.id, '5i', 3, 205, 230),
+      ...shotsFor(latest.id, '9i', 10, 0, 0, {
+        exclusion: { kind: 'excluded', reason: 'misread' },
+      }),
+    ];
+    const data = { ...emptyDataset, sessions, shots };
+    expect(mostImprovedClub(data, 'premium-flat')?.club).toBe('7i');
+    expect(mostImprovedClub(data, 'range-flat')?.club).toBe('5i');
   });
 });
