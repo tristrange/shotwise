@@ -107,7 +107,7 @@ export function ShotReview({
     <div className="review">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">REVIEW SHOTS</span>
+          <span className="eyebrow">Review shots</span>
           <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
         </div>
         <span className="pill">{flags.size} flagged</span>

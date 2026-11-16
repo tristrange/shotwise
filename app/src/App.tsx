@@ -94,8 +94,8 @@ export default function App() {
       <div className="auth-shell">
         <div className="auth-card">
           <Brand />
-          <span className="eyebrow">SETUP REQUIRED</span>
-          <h1>Make your game make sense.</h1>
+          <span className="eyebrow">Setup required</span>
+          <h1>Connect Supabase to start logging sessions.</h1>
           <p>
             Shotwise needs a private Supabase project before you can sign in.
           </p>
@@ -121,7 +121,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <Brand />
-        <div className="side-label">YOUR SPACE</div>
+        <div className="side-label">Your space</div>
         <nav aria-label="Main navigation">
           {nav.map(({ id, label, icon: Icon }) => (
             <button
@@ -129,19 +129,19 @@ export default function App() {
               className={page === id ? 'active' : ''}
               onClick={() => setPage(id)}
             >
-              <Icon size={19} />
+              <Icon size={18} />
               {label}
             </button>
           ))}
         </nav>
         <div className="side-footer">
-          <span>PRIVATE BY DESIGN</span>
+          <span>Private by design</span>
           <p>Your practice, in one place.</p>
           <button
             className="signout"
             onClick={() => void client.auth.signOut()}
           >
-            <LogOut size={17} /> Sign out
+            <LogOut size={18} /> Sign out
           </button>
         </div>
       </aside>
@@ -162,7 +162,7 @@ export default function App() {
               aria-current={page === id ? 'page' : undefined}
               onClick={() => setPage(id)}
             >
-              <Icon size={17} />
+              <Icon size={18} />
               <span>{id === 'sessions' ? 'Sessions' : label}</span>
             </button>
           ))}
@@ -211,7 +211,7 @@ function Brand() {
   return (
     <div className="brand">
       <span className="brand-mark">
-        <Flag size={19} />
+        <Flag size={18} />
       </span>
       <span>
         shotwise<span className="brand-dot">.</span>
@@ -234,8 +234,8 @@ function Login({
     <div className="auth-shell">
       <div className="auth-card">
         <Brand />
-        <span className="eyebrow">YOUR PRACTICE, CLEARER</span>
-        <h1>A little more insight in every shot.</h1>
+        <span className="eyebrow">Your practice, clearer</span>
+        <h1>Carry, speed and apex, session by session.</h1>
         <p>Sign in to your private practice log.</p>
         <form
           onSubmit={(e) => {
@@ -335,7 +335,7 @@ function Backup({
     <>
       <div className="section-heading">
         <div>
-          <span className="eyebrow">YOUR DATA</span>
+          <span className="eyebrow">Your data</span>
           <h1>Settings</h1>
           <p>Keep a copy of your practice history.</p>
         </div>

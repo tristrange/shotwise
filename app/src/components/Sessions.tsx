@@ -120,7 +120,7 @@ export function Sessions({
     <>
       <div className="section-heading">
         <div>
-          <span className="eyebrow">YOUR PRACTICE LOG</span>
+          <span className="eyebrow">Practice log</span>
           <h1>Sessions & import</h1>
           <p>Bring your range exports together, one session at a time.</p>
         </div>
@@ -128,7 +128,7 @@ export function Sessions({
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">ADD SHOTS</span>
+            <span className="eyebrow">Add shots</span>
             <h2>Import CSV files</h2>
           </div>
         </div>
@@ -308,7 +308,7 @@ export function Sessions({
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">THE LOGBOOK</span>
+            <span className="eyebrow">Logbook</span>
             <h2>Sessions</h2>
           </div>
           <span className="pill">{data.sessions.length} total</span>
@@ -403,7 +403,7 @@ function SessionDetail({
   }
   return (
     <section className="panel">
-      <span className="eyebrow">SESSION DETAIL</span>
+      <span className="eyebrow">Session detail</span>
       <h2>{session.filename}</h2>
       <div className="form-grid">
         <label>
