@@ -1,5 +1,7 @@
 # Shotwise
 
+[Open Shotwise](https://tristrange.github.io/shotwise/)
+
 Private golf practice analytics for Inrange CSV exports. Import dated sessions, review shot intent and contact, correct club labels, and compare current performance with historical sessions.
 
 React, TypeScript and Vite run the interface and pure analytics. Supabase provides PostgreSQL and password authentication. The application has no Python service, AI interpretation, automatic contact classification or automatic club reassignment.
@@ -65,7 +67,11 @@ Database tests use local PostgreSQL only. SQL tests roll back; concurrent tests 
 
 Settings exports a versioned JSON backup containing original files, metadata and manual-review history. Store it privately. Restore validates original files and references and requires an empty account; it never silently overwrites existing history. Archive sessions when you want to hide them without deleting source data.
 
-Use a dedicated Supabase project, enable its migrations, disable public/anonymous signup, and provision your account. Build with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for that project. Deploy `dist/` to static hosting. The tracked Sites manifest supports a private hosted deployment; direct Cloudflare Pages deployment can use `npm run build` and `dist` as its output directory.
+The public app is hosted on GitHub Pages. Its sign-in and shot history use a separate Supabase project; public account registration is disabled.
+
+The verification workflow publishes `main` to Pages only after unit, database and browser checks pass. Set the repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to the project URL and publishable key, and select GitHub Actions as the Pages publishing source. These values are intended for browser use; never substitute a service-role or secret key.
+
+The Pages build uses `npm run build -- --base=/shotwise/` and uploads `dist/`. For another deployment, use a dedicated Supabase project, apply the migrations, disable public/anonymous signup and provision your account. The tracked Sites manifest also identifies the original private deployment.
 
 Free hosted projects can pause when inactive. Keep exported backups; a free tier is not a recovery plan. Never deploy test users, personal CSV files, service-role keys or local service credentials.
 
