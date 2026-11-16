@@ -1,0 +1,13 @@
+# Shotwise approved design
+
+Private personal golf analytics, synced across phone and desktop. React/Vite/TypeScript with Supabase Auth/PostgreSQL. Free tiers first. No Python service. Separate pure analytics, CSV parsing, persistence adapter and UI.
+
+MVP: multi-file dated imports with preview, immutable raw files and cell values, duplicate protection, group intent edits, manual contact/club review and undo, Recent/Progress/All-time analytics, qualified club-label flags, archive, backup and restore. Mostly full swings except explicitly tagged wedge drills. Automatic contact classification, gapping, practice advice, AI, ingestion integrations and public signup are deferred.
+
+Recent targets 50 shots per effective club within 60 local calendar days; include all shots on the cutoff date instead of guessing same-day session order. Select this cohort before contact/intent filters. No old-data backfill. All metrics show applicable counts and date/session coverage. Premium flat carry is the default, consistently selected with no per-shot fallback. Reviewed typical includes only manually typical shots, with review coverage disclosed. Wedge intent defaults unknown. User confirms proposed full intent for non-wedge groups at import. All decisions remain reversible and separate from raw data.
+
+Club-label flags require 30 earlier full-intent shots across 3 sessions, both range-flat carry and range ball speed above median + 4 × scaled MAD (1.4826 × MAD). Abstain for zero MAD, missing data, unknown clubs and wedges. No future or unordered same-day session evidence. Manual club confirmations override rules. No automatic reassignment or exclusion.
+
+Original UTF-8 CSV bytes and raw cells are retained; malformed cells yield null plus warnings, structurally broken CSV/missing core headers fails. Source row order and shot number are distinct. Import each file atomically; exact and equivalent complete exports are idempotent. Same-day nonidentical exports require acknowledgement. Ownership and immutable-data constraints enforced in PostgreSQL. Review writes require expected revision; backup restore is atomic into an empty dataset.
+
+Static frontend with responsive keyboard-accessible controls and chart table alternatives. Default hosting Cloudflare Pages avoids requiring public source. Personal pre-provisioned email/password account, public/anonymous signup disabled. No offline write queue, realtime services or persistent derived caches. Refetch on focus/own writes; no analytics from incomplete pagination. Personal CSV remains local and out of Git/CI. User reviews/merges branch; no deployment to Daily Puzzles.
