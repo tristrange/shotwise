@@ -14,6 +14,7 @@ import { parseBackup, serializeBackup } from './domain/backup';
 import { Analysis } from './components/Analysis';
 import { Sessions } from './components/Sessions';
 import { ShotReview } from './components/ShotReview';
+import { ThemeToggle } from './components/ThemeToggle';
 
 type Page = 'overview' | 'sessions' | 'review' | 'progress' | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
@@ -135,25 +136,31 @@ export default function App() {
           ))}
         </nav>
         <div className="side-footer">
-          <span>Private by design</span>
-          <p>Your practice, in one place.</p>
-          <button
-            className="signout"
-            onClick={() => void client.auth.signOut()}
-          >
-            <LogOut size={18} /> Sign out
-          </button>
+          <span>Range sessions</span>
+          <p>Import, review, compare.</p>
+          <div className="side-footer-actions">
+            <button
+              className="signout"
+              onClick={() => void client.auth.signOut()}
+            >
+              <LogOut size={18} /> Sign out
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
       <main>
         <header className="mobile-header">
           <Brand />
-          <button
-            className="text-button"
-            onClick={() => void client.auth.signOut()}
-          >
-            Sign out
-          </button>
+          <div className="mobile-header-actions">
+            <button
+              className="text-button"
+              onClick={() => void client.auth.signOut()}
+            >
+              Sign out
+            </button>
+            <ThemeToggle />
+          </div>
         </header>
         <nav className="mobile-nav" aria-label="Mobile navigation">
           {nav.map(({ id, label, icon: Icon }) => (
