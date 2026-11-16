@@ -16,7 +16,13 @@ import {
   type Dataset,
   type Review,
 } from '../domain/model';
-import { reviewCoverage, selectCohort, summarize } from '../domain/analytics';
+import {
+  mostImprovedClub,
+  reviewCoverage,
+  selectCohort,
+  summarize,
+} from '../domain/analytics';
+import { MostImproved } from './MostImproved';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -46,6 +52,7 @@ export function Analysis({
       a.rowIndex - b.rowIndex,
   );
   const summary = summarize(shots, basis);
+  const improved = mostImprovedClub(data, basis);
   const coverage = reviewCoverage(
     selectCohort(data.shots, data.sessions, {
       ...query,
@@ -102,6 +109,7 @@ export function Analysis({
           </p>
         </div>
       </div>
+      {improved && <MostImproved result={improved} />}
       <div className="filters panel">
         <label>
           View
