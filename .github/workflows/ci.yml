@@ -10,12 +10,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: '26'
           cache: npm
+          cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run typecheck && npm run lint && npm test && npm run build
       - name: Start isolated local database and API
@@ -27,7 +31,7 @@ jobs:
         if: failure()
         with:
           name: browser-failure-evidence
-          path: test-results/
+          path: app/test-results/
           retention-days: 7
       - name: Stop local services
         if: always()
@@ -36,6 +40,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: verify
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: read
       pages: read
@@ -45,6 +52,7 @@ jobs:
         with:
           node-version: '26'
           cache: npm
+          cache-dependency-path: app/package-lock.json
       - uses: actions/configure-pages@v6
       - run: npm ci
       - name: Build for the repository URL
@@ -57,7 +65,7 @@ jobs:
           npm run build -- --base=/shotwise/
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist
+          path: app/dist
   deploy-pages:
     needs: build-pages
     runs-on: ubuntu-latest

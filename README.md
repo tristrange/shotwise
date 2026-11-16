@@ -11,6 +11,7 @@ React, TypeScript and Vite run the interface and pure analytics. Supabase provid
 Install Node.js 22.12 or newer, Docker and a PostgreSQL client (`psql`). Development and CI are verified with Node 26.
 
 ```sh
+cd app
 npm ci
 npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 cp .env.example .env.local
@@ -71,7 +72,7 @@ The public app is hosted on GitHub Pages. Its sign-in and shot history use a sep
 
 The verification workflow publishes `main` to Pages only after unit, database and browser checks pass. Set the repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to the project URL and publishable key, and select GitHub Actions as the Pages publishing source. These values are intended for browser use; never substitute a service-role or secret key.
 
-The Pages build uses `npm run build -- --base=/shotwise/` and uploads `dist/`. For another deployment, use a dedicated Supabase project, apply the migrations, disable public/anonymous signup and provision your account. The tracked Sites manifest also identifies the original private deployment.
+The Pages build runs `npm run build -- --base=/shotwise/` in `app/` and uploads `app/dist/`. For another deployment, use a dedicated Supabase project, apply the migrations, disable public/anonymous signup and provision your account. The tracked Sites manifest identifies the original private deployment.
 
 Free hosted projects can pause when inactive. Keep exported backups; a free tier is not a recovery plan. Never deploy test users, personal CSV files, service-role keys or local service credentials.
 
