@@ -85,8 +85,8 @@ export function AnalysisControls({
       </div>
       <p className="notice">
         {settings.mode === 'recent'
-          ? 'Recent targets the latest 50 shots per club in the last 60 days, keeping the full cutoff date. Review filters apply afterward; older shots never fill a sparse sample.'
-          : 'All-time includes all non-archived sessions, using the selected review filters.'}
+          ? 'Recent: latest 50 shots per club from the last 60 days. Review filters apply afterward.'
+          : 'All-time: every non-archived session, using the selected review filters.'}
       </p>
     </>
   );

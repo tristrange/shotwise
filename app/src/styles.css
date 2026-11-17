@@ -105,6 +105,9 @@ h3 {
   font-weight: 500;
   margin-bottom: 8px;
 }
+strong {
+  font-weight: 500;
+}
 p {
   color: var(--text-secondary);
   line-height: 1.6;
@@ -544,6 +547,32 @@ summary {
 }
 .gap-club {
   font-weight: 500;
+}
+.gap-carry {
+  min-width: 0;
+}
+.direction-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.direction-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 8px;
+}
+.direction-list dt {
+  color: var(--text-secondary);
+}
+.direction-list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.direction-list small {
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 .gap-stats {
   display: grid;

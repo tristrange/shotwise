@@ -363,22 +363,26 @@ export function Analysis({
             </tbody>
           </table>
         </div>
-        <p>
-          Direction:{' '}
+        <p>Ball flight, not a swing diagnosis. Counts are left / straight / right.</p>
+        <dl className="direction-list">
           {(
             [
-              ['Launch', summary.launchDirection],
+              ['Launch direction', summary.launchDirection],
               ['Curve', summary.curve],
-              ['Lateral from centre (measured)', summary.lateral],
+              ['Lateral from centre', summary.lateral],
             ] satisfies [string, typeof summary.lateral][]
-          )
-            .map(
-              ([name, d]) =>
-                `${name}: ${d.left}/${d.n}, ${d.straight}/${d.n}, ${d.right}/${d.n} left/straight/right (n=${d.n}, ${d.missing} missing)`,
-            )
-            .join(' · ')}
-          . These describe ball flight, not a swing diagnosis.
-        </p>
+          ).map(([name, d]) => (
+            <div key={name}>
+              <dt>{name}</dt>
+              <dd>
+                {d.left} / {d.straight} / {d.right}{' '}
+                <small>
+                  {d.n} measured · {d.missing} missing
+                </small>
+              </dd>
+            </div>
+          ))}
+        </dl>
       </section>
       {club && (
         <section className="panel">

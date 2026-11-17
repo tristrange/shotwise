@@ -43,12 +43,10 @@ export function ClubGaps({
           <span className="pill">{BASES[basis].label}</span>
         </div>
         <p>
-          Within the selected filters, shots need a readable club and carry.
-          Unreviewed shots are included unless you choose a review filter. Shots
-          marked partial or mishit are always left out of gapping and insights.
-          The dot is the median carry; the bar is the middle 80%. Fewer than ten
-          shots is shown in grey and not flagged. Gaps compare medians with the
-          club above; a negative gap means this club carried farther.
+          Unreviewed shots count unless you filter by review. Partial and
+          mishit shots never do. The dot is median carry; the bar is the middle
+          80%. Grey rows have fewer than ten shots. A negative gap means this
+          club carried farther than the one above.
         </p>
         {rows.length === 0 ? (
           <p>
