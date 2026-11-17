@@ -1,14 +1,5 @@
 import { useState } from 'react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
   BASES,
   clubOrder,
   effectiveClub,
@@ -17,6 +8,7 @@ import {
   type Dataset,
 } from '../domain/model';
 import {
+  metricStats,
   reviewCoverage,
   selectCohort,
   summarize,
@@ -68,22 +60,22 @@ export function Analysis({
     .sort();
   const rows = clubs
     .filter((name) => !club || name === club)
-    .map((name) => ({
-      name,
-      carry: summarize(
+    .map((name) => {
+      const stats = metricStats(
         selected.filter((s) => effectiveClub(s) === name),
-        basis,
-      ).carry.median,
-      n: selected.filter((s) => effectiveClub(s) === name).length,
-      measured: summarize(
-        selected.filter((s) => effectiveClub(s) === name),
-        basis,
-      ).carry.n,
-      missing: summarize(
-        selected.filter((s) => effectiveClub(s) === name),
-        basis,
-      ).carry.missing,
-    }));
+        BASES[basis].carry,
+      );
+      return {
+        name,
+        median: stats.median,
+        low: stats.p10,
+        high: stats.p90,
+        n: stats.n,
+        missing: stats.missing,
+        reliable: stats.n >= 10,
+      };
+    });
+  const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
   const progress = data.sessions
     .filter((s) => shots.some((x) => x.sessionId === s.id))
     .sort(
@@ -147,12 +139,7 @@ export function Analysis({
         </p>
       )}
       <div className="stat-grid">
-        <div className="stat">
-          <span>Shots</span>
-          <strong>{summary.n}</strong>
-          <small>Across {summary.sessions} sessions</small>
-        </div>
-        <div className="stat">
+        <div className="stat lead">
           <span>Median carry</span>
           <strong>
             {fmt(summary.carry.median)} <em>m</em>
@@ -160,6 +147,11 @@ export function Analysis({
           <small>
             {summary.carry.n} measured · {summary.carry.missing} missing
           </small>
+        </div>
+        <div className="stat">
+          <span>Shots</span>
+          <strong>{summary.n}</strong>
+          <small>Across {summary.sessions} sessions</small>
         </div>
         <div className="stat">
           <span>Median ball speed</span>
@@ -233,46 +225,56 @@ export function Analysis({
             <span className="pill">{BASES[basis].label}</span>
           </div>
           {rows.length > 0 ? (
-            <div
-              className="chart"
-              role="img"
-              aria-label="Median carry by club. Values are available in the table below."
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={rows}
-                  margin={{ top: 15, right: 20, bottom: 0, left: -15 }}
-                >
-                  <CartesianGrid vertical={false} stroke="var(--border-soft)" />
-                  <XAxis
-                    dataKey="name"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: 'var(--text-muted)' }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: 'var(--text-muted)' }}
-                  />
-                  <Tooltip
-                    cursor={false}
-                    contentStyle={{
-                      backgroundColor: 'var(--surface)',
-                      borderColor: 'var(--border)',
-                      color: 'var(--text)',
-                    }}
-                  />
-                  {/* Flame overlay parked: see FlameCanvas and mostImprovedClub. */}
-                  <Bar
-                    isAnimationActive={false}
-                    dataKey="carry"
-                    name="Median carry (m)"
-                    fill="var(--accent)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="gap-list" role="list" aria-label="Median carry by club">
+              <div className="gap-head">
+                <span>Club</span>
+                <span>Typical carry · spread</span>
+                <span>Shots</span>
+                <span>Median</span>
+              </div>
+              {rows.map((row) => {
+                const low = row.low ?? row.median ?? 0;
+                const high = row.high ?? row.median ?? 0;
+                return (
+                  <div
+                    className={`gap-row${row.reliable ? '' : ' low'}`}
+                    key={row.name}
+                    role="listitem"
+                  >
+                    <span className="gap-club">{row.name}</span>
+                    <div className="gap-carry">
+                      <div className="gap-stats">
+                        <small>
+                          {row.low !== null && row.high !== null
+                            ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
+                            : 'Spread needs 10 shots'}
+                        </small>
+                      </div>
+                      <div className="gap-track" aria-hidden="true">
+                        <span
+                          className="gap-band"
+                          style={{
+                            left: `${(low / scale) * 100}%`,
+                            width: `${((high - low) / scale) * 100}%`,
+                          }}
+                        />
+                        <span
+                          className="gap-dot"
+                          style={{ left: `${((row.median ?? 0) / scale) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="gap-n">
+                      {row.n}
+                      <small>{row.n === 1 ? 'shot' : 'shots'}</small>
+                    </span>
+                    <span className="gap-value">
+                      {fmt(row.median)} m
+                      {!row.reliable && <small>few shots</small>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p>
@@ -300,15 +302,15 @@ export function Analysis({
                         {r.name}
                       </button>
                     </td>
-                    <td>{fmt(r.carry)} m</td>
+                    <td>{fmt(r.median)} m</td>
                     <td>
                       {r.n}{' '}
-                      {r.measured < 10 && (
+                      {!r.reliable && (
                         <span className="pill">Sample limited</span>
                       )}
                     </td>
                     <td>
-                      {r.measured} / {r.missing}
+                      {r.n} / {r.missing}
                     </td>
                   </tr>
                 ))}

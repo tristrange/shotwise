@@ -279,7 +279,7 @@ test('keeps theme controls in sync across desktop, tablet and phone', async ({
   ).toBeVisible();
 });
 
-test('uses theme colours for chart bars, grid and labels', async ({
+test('uses theme colours for carry bands and labels', async ({
   page,
   account,
 }, testInfo) => {
@@ -301,21 +301,24 @@ test('uses theme colours for chart bars, grid and labels', async ({
       };
       const result = {
         bar: color('--accent'),
-        grid: color('--border-soft'),
+        grid: color('--surface-subtle'),
         label: color('--text-muted'),
       };
       probe.remove();
       return result;
     });
-    await expect(
-      page.locator('.recharts-bar-rectangle path').first(),
-    ).toHaveCSS('fill', colors.bar);
-    await expect(
-      page.locator('.recharts-cartesian-grid-horizontal line').first(),
-    ).toHaveCSS('stroke', colors.grid);
-    await expect(
-      page.locator('.recharts-cartesian-axis-tick-value').first(),
-    ).toHaveCSS('fill', colors.label);
+    await expect(page.locator('.gap-dot').first()).toHaveCSS(
+      'background-color',
+      colors.bar,
+    );
+    await expect(page.locator('.gap-track').first()).toHaveCSS(
+      'background-color',
+      colors.grid,
+    );
+    await expect(page.locator('.gap-n').first()).toHaveCSS(
+      'color',
+      colors.label,
+    );
   }
   await page.screenshot({
     path: testInfo.outputPath('dark-overview.png'),
