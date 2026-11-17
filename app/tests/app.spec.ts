@@ -284,6 +284,25 @@ test('uses theme colours for carry bands and labels', async ({
   account,
 }, testInfo) => {
   await seed(account);
+  await account.repository.importCsv({
+    filename: 'theme-sample.csv',
+    date: shiftDate(localToday(), -1),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture(
+          Array.from({ length: 10 }, () => ({
+            Club: '7i',
+            'Flat Carry Dist. Premium (m)': '150',
+          })),
+        ),
+      ),
+    ),
+  });
   await page.emulateMedia({ colorScheme: 'light' });
   await login(page, account);
   for (const theme of ['light', 'dark']) {

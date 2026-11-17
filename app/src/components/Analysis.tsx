@@ -61,15 +61,14 @@ export function Analysis({
   const rows = clubs
     .filter((name) => !club || name === club)
     .map((name) => {
-      const stats = metricStats(
-        selected.filter((s) => effectiveClub(s) === name),
-        BASES[basis].carry,
-      );
+      const clubShots = selected.filter((s) => effectiveClub(s) === name);
+      const stats = metricStats(clubShots, BASES[basis].carry);
       return {
         name,
         median: stats.median,
         low: stats.p10,
         high: stats.p90,
+        total: clubShots.length,
         n: stats.n,
         missing: stats.missing,
         reliable: stats.n >= 10,
@@ -243,33 +242,41 @@ export function Analysis({
                   >
                     <span className="gap-club">{row.name}</span>
                     <div className="gap-carry">
-                      <div className="gap-stats">
-                        <small>
-                          {row.low !== null && row.high !== null
-                            ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
-                            : 'Spread needs 10 shots'}
-                        </small>
-                      </div>
-                      <div className="gap-track" aria-hidden="true">
-                        <span
-                          className="gap-band"
-                          style={{
-                            left: `${(low / scale) * 100}%`,
-                            width: `${((high - low) / scale) * 100}%`,
-                          }}
-                        />
-                        <span
-                          className="gap-dot"
-                          style={{ left: `${((row.median ?? 0) / scale) * 100}%` }}
-                        />
-                      </div>
+                      {row.median === null ? (
+                        <div className="gap-stats">
+                          <small>No carry recorded on this basis</small>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="gap-stats">
+                            <small>
+                              {row.low !== null && row.high !== null
+                                ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
+                                : 'Spread needs 10 shots'}
+                            </small>
+                          </div>
+                          <div className="gap-track" aria-hidden="true">
+                            <span
+                              className="gap-band"
+                              style={{
+                                left: `${(low / scale) * 100}%`,
+                                width: `${((high - low) / scale) * 100}%`,
+                              }}
+                            />
+                            <span
+                              className="gap-dot"
+                              style={{ left: `${(row.median / scale) * 100}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                     <span className="gap-n">
                       {row.n}
                       <small>{row.n === 1 ? 'shot' : 'shots'}</small>
                     </span>
                     <span className="gap-value">
-                      {fmt(row.median)} m
+                      {row.median === null ? '—' : `${row.median.toFixed(0)} m`}
                       {!row.reliable && <small>few shots</small>}
                     </span>
                   </div>
@@ -304,7 +311,7 @@ export function Analysis({
                     </td>
                     <td>{fmt(r.median)} m</td>
                     <td>
-                      {r.n}{' '}
+                      {r.total}{' '}
                       {!r.reliable && (
                         <span className="pill">Sample limited</span>
                       )}
