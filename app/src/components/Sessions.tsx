@@ -12,9 +12,6 @@ type Preview = {
   time: string;
   venue: string;
   notes: string;
-  confirmed: boolean;
-  confirmedFull: boolean;
-  allowSameDay: boolean;
   result: string;
 };
 export function Sessions({
@@ -47,9 +44,6 @@ export function Sessions({
           time: '',
           venue: '',
           notes: '',
-          confirmed: false,
-          confirmedFull: false,
-          allowSameDay: false,
           result: '',
         });
       } catch (e) {
@@ -61,9 +55,6 @@ export function Sessions({
           time: '',
           venue: '',
           notes: '',
-          confirmed: false,
-          confirmedFull: false,
-          allowSameDay: false,
           result: e instanceof Error ? e.message : 'Could not read file',
         });
       }
@@ -76,18 +67,19 @@ export function Sessions({
       old.map((p) => (p.id === id ? { ...p, ...changes } : p)),
     );
   }
-  async function importAll() {
+  async function importAll(separateSessionId?: number) {
     setBusy(true);
     for (const p of previews) {
+      if (separateSessionId !== undefined && p.id !== separateSessionId) continue;
       if (
         !p.preview ||
         p.result.startsWith('Imported') ||
         p.result.startsWith('Duplicate')
       )
         continue;
-      if (!p.confirmed || !dateSchema.safeParse(p.date).success) {
+      if (!dateSchema.safeParse(p.date).success) {
         patch(p.id, {
-          result: 'Confirm a valid session date before importing.',
+          result: 'Enter a valid session date before importing.',
         });
         continue;
       }
@@ -98,8 +90,8 @@ export function Sessions({
           time: p.time || null,
           venue: p.venue,
           notes: p.notes,
-          confirmedFull: p.confirmedFull,
-          allowSameDay: p.allowSameDay,
+          confirmedFull: false,
+          allowSameDay: p.id === separateSessionId,
           preview: p.preview,
         });
         patch(p.id, {
@@ -129,8 +121,8 @@ export function Sessions({
           </div>
         </div>
         <p>
-          Choose one or more Inrange CSV exports. Review each date before
-          importing.
+          Choose one or more Inrange CSV exports. Dates are filled from
+          filenames when available; otherwise enter a session date.
         </p>
         <label className="file-button">
           Choose CSV files
@@ -185,10 +177,9 @@ export function Sessions({
                     Session date
                     <input
                       type="date"
+                      required
                       value={p.date}
-                      onChange={(e) =>
-                        patch(p.id, { date: e.target.value, confirmed: false })
-                      }
+                      onChange={(e) => patch(p.id, { date: e.target.value })}
                     />
                   </label>
                   <label>
@@ -214,38 +205,14 @@ export function Sessions({
                     />
                   </label>
                 </div>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={p.confirmed}
-                    onChange={(e) =>
-                      patch(p.id, { confirmed: e.target.checked })
-                    }
-                  />{' '}
-                  I confirm this session date
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={p.confirmedFull}
-                    onChange={(e) =>
-                      patch(p.id, { confirmedFull: e.target.checked })
-                    }
-                  />{' '}
-                  Mark non-wedge shots as full swings. Wedge intent stays
-                  unknown.
-                </label>
-                {data.sessions.some((s) => s.date === p.date) && (
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={p.allowSameDay}
-                      onChange={(e) =>
-                        patch(p.id, { allowSameDay: e.target.checked })
-                      }
-                    />{' '}
-                    I acknowledge another session exists on this date
-                  </label>
+                {p.result === 'Same-day import requires acknowledgement' && (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void importAll(p.id)}
+                  >
+                    Import as a separate session
+                  </button>
                 )}
                 {p.preview.warnings.length > 0 && (
                   <details>
