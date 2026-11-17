@@ -313,7 +313,7 @@ export function Analysis({
                   <CartesianGrid vertical={false} stroke="#e9efe6" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip />
+                  <Tooltip cursor={false} />
                   {/* Flame overlay parked: see FlameCanvas and mostImprovedClub. */}
                   <Bar
                     isAnimationActive={false}
