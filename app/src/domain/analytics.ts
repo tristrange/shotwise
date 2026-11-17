@@ -1,3 +1,5 @@
+import { quantile } from './statistics';
+import { assessUnusualShots } from './unusualShots';
 import {
   BASES,
   clubOrder,
@@ -19,24 +21,15 @@ export type AnalysisQuery = {
   intent: Review['intent'] | 'all';
   contact: 'all' | 'typical';
   club?: string;
+  hideLikelyMishits?: boolean;
 };
 export type AnalysisSettings = Pick<
   AnalysisQuery,
-  'mode' | 'intent' | 'contact'
+  'mode' | 'intent' | 'contact' | 'hideLikelyMishits'
 > & {
   basis: Basis;
 };
 export const RULE_VERSION = 'club-label-1';
-export function quantile(values: number[], p: number): number | null {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const offset = (sorted.length - 1) * p;
-  const left = sorted[Math.floor(offset)];
-  const right = sorted[Math.ceil(offset)];
-  return left === undefined || right === undefined
-    ? null
-    : left + (right - left) * (offset % 1);
-}
 export function metricStats(shots: Shot[], key: MetricKey) {
   const values = shots.flatMap((s) =>
     s.measurements[key] === null ? [] : [s.measurements[key]],
@@ -128,12 +121,20 @@ export function selectCohort(
       );
     });
   }
-  return selected.filter(
-    (s) =>
+  const assessments = query.hideLikelyMishits
+    ? assessUnusualShots(shots, sessions)
+    : null;
+  return selected.filter((s) => {
+    const assessment = assessments?.get(s.id);
+    return (
+      (!query.hideLikelyMishits ||
+        (s.review.contact !== 'mishit' &&
+          !(assessment?.kind === 'assessed' && assessment.unusual))) &&
       (!query.club || effectiveClub(s) === query.club) &&
       (query.intent === 'all' || s.review.intent === query.intent) &&
-      (query.contact === 'all' || s.review.contact === 'typical'),
-  );
+      (query.contact === 'all' || s.review.contact === 'typical')
+    );
+  });
 }
 export function reviewCoverage(shots: Shot[]) {
   const eligible = shots.filter((s) => s.review.exclusion.kind === 'included');
@@ -384,13 +385,14 @@ export type ClubGap = {
   high: number | null;
   reliable: boolean;
   gap: number | null;
-  flag: 'large' | 'overlap' | null;
+  flag: 'large' | 'small' | 'reversed' | null;
 };
 
 const MIN_GAP_SAMPLES = 10;
 const LARGE_GAP_M = 30;
+const SMALL_GAP_M = 10;
 
-/** Carry bands for each club, with the gap and overlap against the next club down. */
+/** Carry bands and median gaps against the next club down. */
 export function clubGaps(
   data: Dataset,
   basis: Basis,
@@ -429,15 +431,8 @@ export function clubGaps(
     const gap = upper.median - lower.median;
     lower.gap = gap;
     if (!upper.reliable || !lower.reliable) continue;
-    if (
-      upper.low !== null &&
-      upper.high !== null &&
-      lower.low !== null &&
-      lower.high !== null &&
-      upper.low <= lower.high &&
-      lower.low <= upper.high
-    )
-      lower.flag = 'overlap';
+    if (gap < 0) lower.flag = 'reversed';
+    else if (gap <= SMALL_GAP_M) lower.flag = 'small';
     else if (gap > LARGE_GAP_M) lower.flag = 'large';
   }
   return rows;
@@ -445,7 +440,7 @@ export function clubGaps(
 
 export type PracticeInsight = {
   id: string;
-  kind: 'overlap' | 'inconsistency' | 'direction';
+  kind: 'gapping' | 'inconsistency' | 'direction';
   text: string;
   rule: string;
   shots: number;
@@ -467,17 +462,16 @@ export function practiceInsights(
     const upper = gaps[i - 1];
     const lower = gaps[i];
     if (!upper?.reliable || !lower?.reliable) continue;
-    const nearby = lower.gap !== null && Math.abs(lower.gap) <= 10;
-    if (lower.flag === 'overlap' || nearby)
+    const gap = upper.median - lower.median;
+    if (lower.flag === 'small' || lower.flag === 'reversed')
       insights.push({
-        id: `overlap-${lower.club}`,
-        kind: 'overlap',
-        text: nearby
-          ? `${upper.club} and ${lower.club} have similar median carry — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m.`
-          : `${upper.club} and ${lower.club} carry bands overlap, with different medians — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m.`,
-        rule: nearby
-          ? 'neighbouring club medians within 10 m'
-          : 'neighbouring clubs with overlapping middle 80% carry bands',
+        id: `gap-${upper.club}-${lower.club}`,
+        kind: 'gapping',
+        text: `Work on ${upper.club}: median carry is ${upper.median.toFixed(0)} m versus ${lower.median.toFixed(0)} m for ${lower.club}${lower.flag === 'reversed' ? ' — the longer club currently carries less.' : ` — only ${gap.toFixed(0)} m more.`}`,
+        rule:
+          lower.flag === 'reversed'
+            ? 'longer club median below the next shorter club'
+            : 'neighbouring club medians within 10 m',
         shots: Math.min(upper.n, lower.n),
       });
   }

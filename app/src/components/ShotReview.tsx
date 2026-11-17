@@ -127,29 +127,30 @@ export function ShotReview({
         <span className="pill">{flagCount} flagged</span>
       </div>
       <p>
-        Club-label flags and unusual-shot flags are separate suggestions. They
-        never change or exclude a shot. Unusual shots may be mishits or
-        intentional partial swings; ball-flight data cannot tell which. Leave
-        contact uncertain if you do not know.
+        Club-label flags and likely-mishit flags are separate suggestions. Saved
+        shots and contact decisions stay unchanged. Use “Hide likely mishits” in
+        stats to compare the effect. Leave contact uncertain if you do not know.
       </p>
       <details>
         <summary>How unusual-shot flags work (experimental)</summary>
         <p>
-          Irons 2i–9i only, using range-flat carry and range ball speed. At
-          least 20 earlier shots with both positive measurements are needed. The
-          baseline targets the latest 50 earlier shots within 60 days, keeping
-          the full cutoff date. Unknown intent and unreviewed contact remain
-          eligible; partial swings, known mishits, exclusions and archived
-          sessions are left out. Effective club labels are used.
+          Recognised drivers, woods, hybrids, irons and wedges, using range-flat
+          carry and range ball speed. At least 20 earlier shots with both
+          positive measurements are needed. The baseline targets the latest 50
+          earlier shots within 60 days, keeping the full cutoff date. Unknown
+          intent and unreviewed contact remain eligible; partial swings, known
+          mishits, exclusions and archived sessions are left out. Effective club
+          labels are used.
         </p>
         <p>
-          Both values must fall below their median minus 3 × 1.4826 × the median
-          absolute deviation, with a minimum drop of 20% in carry and 10% in
-          speed. Constant or very variable baselines abstain. Untimed or equally
-          timed sessions on the same day are not used to assess one another.
-          These provisional thresholds are not a validated contact classifier.
-          Marking contact typical or mishit, or intent partial, clears the
-          unusual-shot flag; Undo selected restores the previous decision.
+          The reference is the 75th percentile of each earlier measurement.
+          Carry must be below 65% of its reference and ball speed below 80% of
+          its reference. Both must be low. Sparse or missing evidence abstains;
+          those shots stay included in stats. Untimed or equally timed sessions
+          on the same day are not used to assess one another. These provisional
+          thresholds are not a validated contact classifier. Marking contact
+          typical or mishit, or intent partial, clears the unusual-shot flag;
+          Undo selected restores the previous decision.
         </p>
       </details>
       {!sessionId && (
@@ -365,7 +366,7 @@ export function ShotReview({
                 )}
                 {assessment?.kind === 'assessed' && assessment.unusual && (
                   <div className="flag">
-                    <strong>Unusual shot · experimental</strong>
+                    <strong>Likely mishit · experimental</strong>
                     <p>
                       Range-flat carry {assessment.carry.toFixed(1)} m and range
                       ball speed {assessment.speed.toFixed(1)} kph are both low
@@ -376,7 +377,9 @@ export function ShotReview({
                     </p>
                     <p>
                       Medians: {assessment.carryMedian.toFixed(1)} m /{' '}
-                      {assessment.speedMedian.toFixed(1)} kph. Flag cutoffs:
+                      {assessment.speedMedian.toFixed(1)} kph. Reference (75th
+                      percentile): {assessment.carryReference.toFixed(1)} m /{' '}
+                      {assessment.speedReference.toFixed(1)} kph. Flag cutoffs:
                       below {assessment.carryThreshold.toFixed(1)} m /{' '}
                       {assessment.speedThreshold.toFixed(1)} kph (rule{' '}
                       {assessment.ruleVersion}). This does not confirm a mishit.

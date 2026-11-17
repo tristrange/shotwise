@@ -134,6 +134,96 @@ async function seedClubSuggestions(account: Account) {
   }
 }
 
+test('toggles automatic mishits across stats without changing reviews and recommends median gaps', async ({
+  page,
+  account,
+}, testInfo) => {
+  const rows = [
+    ...Array.from({ length: 20 }, (_, i) => ({
+      Club: 'D',
+      'Flat Carry Dist. Range (m)': String(150 + (i % 5)),
+      'Ball Speed (kph)': String(200 + (i % 5)),
+      'Flat Carry Dist. Premium (m)': String(180 + (i % 5)),
+    })),
+    ...Array.from({ length: 5 }, (_, i) => ({
+      Club: 'D',
+      'Flat Carry Dist. Range (m)': String(35 + i * 3),
+      'Ball Speed (kph)': '90',
+      'Flat Carry Dist. Premium (m)': String(40 + i * 3),
+    })),
+    ...Array.from({ length: 20 }, (_, i) => ({
+      Club: 'PW',
+      'Flat Carry Dist. Range (m)': String(80 + (i % 5)),
+      'Ball Speed (kph)': String(120 + (i % 5)),
+      'Flat Carry Dist. Premium (m)': String(90 + (i % 5)),
+    })),
+    ...Array.from({ length: 3 }, () => ({
+      Club: 'PW',
+      'Flat Carry Dist. Range (m)': '30',
+      'Ball Speed (kph)': '60',
+      'Flat Carry Dist. Premium (m)': '40',
+    })),
+    ...Array.from({ length: 10 }, () => ({
+      Club: '5i',
+      'Flat Carry Dist. Premium (m)': '111',
+    })),
+    ...Array.from({ length: 10 }, () => ({
+      Club: '6i',
+      'Flat Carry Dist. Premium (m)': '109',
+    })),
+  ];
+  await account.repository.importCsv({
+    filename: 'filter.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  const original = await account.repository.load();
+  await login(page, account);
+  const driver = page
+    .getByRole('table')
+    .first()
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: 'D', exact: true }) });
+  await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
+  const toggle = page.getByRole('button', {
+    name: 'Hide likely mishits',
+    exact: true,
+  });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(driver.getByRole('cell').nth(2)).toHaveText('20');
+  await page.screenshot({
+    path: testInfo.outputPath('filtered-stats.png'),
+    fullPage: true,
+  });
+  await nav(page, 'Gapping');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByText(/Work on 5i: median carry is 111 m versus 109 m for 6i/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Club carry distances' }),
+  ).toContainText('small median gap');
+  await nav(page, 'Progress');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('table', { name: 'D session details', exact: true }),
+  ).toContainText('20 / 0');
+  await nav(page, 'Shot shape');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.context')).toContainText('60 shots');
+  await nav(page, 'Overview');
+  await toggle.click();
+  await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
+  expect(await account.repository.load()).toEqual(original);
+});
+
 test('hides archived shots and club labels from suggestions', async ({
   page,
   account,
@@ -515,7 +605,7 @@ test('shows separate carry and consistency charts per club with sparse and missi
   await expect(details.getByRole('row').nth(1)).toContainText('0 / 4');
 });
 
-test('shows readable gapping values and distinguishes overlapping carry bands', async ({
+test('shows readable carry bands without recommending practice from overlap alone', async ({
   page,
   account,
 }, testInfo) => {
@@ -553,9 +643,9 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
   await expect(rows.nth(1)).toContainText('Median 123 m');
   await expect(rows.nth(1)).toContainText('Middle 80%: 110–136 m');
   await expect(rows.nth(1)).toContainText('Gap: 25 m');
-  await expect(rows.nth(1)).toContainText('bands overlap');
+  await expect(rows.nth(1)).not.toContainText('bands overlap');
   await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
-  await expect(page.getByText(/6i and 7i carry bands overlap/)).toBeVisible();
+  await expect(page.getByText(/Work on 6i/)).toHaveCount(0);
   expect(await rows.nth(1).ariaSnapshot()).toContain('Median 123 m');
   expect(
     await page.evaluate(
@@ -600,7 +690,7 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
   await login(page, account);
   await nav(page, 'Review');
   await expect(
-    page.getByText('Unusual shot · experimental', { exact: false }),
+    page.getByText('Likely mishit · experimental', { exact: false }),
   ).toBeVisible();
   const target = page.locator('.shot').filter({ hasText: 'Row 21 · Shot #21' });
   await expect(target).toContainText('40.0 m');
@@ -608,8 +698,10 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
   await expect(target).toContainText('20 earlier paired shots');
   await expect(target).toContainText('102.0 m');
   await expect(target).toContainText('142.0 kph');
-  await expect(target).toContainText('81.6 m');
-  await expect(target).toContainText('127.8 kph');
+  await expect(target).toContainText('103.0 m');
+  await expect(target).toContainText('143.0 kph');
+  await expect(target).toContainText('67.0 m');
+  await expect(target).toContainText('114.4 kph');
   expect(await account.repository.load()).toEqual(before);
   await page.screenshot({
     path: testInfo.outputPath('unusual-review.png'),
@@ -637,7 +729,7 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
     .click();
   await expect(target).toContainText('unknown · uncertain · included');
   await page.getByRole('button', { name: 'Flagged only', exact: true }).click();
-  await expect(target).toContainText('Unusual shot · experimental');
+  await expect(target).toContainText('Likely mishit · experimental');
   const restored = await account.repository.load();
   expect(restored.shots.map((shot) => ({ ...shot, revision: 0 }))).toEqual(
     before.shots.map((shot) => ({ ...shot, revision: 0 })),

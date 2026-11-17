@@ -3,7 +3,7 @@ import { assessUnusualShots } from './unusualShots';
 import { makeSession, makeShot } from './fixtures';
 import type { Review } from './model';
 
-describe('unusual iron shots', () => {
+describe('unusual shots', () => {
   const session = makeSession();
   const history = Array.from({ length: 20 }, (_, i) =>
     makeShot({
@@ -35,8 +35,9 @@ describe('unusual iron shots', () => {
       speed: 90,
       carryMedian: 102,
       speedMedian: 142,
-      carryThreshold: 81.6,
-      speedThreshold: 127.8,
+      carryReference: 103,
+      speedReference: 143,
+      speedThreshold: 114.4,
     });
     expect(shots).toEqual(original);
   });
@@ -66,7 +67,7 @@ describe('unusual iron shots', () => {
   });
 
   it.each(['constant', 'very variable'])(
-    'abstains when the baseline is %s instead of declaring a shot normal',
+    'uses a relative reference when the baseline is %s',
     (kind) => {
       const baseline = history.map((s, i) => ({
         ...s,
@@ -79,7 +80,7 @@ describe('unusual iron shots', () => {
         assessUnusualShots([...baseline, candidate], [session]).get(
           candidate.id,
         ),
-      ).toMatchObject({ kind: 'abstained', baselineCount: 20 });
+      ).toMatchObject({ kind: 'assessed', unusual: true, baselineCount: 20 });
     },
   );
 
@@ -131,7 +132,7 @@ describe('unusual iron shots', () => {
   it.each([
     { flatCarryRange: 40, speedRange: 142 },
     { flatCarryRange: 102, speedRange: 90 },
-    { flatCarryRange: 81.6, speedRange: 90 },
+    { flatCarryRange: 66.95, speedRange: 90 },
     { flatCarryRange: 102, speedRange: 142 },
   ])(
     'requires both measurements strictly below their cutoffs: %j',
@@ -190,7 +191,7 @@ describe('unusual iron shots', () => {
     },
   );
 
-  it.each(['SW', '?', '5h', 'Driver'])(
+  it.each(['?', 'Putter', 'unknown', 'loaner'])(
     'leaves unsupported club %s alone',
     (recordedClub) => {
       const shots = [...history, candidate].map((s) => ({

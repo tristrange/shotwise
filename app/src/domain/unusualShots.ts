@@ -1,7 +1,13 @@
-import { quantile } from './analytics';
-import { effectiveClub, shiftDate, type Session, type Shot } from './model';
+import { quantile } from './statistics';
+import {
+  clubOrder,
+  effectiveClub,
+  shiftDate,
+  type Session,
+  type Shot,
+} from './model';
 
-export const UNUSUAL_SHOT_RULE = 'low-iron-1';
+export const UNUSUAL_SHOT_RULE = 'low-flight-2';
 export type UnusualShotAssessment =
   | { kind: 'abstained'; reason: string; baselineCount: number }
   | {
@@ -13,6 +19,8 @@ export type UnusualShotAssessment =
       speed: number;
       carryMedian: number;
       speedMedian: number;
+      carryReference: number;
+      speedReference: number;
       carryThreshold: number;
       speedThreshold: number;
       ruleVersion: string;
@@ -26,7 +34,7 @@ export function assessUnusualShots(shots: Shot[], sessions: Session[]) {
   const eligible = shots.filter(
     (s) =>
       active.has(s.sessionId) &&
-      /^[2-9]i$/i.test(effectiveClub(s).trim()) &&
+      clubOrder(effectiveClub(s)) < 200 &&
       s.review.intent !== 'partial' &&
       s.review.contact !== 'mishit' &&
       s.review.exclusion.kind === 'included',
@@ -93,34 +101,11 @@ export function assessUnusualShots(shots: Shot[], sessions: Session[]) {
     const carryMedian = quantile(carries, 0.5);
     const speedMedian = quantile(speeds, 0.5);
     if (carryMedian === null || speedMedian === null) continue;
-    const carryMad =
-      quantile(
-        carries.map((v) => Math.abs(v - carryMedian)),
-        0.5,
-      ) ?? 0;
-    const speedMad =
-      quantile(
-        speeds.map((v) => Math.abs(v - speedMedian)),
-        0.5,
-      ) ?? 0;
-    const carryThreshold =
-      carryMedian - Math.max(3 * 1.4826 * carryMad, carryMedian * 0.2);
-    const speedThreshold =
-      speedMedian - Math.max(3 * 1.4826 * speedMad, speedMedian * 0.1);
-    if (
-      carryMad <= 0 ||
-      speedMad <= 0 ||
-      carryThreshold <= 0 ||
-      speedThreshold <= 0
-    ) {
-      assessments.set(shot.id, {
-        kind: 'abstained',
-        reason:
-          'Earlier measurements have too little or too much variation for this rule.',
-        baselineCount: baseline.length,
-      });
-      continue;
-    }
+    const carryReference = quantile(carries, 0.75);
+    const speedReference = quantile(speeds, 0.75);
+    if (carryReference === null || speedReference === null) continue;
+    const carryThreshold = carryReference * 0.65;
+    const speedThreshold = speedReference * 0.8;
     assessments.set(shot.id, {
       kind: 'assessed',
       unusual: carry < carryThreshold && speed < speedThreshold,
@@ -130,6 +115,8 @@ export function assessUnusualShots(shots: Shot[], sessions: Session[]) {
       speed,
       carryMedian,
       speedMedian,
+      carryReference,
+      speedReference,
       carryThreshold,
       speedThreshold,
       ruleVersion: UNUSUAL_SHOT_RULE,

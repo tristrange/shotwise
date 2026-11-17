@@ -12,7 +12,7 @@ import {
   summarize,
   type AnalysisSettings,
 } from '../domain/analytics';
-import { BasisButton, ViewToggle } from './AnalysisControls';
+import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { ClubProgress } from './ClubProgress';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
@@ -103,6 +103,7 @@ export function Analysis({
               <p className="context">{cohort}</p>
             </div>
             <div className="card-controls">
+              <MishitToggle settings={settings} onChange={onSettingsChange} />
               <ViewToggle
                 mode={settings.mode}
                 onChange={(mode) => onSettingsChange({ ...settings, mode })}

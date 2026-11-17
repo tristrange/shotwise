@@ -27,6 +27,7 @@ const initialAnalysisSettings: AnalysisSettings = {
   basis: 'premium-flat',
   intent: 'all',
   contact: 'all',
+  hideLikelyMishits: false,
 };
 
 type Page =

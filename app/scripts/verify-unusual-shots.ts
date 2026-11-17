@@ -64,7 +64,7 @@ console.info(
       files: exports.length,
       shots: shots.length,
       warnings: exports.reduce((n, entry) => n + entry.warnings, 0),
-      eligibleIrons: values.length,
+      eligibleShots: values.length,
       assessed: values.filter((a) => a.kind === 'assessed').length,
       abstained: values.filter((a) => a.kind === 'abstained').length,
       flagged: values.filter((a) => a.kind === 'assessed' && a.unusual).length,

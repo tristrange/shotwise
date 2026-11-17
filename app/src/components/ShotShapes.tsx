@@ -8,7 +8,7 @@ import {
   type Dataset,
 } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
-import { BasisButton, ViewToggle } from './AnalysisControls';
+import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 
 const direction = (value: number | null, unit: string) =>
   value === null
@@ -53,6 +53,7 @@ export function ShotShapes({
             </p>
           </div>
           <div className="card-controls">
+            <MishitToggle settings={settings} onChange={onSettingsChange} />
             <ViewToggle
               mode={settings.mode}
               onChange={(mode) => onSettingsChange({ ...settings, mode })}
