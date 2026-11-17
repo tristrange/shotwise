@@ -90,14 +90,14 @@ export function ClubSuggestions({
           <span className="eyebrow">Unassigned clubs</span>
           <h2>Guess the missing clubs</h2>
         </div>
-        <span className="pill">{unknown.length} shots</span>
+        <span className="pill">
+          {unknown.length} {unknown.length === 1 ? 'shot' : 'shots'}
+        </span>
       </div>
       <p>
-        These shots have no readable club label. The suggestion compares carry
-        with clubs that have at least ten known shots, using the premium flat
-        estimate. A suggestion must be within 15 m of a club’s median and at
-        least 5 m closer than the next candidate. This is a rough carry-based
-        guess. Confirm one to add it to that club’s stats.
+        These shots have no readable club label. We compare carry with clubs
+        that have at least ten known shots, within 15 m. Confirm a suggestion
+        or choose another.
       </p>
       {error && (
         <p role="alert" className="error">
