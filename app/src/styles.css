@@ -47,6 +47,37 @@
   --on-accent: #260a35;
   color-scheme: dark;
 }
+.club-progress {
+  margin-top: 28px;
+}
+.progress-plots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+}
+.progress-plots figure {
+  margin: 0;
+  min-width: 0;
+}
+.progress-plots figcaption {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.progress-plot {
+  overflow-x: auto;
+}
+.progress-plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.progress-plot svg {
+  display: block;
+  font: 12px var(--mono);
+  color: var(--text-secondary);
+}
+.progress-plot text {
+  fill: currentColor;
+}
 * {
   box-sizing: border-box;
 }

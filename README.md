@@ -38,7 +38,7 @@ Duplicate complete exports return the existing session, including renamed files 
 ## Read the analytics
 
 - **Recent** targets 50 shots per effective club within 60 calendar days ending today. It keeps the full cutoff date, so actual counts can exceed 50. It does not fill sparse clubs with older history.
-- **Progress** shows per-session summaries without claiming significance or inventing an order between untimed sessions on the same date.
+- **Progress** shows separate per-club session charts for median carry and carry spread (the middle half, or IQR), with readable values and matching tables. Higher medians mean more distance; narrower spreads mean more consistent carry. Fewer than ten measurements are marked sample limited; spread needs four. Missing carry stays blank. Bars avoid suggesting a trajectory or order between untimed sessions on the same date. Differences alone do not establish improvement.
 - **All-time** includes all non-archived sessions.
 
 Overview, Gapping and Progress share the selected Recent/All-time window, measurement basis, intent and contact filters while you navigate. Recent is the default. Select All-time to see your full progression; changing a filter never changes saved shots. Filters reset when you reload or change accounts.
