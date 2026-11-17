@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { BarShapeProps } from 'recharts';
 import {
   Bar,
   BarChart,
@@ -13,18 +12,13 @@ import {
   BASES,
   clubOrder,
   effectiveClub,
+  isUnknownClub,
   localToday,
   type Basis,
   type Dataset,
   type Review,
 } from '../domain/model';
-import {
-  mostImprovedClub,
-  reviewCoverage,
-  selectCohort,
-  summarize,
-} from '../domain/analytics';
-import { FlameCanvas } from './FlameCanvas';
+import { reviewCoverage, selectCohort, summarize } from '../domain/analytics';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -41,9 +35,9 @@ export function Analysis({
   const [club, setClub] = useState('');
   const query = { mode, today: localToday(), intent, contact };
   const selected = selectCohort(data.shots, data.sessions, query);
-  const clubs = [...new Set(selected.map(effectiveClub))].sort(
-    (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
-  );
+  const clubs = [...new Set(selected.map(effectiveClub))]
+    .filter((club) => !isUnknownClub(club))
+    .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
   const shots = (
     club ? selected.filter((s) => effectiveClub(s) === club) : selected
@@ -56,7 +50,6 @@ export function Analysis({
       a.rowIndex - b.rowIndex,
   );
   const summary = summarize(shots, basis);
-  const improved = mostImprovedClub(data, basis);
   const coverage = reviewCoverage(
     selectCohort(data.shots, data.sessions, {
       ...query,
@@ -315,46 +308,20 @@ export function Analysis({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={rows}
-                  margin={{ top: 108, right: 20, bottom: 0, left: -15 }}
+                  margin={{ top: 15, right: 20, bottom: 0, left: -15 }}
                 >
                   <CartesianGrid vertical={false} stroke="#e9efe6" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} />
                   <Tooltip />
+                  {/* Flame overlay parked: see FlameCanvas and mostImprovedClub. */}
                   <Bar
                     isAnimationActive={false}
                     activeBar={false}
                     dataKey="carry"
                     name="Median carry (m)"
                     fill="#244b36"
-                    shape={(bar: BarShapeProps) => {
-                      const isWinner = bar.payload?.name === improved?.club;
-                      return (
-                        <g>
-                          <rect
-                            x={bar.x}
-                            y={bar.y}
-                            width={bar.width}
-                            height={bar.height}
-                            rx={4}
-                            fill="#244b36"
-                          />
-                          {isWinner && (
-                            <foreignObject
-                              x={bar.x - 12}
-                              y={bar.y - 104}
-                              width={bar.width + 24}
-                              height={112}
-                              pointerEvents="none"
-                            >
-                              <div className="bar-flame-wrap">
-                                <FlameCanvas />
-                              </div>
-                            </foreignObject>
-                          )}
-                        </g>
-                      );
-                    }}
+                    radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
               </ResponsiveContainer>
