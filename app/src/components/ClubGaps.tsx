@@ -40,8 +40,9 @@ export function ClubGaps({ data }: { data: Dataset }) {
           </label>
         </div>
         <p>
-          Full swings with typical contact only. The dot is the median carry;
-          the bar is the middle 80% of shots. Fewer than ten shots is shown in
+          All shots with a readable club, including ones you have not reviewed.
+          Shots marked partial or mishit are left out. The dot is the median
+          carry; the bar is the middle 80%. Fewer than ten shots is shown in
           grey and not flagged.
         </p>
         {rows.length === 0 ? (

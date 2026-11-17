@@ -395,6 +395,39 @@ describe('club gapping', () => {
     });
   });
 
+  it('includes unreviewed shots but leaves out identified partials and mishits', () => {
+    const base = Array.from({ length: 10 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: '7i',
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: 150 + i },
+      }),
+    );
+    const partial = makeShot({
+      sessionId: session.id,
+      recordedClub: '9i',
+      rowIndex: 11,
+      measurements: { flatCarryPremium: 90 },
+      review: { intent: 'partial' },
+    });
+    const mishit = makeShot({
+      sessionId: session.id,
+      recordedClub: '5i',
+      rowIndex: 12,
+      measurements: { flatCarryPremium: 210 },
+      review: { contact: 'mishit' },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [...base, partial, mishit],
+    };
+    expect(clubGaps(data, 'premium-flat').map((row) => row.club)).toEqual([
+      '7i',
+    ]);
+  });
+
   it('flags large gaps and overlaps, but never on a thin sample', () => {
     const data = {
       ...emptyDataset,
