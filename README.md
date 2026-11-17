@@ -55,6 +55,8 @@ Review also offers **experimental unusual-shot flags for irons**: both range-fla
 
 Inrange's Curve measures trajectory deviation from the launch-to-landing line, not landing dispersion. Lateral measurements follow the bay or selected-target aim line. The app does not infer club path or swing mechanics. See [Inrange's metric definitions](https://www.inrangegolf.com/players/faqs).
 
+**Shot shape** plots recorded launch direction against recorded curve, separately for each club. Points can be selected with a pointer or keyboard to inspect the original measurements; expandable shot tables provide the same values, including missing measurements and separate From Centre values. Only shots with both direction and curve appear on the plot, with paired and omitted counts shown. The shared window and basis controls remain in the card; basis changes apply to carry values, while direction and curve remain as exported. This is a measurement view, with no landing-position reconstruction or swing diagnosis.
+
 ## Verify
 
 ```sh

@@ -6,6 +6,7 @@ import {
   FolderOpen,
   LogOut,
   Ruler,
+  ScatterChart,
   Settings,
 } from 'lucide-react';
 import type { Session as AuthSession } from '@supabase/supabase-js';
@@ -18,6 +19,7 @@ import { ShotReview } from './components/ShotReview';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
 import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
+import { ShotShapes } from './components/ShotShapes';
 import type { AnalysisSettings } from './domain/analytics';
 
 const initialAnalysisSettings: AnalysisSettings = {
@@ -28,13 +30,14 @@ const initialAnalysisSettings: AnalysisSettings = {
 };
 
 type Page =
-  'overview' | 'sessions' | 'review' | 'gapping' | 'progress' | 'settings';
+  'overview' | 'sessions' | 'review' | 'gapping' | 'progress' | 'shape' | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'sessions', label: 'Sessions & import', icon: FolderOpen },
   { id: 'review', label: 'Review', icon: ClipboardCheck },
   { id: 'gapping', label: 'Gapping', icon: Ruler },
   { id: 'progress', label: 'Progress', icon: Flag },
+  { id: 'shape', label: 'Shot shape', icon: ScatterChart },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 function pageFromHash(): Page {
@@ -242,6 +245,13 @@ export default function App() {
                 settings={analysisSettings}
                 onSettingsChange={setAnalysisSettings}
                 progressView
+              />
+            )}
+            {page === 'shape' && (
+              <ShotShapes
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
               />
             )}
             {page === 'sessions' && (
