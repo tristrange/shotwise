@@ -3,8 +3,8 @@ import {
   practiceInsights,
   type AnalysisSettings,
 } from '../domain/analytics';
-import { BASES, localToday, type Dataset } from '../domain/model';
-import { AnalysisControls } from './AnalysisControls';
+import { localToday, type Dataset } from '../domain/model';
+import { BasisButton, ViewToggle } from './AnalysisControls';
 
 export function ClubGaps({
   data,
@@ -24,23 +24,24 @@ export function ClubGaps({
   return (
     <>
       <div className="section-heading">
-        <div>
-          <span className="eyebrow">Your bag</span>
-          <h1>Club gapping</h1>
-          <p>
-            See where your clubs leave a hole and where they overlap, so you
-            know what to spend practice time on.
-          </p>
-        </div>
+        <h1>Club gapping</h1>
       </div>
-      <AnalysisControls settings={settings} onChange={onSettingsChange} />
       <section className="panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Carry by club</span>
             <h2>Typical carry and the gap to the next club</h2>
           </div>
-          <span className="pill">{BASES[basis].label}</span>
+          <div className="card-controls">
+            <ViewToggle
+              mode={settings.mode}
+              onChange={(mode) => onSettingsChange({ ...settings, mode })}
+            />
+            <BasisButton
+              basis={basis}
+              onChange={(next) => onSettingsChange({ ...settings, basis: next })}
+            />
+          </div>
         </div>
         <p>
           Unreviewed shots count unless you filter by review. Partial and

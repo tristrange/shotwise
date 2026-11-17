@@ -1,93 +1,52 @@
-import type { ReactNode } from 'react';
-import type { AnalysisSettings } from '../domain/analytics';
-import { BASES, basisSchema, reviewSchema } from '../domain/model';
+import { BASES, type Basis } from '../domain/model';
 
-export function AnalysisControls({
-  settings,
+const bases = Object.keys(BASES) as Basis[];
+
+export function BasisButton({
+  basis,
   onChange,
-  children,
 }: {
-  settings: AnalysisSettings;
-  onChange: (settings: AnalysisSettings) => void;
-  children?: ReactNode;
+  basis: Basis;
+  onChange: (basis: Basis) => void;
 }) {
   return (
-    <>
-      <div className="filters panel" role="group" aria-label="Analysis filters">
-        <label>
-          View
-          <select
-            value={settings.mode}
-            onChange={(event) => {
-              const mode = event.target.value;
-              if (mode === 'recent' || mode === 'all')
-                onChange({ ...settings, mode });
-            }}
-          >
-            <option value="recent">Recent</option>
-            <option value="all">All-time</option>
-          </select>
-        </label>
-        <label>
-          Measurement basis
-          <select
-            value={settings.basis}
-            onChange={(event) =>
-              onChange({
-                ...settings,
-                basis: basisSchema.parse(event.target.value),
-              })
-            }
-          >
-            {Object.entries(BASES).map(([key, value]) => (
-              <option key={key} value={key}>
-                {value.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Intent
-          <select
-            value={settings.intent}
-            onChange={(event) =>
-              onChange({
-                ...settings,
-                intent:
-                  event.target.value === 'all'
-                    ? 'all'
-                    : reviewSchema.shape.intent.parse(event.target.value),
-              })
-            }
-          >
-            <option value="all">All intent</option>
-            <option value="full">Full</option>
-            <option value="partial">Partial</option>
-            <option value="unknown">Unknown</option>
-          </select>
-        </label>
-        <label>
-          Contact
-          <select
-            value={settings.contact}
-            onChange={(event) =>
-              onChange({
-                ...settings,
-                contact: event.target.value === 'typical' ? 'typical' : 'all',
-              })
-            }
-          >
-            <option value="all">All contact</option>
-            <option value="typical">Reviewed typical</option>
-          </select>
-        </label>
-        {children}
-      </div>
-      <p className="notice">
-        {settings.mode === 'recent'
-          ? 'Recent: latest 50 shots per club from the last 60 days. Review filters apply afterward.'
-          : 'All-time: every non-archived session, using the selected review filters.'}
-      </p>
-    </>
+    <button
+      className="pill pill-button"
+      onClick={() =>
+        onChange(bases[(bases.indexOf(basis) + 1) % bases.length]!)
+      }
+      title="Change measurement basis"
+    >
+      {BASES[basis].label}
+    </button>
+  );
+}
+
+export function ViewToggle({
+  mode,
+  onChange,
+}: {
+  mode: 'recent' | 'all';
+  onChange: (mode: 'recent' | 'all') => void;
+}) {
+  return (
+    <div className="segmented" role="group" aria-label="Analysis window">
+      <button
+        className={mode === 'recent' ? 'active' : ''}
+        aria-pressed={mode === 'recent'}
+        title="Latest 50 shots per club from the last 60 days"
+        onClick={() => onChange('recent')}
+      >
+        Recent
+      </button>
+      <button
+        className={mode === 'all' ? 'active' : ''}
+        aria-pressed={mode === 'all'}
+        title="Every non-archived session"
+        onClick={() => onChange('all')}
+      >
+        All-time
+      </button>
+    </div>
   );
 }
