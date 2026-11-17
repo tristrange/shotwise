@@ -15,17 +15,20 @@ import { parseBackup, serializeBackup } from './domain/backup';
 import { Analysis } from './components/Analysis';
 import { Sessions } from './components/Sessions';
 import { ShotReview } from './components/ShotReview';
-import { ThemeToggle } from './components/ThemeToggle';
+import { ThemeToggle, useTheme } from './components/ThemeToggle';
 import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
+import type { AnalysisSettings } from './domain/analytics';
+
+const initialAnalysisSettings: AnalysisSettings = {
+  mode: 'recent',
+  basis: 'premium-flat',
+  intent: 'all',
+  contact: 'all',
+};
 
 type Page =
-  | 'overview'
-  | 'sessions'
-  | 'review'
-  | 'gapping'
-  | 'progress'
-  | 'settings';
+  'overview' | 'sessions' | 'review' | 'gapping' | 'progress' | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'sessions', label: 'Sessions & import', icon: FolderOpen },
@@ -35,6 +38,10 @@ const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 export default function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
+  const [analysisSettings, setAnalysisSettings] = useState(
+    initialAnalysisSettings,
+  );
   const [session, setSession] = useState<AuthSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [data, setData] = useState<Dataset>(emptyDataset);
@@ -76,6 +83,7 @@ export default function App() {
         identity.current = user;
         generation.current++;
         setData(emptyDataset);
+        setAnalysisSettings(initialAnalysisSettings);
         setSession(next);
         if (user) void Promise.resolve().then(refresh);
       }
@@ -155,7 +163,7 @@ export default function App() {
             >
               <LogOut size={18} /> Sign out
             </button>
-            <ThemeToggle />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </div>
         </div>
       </aside>
@@ -169,7 +177,7 @@ export default function App() {
             >
               Sign out
             </button>
-            <ThemeToggle />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </div>
         </header>
         <nav className="mobile-nav" aria-label="Mobile navigation">
@@ -201,29 +209,46 @@ export default function App() {
             <div className="panel">Loading your sessions…</div>
           )}
           <div key={session.user.id} hidden={!!error || loading}>
-            {page === 'overview' && <Analysis data={data} />}
-            {page === 'gapping' && <ClubGaps data={data} />}
+            {page === 'overview' && (
+              <Analysis
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
+              />
+            )}
+            {page === 'gapping' && (
+              <ClubGaps
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
+              />
+            )}
             {page === 'progress' && (
-              <Analysis key="progress" data={data} initialMode="progress" />
+              <Analysis
+                key="progress"
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
+                progressView
+              />
             )}
             {page === 'sessions' && (
               <Sessions data={data} repository={repository} refresh={refresh} />
             )}
+            <ClubSuggestions
+              active={page === 'review'}
+              data={data}
+              repository={repository}
+              refresh={refresh}
+            />
             {page === 'review' && (
-              <>
-                <ClubSuggestions
+              <section className="panel">
+                <ShotReview
                   data={data}
                   repository={repository}
                   refresh={refresh}
                 />
-                <section className="panel">
-                  <ShotReview
-                    data={data}
-                    repository={repository}
-                    refresh={refresh}
-                  />
-                </section>
-              </>
+              </section>
             )}
             {page === 'settings' && <Backup data={data} refresh={refresh} />}
           </div>

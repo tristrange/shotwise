@@ -1,11 +1,24 @@
-import { useState } from 'react';
-import { clubGaps, practiceInsights } from '../domain/analytics';
-import { BASES, basisSchema, type Basis, type Dataset } from '../domain/model';
+import {
+  clubGaps,
+  practiceInsights,
+  type AnalysisSettings,
+} from '../domain/analytics';
+import { BASES, localToday, type Dataset } from '../domain/model';
+import { AnalysisControls } from './AnalysisControls';
 
-export function ClubGaps({ data }: { data: Dataset }) {
-  const [basis, setBasis] = useState<Basis>('premium-flat');
-  const rows = clubGaps(data, basis);
-  const insights = practiceInsights(data, basis);
+export function ClubGaps({
+  data,
+  settings,
+  onSettingsChange,
+}: {
+  data: Dataset;
+  settings: AnalysisSettings;
+  onSettingsChange: (settings: AnalysisSettings) => void;
+}) {
+  const { basis, ...filters } = settings;
+  const query = { ...filters, today: localToday() };
+  const rows = clubGaps(data, basis, query);
+  const insights = practiceInsights(data, basis, query);
   const scale = Math.max(...rows.map((row) => row.high ?? row.median), 1) * 1.1;
 
   return (
@@ -20,36 +33,26 @@ export function ClubGaps({ data }: { data: Dataset }) {
           </p>
         </div>
       </div>
+      <AnalysisControls settings={settings} onChange={onSettingsChange} />
       <section className="panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Carry by club</span>
             <h2>Typical carry and the gap to the next club</h2>
           </div>
-          <label>
-            Basis
-            <select
-              value={basis}
-              onChange={(e) => setBasis(basisSchema.parse(e.target.value))}
-            >
-              {Object.entries(BASES).map(([key, value]) => (
-                <option key={key} value={key}>
-                  {value.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span className="pill">{BASES[basis].label}</span>
         </div>
         <p>
-          All shots with a readable club, including ones you have not reviewed.
-          Shots marked partial or mishit are left out. The dot is the median
-          carry; the bar is the middle 80%. Fewer than ten shots is shown in
-          grey and not flagged. Gaps compare medians with the club above; a
-          negative gap means this club carried farther.
+          Within the selected filters, shots need a readable club and carry.
+          Unreviewed shots are included unless you choose a review filter. Shots
+          marked partial or mishit are always left out of gapping and insights.
+          The dot is the median carry; the bar is the middle 80%. Fewer than ten
+          shots is shown in grey and not flagged. Gaps compare medians with the
+          club above; a negative gap means this club carried farther.
         </p>
         {rows.length === 0 ? (
           <p>
-            No comparable shots on this basis yet. Shots need a readable club
+            No comparable shots for these filters. Shots need a readable club
             and carry, and must not be marked partial or mishit.
           </p>
         ) : (

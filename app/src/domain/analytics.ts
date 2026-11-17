@@ -14,11 +14,17 @@ import {
 } from './model';
 
 export type AnalysisQuery = {
-  mode: 'recent' | 'progress' | 'all';
+  mode: 'recent' | 'all';
   today: string;
   intent: Review['intent'] | 'all';
   contact: 'all' | 'typical';
   club?: string;
+};
+export type AnalysisSettings = Pick<
+  AnalysisQuery,
+  'mode' | 'intent' | 'contact'
+> & {
+  basis: Basis;
 };
 export const RULE_VERSION = 'club-label-1';
 export function quantile(values: number[], p: number): number | null {
@@ -355,15 +361,14 @@ export function mostImprovedClub(
 }
 
 /** Shots that can be compared: known club, carry on this basis, not a known bad shot. */
-function eligibleShots(data: Dataset, basis: Basis): Shot[] {
-  const sessions = new Set(
-    data.sessions.filter((s) => !s.archived).map((s) => s.id),
-  );
+function eligibleShots(
+  data: Dataset,
+  basis: Basis,
+  query: AnalysisQuery,
+): Shot[] {
   const key = BASES[basis].carry;
-  return data.shots.filter(
+  return selectCohort(data.shots, data.sessions, query).filter(
     (shot) =>
-      sessions.has(shot.sessionId) &&
-      shot.review.exclusion.kind === 'included' &&
       shot.review.intent !== 'partial' &&
       shot.review.contact !== 'mishit' &&
       shot.measurements[key] !== null &&
@@ -386,10 +391,14 @@ const MIN_GAP_SAMPLES = 10;
 const LARGE_GAP_M = 30;
 
 /** Carry bands for each club, with the gap and overlap against the next club down. */
-export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
+export function clubGaps(
+  data: Dataset,
+  basis: Basis,
+  query: AnalysisQuery,
+): ClubGap[] {
   const key = BASES[basis].carry;
   const groups = new Map<string, Shot[]>();
-  for (const shot of eligibleShots(data, basis)) {
+  for (const shot of eligibleShots(data, basis, query)) {
     const club = effectiveClub(shot);
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
@@ -448,10 +457,11 @@ const MIN_INSIGHT_SHOTS = 10;
 export function practiceInsights(
   data: Dataset,
   basis: Basis,
+  query: AnalysisQuery,
 ): PracticeInsight[] {
   const key = BASES[basis].carry;
   const insights: PracticeInsight[] = [];
-  const gaps = clubGaps(data, basis);
+  const gaps = clubGaps(data, basis, query);
 
   for (let i = 1; i < gaps.length; i++) {
     const upper = gaps[i - 1];
@@ -473,7 +483,7 @@ export function practiceInsights(
   }
 
   const groups = new Map<string, Shot[]>();
-  for (const shot of eligibleShots(data, basis)) {
+  for (const shot of eligibleShots(data, basis, query)) {
     const club = effectiveClub(shot);
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
@@ -540,6 +550,7 @@ export function suggestClub(
   const sessions = new Map(
     data.sessions.filter((s) => !s.archived).map((s) => [s.id, s]),
   );
+  if (!sessions.has(shot.sessionId)) return null;
   const known = data.shots.filter(
     (candidate) =>
       candidate.id !== shot.id &&

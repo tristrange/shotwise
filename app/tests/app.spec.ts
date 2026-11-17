@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { localStack } from './local';
 import { csvFixture } from '../src/domain/fixtures';
-import { localToday, type Dataset } from '../src/domain/model';
+import { localToday, shiftDate, type Dataset } from '../src/domain/model';
 import { parseCsv } from '../src/domain/csv';
 import { createRepository } from '../src/data/repository';
 import { parseBackup, serializeBackup } from '../src/domain/backup';
@@ -95,6 +95,344 @@ async function seed(account: Account) {
   });
 }
 
+async function seedClubSuggestions(account: Account) {
+  for (const archived of [false, true]) {
+    const rows = archived
+      ? [{ Club: '9i' }, { Club: '?' }]
+      : [
+          ...Array.from({ length: 10 }, () => ({ Club: '7i' })),
+          { Club: '?' },
+          { Club: '?' },
+        ];
+    const result = await account.repository.importCsv({
+      filename: archived ? 'archived.csv' : 'clubs.csv',
+      date: shiftDate(localToday(), archived ? -1 : 0),
+      time: null,
+      venue: '',
+      notes: '',
+      confirmedFull: false,
+      allowSameDay: false,
+      preview: await parseCsv(
+        new TextEncoder().encode(
+          csvFixture(
+            rows.map((row) => ({
+              ...row,
+              'Flat Carry Dist. Premium (m)': archived ? '80' : '150',
+            })),
+          ),
+        ),
+      ),
+    });
+    if (archived) {
+      const data = await account.repository.load();
+      const session = data.sessions.find(
+        (session) => session.id === result.sessionId,
+      );
+      if (!session) throw new Error('Missing seeded session');
+      await account.repository.updateSession({ ...session, archived: true });
+    }
+  }
+}
+
+test('hides archived shots and club labels from suggestions', async ({
+  page,
+  account,
+}) => {
+  await seedClubSuggestions(account);
+  await login(page, account);
+  await nav(page, 'Review');
+  const suggestions = page.locator('.suggestion-list');
+  await expect(suggestions.locator('.suggestion-row')).toHaveCount(2);
+  await expect(
+    suggestions.getByRole('option', { name: '9i', exact: true }),
+  ).toHaveCount(0);
+});
+
+test('holds all suggestion controls steady until a save completes', async ({
+  page,
+  account,
+}) => {
+  await seedClubSuggestions(account);
+  await login(page, account);
+  await nav(page, 'Review');
+  const suggestions = page.locator('.suggestion-list');
+  await suggestions
+    .getByRole('combobox', { name: 'Club for row 12', exact: true })
+    .selectOption('7i');
+  let release = () => {};
+  let entered = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const request = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let requests = 0;
+  await page.route('**/rest/v1/rpc/apply_reviews', async (route) => {
+    requests++;
+    entered();
+    await gate;
+    await route.continue();
+  });
+  await suggestions
+    .getByRole('button', { name: 'Save club', exact: true })
+    .first()
+    .click();
+  await request;
+  try {
+    await nav(page, 'Overview');
+    await nav(page, 'Review');
+    await expect(
+      suggestions.getByRole('button', { name: 'Saving…' }),
+    ).toBeDisabled();
+    await expect(
+      suggestions.getByRole('button', { name: 'Save club', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      suggestions.getByRole('combobox', {
+        name: 'Club for row 11',
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await expect(
+      suggestions.getByRole('combobox', {
+        name: 'Club for row 12',
+        exact: true,
+      }),
+    ).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(suggestions.locator('.suggestion-row')).toHaveCount(1);
+  await expect(
+    suggestions.getByRole('combobox', { name: 'Club for row 12', exact: true }),
+  ).toHaveValue('7i');
+  await expect(
+    suggestions.getByRole('button', { name: 'Save club', exact: true }),
+  ).toBeEnabled();
+  expect(requests).toBe(1);
+});
+
+test('preserves a club choice after a failed suggestion save and allows retry', async ({
+  page,
+  account,
+}) => {
+  await seedClubSuggestions(account);
+  await login(page, account);
+  await nav(page, 'Review');
+  const suggestions = page.locator('.suggestion-list');
+  const choice = suggestions.getByRole('combobox', {
+    name: 'Club for row 11',
+    exact: true,
+  });
+  await choice.selectOption('7i');
+  await page.route('**/rest/v1/rpc/apply_reviews', (route) => route.abort());
+  await suggestions
+    .getByRole('button', { name: 'Save club', exact: true })
+    .first()
+    .click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await nav(page, 'Overview');
+  await nav(page, 'Review');
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(choice).toBeEnabled();
+  await expect(choice).toHaveValue('7i');
+  await page.unroute('**/rest/v1/rpc/apply_reviews');
+  await suggestions
+    .getByRole('button', { name: 'Save club', exact: true })
+    .first()
+    .click();
+  await expect(suggestions.locator('.suggestion-row')).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('keeps theme controls in sync across desktop, tablet and phone', async ({
+  page,
+  account,
+}) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await login(page, account);
+  await page
+    .getByRole('button', { name: 'Switch to dark theme' })
+    .filter({ visible: true })
+    .click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const lightButton = page
+    .getByRole('button', { name: 'Switch to light theme' })
+    .filter({ visible: true });
+  await expect(lightButton).toBeVisible();
+  await lightButton.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page
+    .getByRole('button', { name: 'Switch to dark theme' })
+    .filter({ visible: true })
+    .click();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(
+    page
+      .getByRole('button', { name: 'Switch to light theme' })
+      .filter({ visible: true }),
+  ).toBeVisible();
+});
+
+test('uses theme colours for chart bars, grid and labels', async ({
+  page,
+  account,
+}, testInfo) => {
+  await seed(account);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await login(page, account);
+  for (const theme of ['light', 'dark']) {
+    if (theme === 'dark')
+      await page
+        .getByRole('button', { name: 'Switch to dark theme' })
+        .filter({ visible: true })
+        .click();
+    const colors = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      document.body.append(probe);
+      const color = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const result = {
+        bar: color('--accent'),
+        grid: color('--border-soft'),
+        label: color('--text-muted'),
+      };
+      probe.remove();
+      return result;
+    });
+    await expect(
+      page.locator('.recharts-bar-rectangle path').first(),
+    ).toHaveCSS('fill', colors.bar);
+    await expect(
+      page.locator('.recharts-cartesian-grid-horizontal line').first(),
+    ).toHaveCSS('stroke', colors.grid);
+    await expect(
+      page.locator('.recharts-cartesian-axis-tick-value').first(),
+    ).toHaveCSS('fill', colors.label);
+  }
+  await page.screenshot({
+    path: testInfo.outputPath('dark-overview.png'),
+    fullPage: true,
+  });
+});
+
+test('shares the analysis window, basis and review filters across pages', async ({
+  page,
+  account,
+}) => {
+  for (const old of [true, false]) {
+    await account.repository.importCsv({
+      filename: old ? 'old.csv' : 'recent.csv',
+      date: shiftDate(localToday(), old ? -100 : 0),
+      time: null,
+      venue: '',
+      notes: '',
+      confirmedFull: false,
+      allowSameDay: false,
+      preview: await parseCsv(
+        new TextEncoder().encode(
+          csvFixture(
+            Array.from({ length: old ? 30 : 10 }, () => ({
+              Club: '7i',
+              'Flat Carry Dist. Premium (m)': old ? '70' : '120',
+              'Flat Carry Dist. Range (m)': old ? '80' : '130',
+              Curve: old ? '2L' : '2R',
+            })),
+          ),
+        ),
+      ),
+    });
+  }
+  const data = await account.repository.load();
+  const recent = data.sessions.find(
+    (session) => session.filename === 'recent.csv',
+  );
+  await account.repository.review(
+    data.shots
+      .filter((shot) => shot.sessionId === recent?.id)
+      .slice(0, 5)
+      .map((shot) => ({
+        shotId: shot.id,
+        expectedRevision: shot.revision,
+        review: { ...shot.review, intent: 'full', contact: 'typical' },
+      })),
+  );
+  await login(page, account);
+  await expect(
+    page.getByRole('table').first().getByRole('row').nth(1),
+  ).toContainText('120.0 m');
+  await nav(page, 'Gapping');
+  const gapping = page.getByRole('list', { name: 'Club carry distances' });
+  await expect(gapping).toContainText('Median 120 m');
+  await expect(page.getByText(/7i shots tend to curve right/)).toBeVisible();
+  await page
+    .getByRole('combobox', { name: 'View', exact: true })
+    .selectOption('all');
+  await expect(gapping).toContainText('Median 70 m');
+  await expect(page.getByText(/7i shots tend to curve left/)).toBeVisible();
+  await nav(page, 'Overview');
+  await expect(
+    page.getByRole('combobox', { name: 'View', exact: true }),
+  ).toHaveValue('all');
+  await expect(
+    page.getByRole('table').first().getByRole('row').nth(1),
+  ).toContainText('70.0 m');
+  await page
+    .getByRole('combobox', { name: 'Measurement basis', exact: true })
+    .selectOption('range-flat');
+  await nav(page, 'Gapping');
+  await expect(
+    page.getByRole('combobox', { name: 'Measurement basis', exact: true }),
+  ).toHaveValue('range-flat');
+  await expect(gapping).toContainText('Median 80 m');
+  await page
+    .getByRole('combobox', { name: 'Contact', exact: true })
+    .selectOption('typical');
+  await page
+    .getByRole('combobox', { name: 'Intent', exact: true })
+    .selectOption('full');
+  await expect(gapping).toContainText('Median 130 m');
+  await expect(gapping).toContainText('5');
+  await nav(page, 'Progress');
+  await expect(
+    page.getByRole('heading', { name: 'Carry over time' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('combobox', { name: 'Contact', exact: true }),
+  ).toHaveValue('typical');
+  await expect(
+    page.getByRole('combobox', { name: 'Intent', exact: true }),
+  ).toHaveValue('full');
+  await expect(page.getByRole('table').first().getByRole('row')).toHaveCount(2);
+  await expect(
+    page.getByRole('table').first().getByRole('row').nth(1),
+  ).toContainText('130.0 m');
+  await page
+    .getByRole('combobox', { name: 'View', exact: true })
+    .selectOption('recent');
+  await nav(page, 'Overview');
+  await expect(
+    page.getByRole('combobox', { name: 'View', exact: true }),
+  ).toHaveValue('recent');
+  await expect(
+    page.getByRole('table').first().getByRole('row').nth(1),
+  ).toContainText('130.0 m');
+  await nav(page, 'Gapping');
+  await page
+    .getByRole('combobox', { name: 'Intent', exact: true })
+    .selectOption('unknown');
+  await expect(
+    page.getByText('No comparable shots for these filters.'),
+  ).toBeVisible();
+});
+
 test('shows readable gapping values and distinguishes overlapping carry bands', async ({
   page,
   account,
@@ -147,10 +485,10 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
     fullPage: true,
   });
   await page
-    .getByRole('combobox', { name: 'Basis', exact: true })
+    .getByRole('combobox', { name: 'Measurement basis', exact: true })
     .selectOption('range-flat');
   await expect(
-    page.getByText('No comparable shots on this basis yet.'),
+    page.getByText('No comparable shots for these filters.'),
   ).toBeVisible();
 });
 

@@ -1,13 +1,20 @@
 import { useState } from 'react';
-import { clubOrder, effectiveClub, isUnknownClub, type Dataset } from '../domain/model';
+import {
+  clubOrder,
+  effectiveClub,
+  isUnknownClub,
+  type Dataset,
+} from '../domain/model';
 import { suggestClub } from '../domain/analytics';
 import type { Repository } from '../data/contracts';
 
 export function ClubSuggestions({
+  active,
   data,
   repository,
   refresh,
 }: {
+  active: boolean;
   data: Dataset;
   repository: Repository;
   refresh: () => Promise<void>;
@@ -16,18 +23,26 @@ export function ClubSuggestions({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
 
-  const knownClubs = [...new Set(data.shots.map(effectiveClub))]
+  if (!active) return null;
+
+  const sessions = new Map(
+    data.sessions
+      .filter((session) => !session.archived)
+      .map((session) => [session.id, session]),
+  );
+  const activeShots = data.shots.filter((shot) => sessions.has(shot.sessionId));
+  const knownClubs = [...new Set(activeShots.map(effectiveClub))]
     .filter((club) => !isUnknownClub(club))
     .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
-  const unknown = data.shots
+  const unknown = activeShots
     .filter(
       (shot) =>
         isUnknownClub(effectiveClub(shot)) &&
         shot.review.exclusion.kind === 'included',
     )
     .sort((a, b) => {
-      const da = data.sessions.find((s) => s.id === a.sessionId)?.date ?? '';
-      const db = data.sessions.find((s) => s.id === b.sessionId)?.date ?? '';
+      const da = sessions.get(a.sessionId)?.date ?? '';
+      const db = sessions.get(b.sessionId)?.date ?? '';
       return db.localeCompare(da) || a.rowIndex - b.rowIndex;
     });
   if (!unknown.length) return null;
@@ -38,6 +53,7 @@ export function ClubSuggestions({
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
 
   async function confirm(shotId: string) {
+    if (busy) return;
     const shot = unknown.find((s) => s.id === shotId);
     const club = choices[shotId] ?? suggestions.get(shotId)?.club ?? '';
     if (!shot || !club) return;
@@ -59,7 +75,9 @@ export function ClubSuggestions({
       });
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Could not save the club. Refresh and try again.',
+        e instanceof Error
+          ? e.message
+          : 'Could not save the club. Refresh and try again.',
       );
     }
     setBusy('');
@@ -107,6 +125,7 @@ export function ClubSuggestions({
               </span>
               <select
                 aria-label={`Club for row ${shot.rowIndex}`}
+                disabled={!!busy}
                 value={selected}
                 onChange={(e) =>
                   setChoices((old) => ({ ...old, [shot.id]: e.target.value }))
@@ -120,7 +139,7 @@ export function ClubSuggestions({
                 ))}
               </select>
               <button
-                disabled={!selected || busy === shot.id}
+                disabled={!selected || !!busy}
                 onClick={() => void confirm(shot.id)}
               >
                 {busy === shot.id ? 'Saving…' : 'Save club'}

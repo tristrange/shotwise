@@ -41,6 +41,10 @@ Duplicate complete exports return the existing session, including renamed files 
 - **Progress** shows per-session summaries without claiming significance or inventing an order between untimed sessions on the same date.
 - **All-time** includes all non-archived sessions.
 
+Overview, Gapping and Progress share the selected Recent/All-time window, measurement basis, intent and contact filters while you navigate. Recent is the default. Select All-time to see your full progression; changing a filter never changes saved shots. Filters reset when you reload or change accounts.
+
+Gapping and practice insights apply those filters, then leave out shots marked partial or mishit and shots without a readable club or carry on the selected basis. Unreviewed shots remain included unless you select a review filter. Recent selection happens before these eligibility checks, so missing or unsuitable recent shots are never replaced with older history.
+
 Premium flat carry is the default and is labelled as an estimate. Measurement alternatives are explicit; a missing premium measurement is never replaced by a range-ball measurement. Each statistic shows measured and missing counts. Quantiles use R7 interpolation; sample SD requires two values, IQR four, and P10–P90 ten.
 
 “Reviewed typical” includes only shots you marked typical. Review coverage and full-swing mishit counts describe the reviewed subset, which can be selective. They are not estimates of unreviewed shots. Intent filtering is separate.
