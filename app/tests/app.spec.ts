@@ -482,106 +482,6 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
   ).toBeVisible();
 });
 
-test('shows measured shot shapes with explicit missingness and keyboard-accessible shot inspection', async ({
-  page,
-  account,
-}, testInfo) => {
-  await account.repository.importCsv({
-    filename: 'shapes.csv',
-    date: localToday(),
-    time: null,
-    venue: '',
-    notes: '',
-    confirmedFull: false,
-    allowSameDay: false,
-    preview: await parseCsv(
-      new TextEncoder().encode(
-        csvFixture([
-          {
-            'Launch Direction': '5L',
-            Curve: '3R',
-            'From Centre (m)': '12R',
-            'Flat Carry Dist. Premium (m)': '105',
-          },
-          {
-            'Launch Direction': '0',
-            Curve: '0',
-            'Flat Carry Dist. Premium (m)': '110',
-          },
-          { 'Launch Direction': '--', Curve: '2L', 'From Centre (m)': '8L' },
-          { 'Launch Direction': '2R', Curve: '--' },
-        ]),
-      ),
-    ),
-  });
-  await login(page, account);
-  await nav(page, 'Shot shape');
-  const plot = page.getByRole('group', {
-    name: '7i recorded shot shapes',
-    exact: true,
-  });
-  await expect(plot.getByRole('button')).toHaveCount(2);
-  await expect(
-    page.getByText(
-      '2 of 4 shots have both measurements; 2 are absent from the plot.',
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await plot.getByRole('button', { name: /Plot 7i row 1/ }).click();
-  const detail = page.getByRole('region', {
-    name: 'Selected shot measurements',
-    exact: true,
-  });
-  await expect(detail).toContainText('5.0° left');
-  await expect(detail).toContainText('3.0 m right');
-  await expect(detail).toContainText('12.0 m right');
-  await expect(detail).toContainText('105.0 m');
-  await page.getByText('Shot measurements (4)', { exact: true }).click();
-  const table = page.getByRole('table', {
-    name: '7i shot measurements',
-    exact: true,
-  });
-  const inspectZero = table.getByRole('button', {
-    name: 'Inspect row 2',
-    exact: true,
-  });
-  await inspectZero.focus();
-  await page.keyboard.press('Enter');
-  await expect(detail).toContainText('0.0° straight');
-  await expect(detail).toContainText('0.0 m straight');
-  await expect(
-    table
-      .getByRole('row')
-      .filter({
-        has: page.getByRole('button', { name: 'Inspect row 3', exact: true }),
-      })
-      .getByRole('cell')
-      .nth(2),
-  ).toHaveText('Missing');
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: testInfo.outputPath('shot-shapes.png'),
-    fullPage: true,
-  });
-  await page
-    .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
-    .click();
-  await expect(detail).toContainText('Carry: Missing');
-  await expect(plot.getByRole('button')).toHaveCount(2);
-  await nav(page, 'Overview');
-  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
-  await nav(page, 'Shot shape');
-  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
-  await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Shot shape', exact: true }),
-  ).toBeVisible();
-});
-
 test('imports, reviews, corrects, undoes and syncs without losing originals', async ({
   page,
   browser,
@@ -861,4 +761,104 @@ test('keeps the active tab after a reload', async ({ page, account }) => {
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
   expect(new URL(page.url()).hash).toBe('#progress');
+});
+
+test('shows measured shot shapes with explicit missingness and keyboard-accessible shot inspection', async ({
+  page,
+  account,
+}, testInfo) => {
+  await account.repository.importCsv({
+    filename: 'shapes.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture([
+          {
+            'Launch Direction': '5L',
+            Curve: '3R',
+            'From Centre (m)': '12R',
+            'Flat Carry Dist. Premium (m)': '105',
+          },
+          {
+            'Launch Direction': '0',
+            Curve: '0',
+            'Flat Carry Dist. Premium (m)': '110',
+          },
+          { 'Launch Direction': '--', Curve: '2L', 'From Centre (m)': '8L' },
+          { 'Launch Direction': '2R', Curve: '--' },
+        ]),
+      ),
+    ),
+  });
+  await login(page, account);
+  await nav(page, 'Shot shape');
+  const plot = page.getByRole('group', {
+    name: '7i recorded shot shapes',
+    exact: true,
+  });
+  await expect(plot.getByRole('button')).toHaveCount(2);
+  await expect(
+    page.getByText(
+      '2 of 4 shots have both measurements; 2 are absent from the plot.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await plot.getByRole('button', { name: /Plot 7i row 1/ }).click();
+  const detail = page.getByRole('region', {
+    name: 'Selected shot measurements',
+    exact: true,
+  });
+  await expect(detail).toContainText('5.0° left');
+  await expect(detail).toContainText('3.0 m right');
+  await expect(detail).toContainText('12.0 m right');
+  await expect(detail).toContainText('105.0 m');
+  await page.getByText('Shot measurements (4)', { exact: true }).click();
+  const table = page.getByRole('table', {
+    name: '7i shot measurements',
+    exact: true,
+  });
+  const inspectZero = table.getByRole('button', {
+    name: 'Inspect row 2',
+    exact: true,
+  });
+  await inspectZero.focus();
+  await page.keyboard.press('Enter');
+  await expect(detail).toContainText('0.0° straight');
+  await expect(detail).toContainText('0.0 m straight');
+  await expect(
+    table
+      .getByRole('row')
+      .filter({
+        has: page.getByRole('button', { name: 'Inspect row 3', exact: true }),
+      })
+      .getByRole('cell')
+      .nth(2),
+  ).toHaveText('Missing');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('shot-shapes.png'),
+    fullPage: true,
+  });
+  await page
+    .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
+    .click();
+  await expect(detail).toContainText('Carry: Missing');
+  await expect(plot.getByRole('button')).toHaveCount(2);
+  await nav(page, 'Overview');
+  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
+  await nav(page, 'Shot shape');
+  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Shot shape', exact: true }),
+  ).toBeVisible();
 });
