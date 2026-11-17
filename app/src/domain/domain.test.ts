@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv, suggestDate, toBase64, fromBase64 } from './csv';
 import {
+  clubGaps,
   summarize,
   quantile,
   selectCohort,
@@ -344,6 +345,79 @@ describe('club order', () => {
   it('puts unknown labels last', () => {
     expect(clubOrder('?')).toBeGreaterThan(clubOrder('lw'));
     expect(clubOrder('misread')).toBeGreaterThan(clubOrder('9i'));
+  });
+});
+
+describe('club gapping', () => {
+  const session = makeSession({ date: '2026-11-16' });
+  const shotsWith = (club: string, carries: number[]) =>
+    carries.map((carry, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: club,
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: carry },
+        review: { intent: 'full', contact: 'typical' },
+      }),
+    );
+
+  it('summarises full swings with typical contact, ordered longest to shortest', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...shotsWith('PW', [86, 88, 90, 92, 94, 96, 98, 100, 102, 104]),
+        ...shotsWith('7i', [150, 154, 158, 160, 160, 160, 162, 166, 170, 170]),
+        ...shotsWith('5i', [180, 182, 184, 186, 188, 190, 192, 194, 196, 198]),
+        makeShot({
+          sessionId: session.id,
+          recordedClub: '3w',
+          measurements: { flatCarryPremium: 300 },
+          review: { intent: 'full', contact: 'mishit' },
+        }),
+        makeShot({
+          sessionId: session.id,
+          recordedClub: '?',
+          measurements: { flatCarryPremium: 400 },
+          review: { intent: 'full', contact: 'typical' },
+        }),
+      ],
+    };
+    expect(clubGaps(data, 'premium-flat').map((row) => row.club)).toEqual([
+      '5i',
+      '7i',
+      'PW',
+    ]);
+    expect(clubGaps(data, 'premium-flat')[1]).toMatchObject({
+      median: 160,
+      n: 10,
+      reliable: true,
+    });
+  });
+
+  it('flags large gaps and overlaps, but never on a thin sample', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...shotsWith('7i', [152, 155, 158, 160, 160, 160, 162, 165, 168, 170]),
+        ...shotsWith('9i', [112, 115, 118, 120, 120, 120, 122, 125, 128, 128]),
+        ...shotsWith('PW', [100, 104, 108, 112, 116, 120, 124, 128, 132, 136]),
+        ...shotsWith('SW', [50, 55, 60]),
+      ],
+    };
+    const rows = clubGaps(data, 'premium-flat');
+    expect(rows.find((row) => row.club === '9i')).toMatchObject({
+      gap: 40,
+      flag: 'large',
+    });
+    expect(rows.find((row) => row.club === 'PW')).toMatchObject({
+      flag: 'overlap',
+    });
+    expect(rows.find((row) => row.club === 'SW')).toMatchObject({
+      reliable: false,
+      flag: null,
+    });
   });
 });
 

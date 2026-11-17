@@ -1,5 +1,6 @@
 import {
   BASES,
+  clubOrder,
   effectiveClub,
   isUnknownClub,
   isWedge,
@@ -351,6 +352,75 @@ export function mostImprovedClub(
       };
   }
   return best;
+}
+
+export type ClubGap = {
+  club: string;
+  n: number;
+  median: number;
+  low: number | null;
+  high: number | null;
+  reliable: boolean;
+  gap: number | null;
+  flag: 'large' | 'overlap' | null;
+};
+
+const MIN_GAP_SAMPLES = 10;
+const LARGE_GAP_M = 30;
+
+/** Carry bands for each club, with the gap and overlap against the next club down. */
+export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
+  const sessions = new Set(
+    data.sessions.filter((s) => !s.archived).map((s) => s.id),
+  );
+  const key = BASES[basis].carry;
+  const groups = new Map<string, Shot[]>();
+  for (const shot of data.shots) {
+    if (
+      !sessions.has(shot.sessionId) ||
+      shot.review.exclusion.kind !== 'included' ||
+      shot.review.intent !== 'full' ||
+      shot.review.contact !== 'typical' ||
+      shot.measurements[key] === null
+    )
+      continue;
+    const club = effectiveClub(shot);
+    if (isUnknownClub(club)) continue;
+    groups.set(club, [...(groups.get(club) ?? []), shot]);
+  }
+
+  const rows: ClubGap[] = [...groups]
+    .map(([club, shots]) => {
+      const stats = metricStats(shots, key);
+      return {
+        club,
+        n: stats.n,
+        median: stats.median ?? 0,
+        low: stats.p10,
+        high: stats.p90,
+        reliable: stats.n >= MIN_GAP_SAMPLES,
+        gap: null,
+        flag: null,
+      };
+    })
+    .sort((a, b) => clubOrder(a.club) - clubOrder(b.club) || a.club.localeCompare(b.club));
+
+  for (let i = 1; i < rows.length; i++) {
+    const upper = rows[i - 1];
+    const lower = rows[i];
+    if (!upper || !lower) continue;
+    const gap = upper.median - lower.median;
+    lower.gap = gap;
+    if (!upper.reliable || !lower.reliable) continue;
+    if (
+      upper.low !== null &&
+      lower.high !== null &&
+      upper.low <= lower.high
+    )
+      lower.flag = 'overlap';
+    else if (gap > LARGE_GAP_M) lower.flag = 'large';
+  }
+  return rows;
 }
 
 export type ClubSuggestion = {
