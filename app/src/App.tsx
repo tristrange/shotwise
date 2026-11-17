@@ -15,6 +15,7 @@ import { Analysis } from './components/Analysis';
 import { Sessions } from './components/Sessions';
 import { ShotReview } from './components/ShotReview';
 import { ThemeToggle } from './components/ThemeToggle';
+import { ClubSuggestions } from './components/ClubSuggestions';
 
 type Page = 'overview' | 'sessions' | 'review' | 'progress' | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
@@ -199,13 +200,20 @@ export default function App() {
               <Sessions data={data} repository={repository} refresh={refresh} />
             )}
             {page === 'review' && (
-              <section className="panel">
-                <ShotReview
+              <>
+                <ClubSuggestions
                   data={data}
                   repository={repository}
                   refresh={refresh}
                 />
-              </section>
+                <section className="panel">
+                  <ShotReview
+                    data={data}
+                    repository={repository}
+                    refresh={refresh}
+                  />
+                </section>
+              </>
             )}
             {page === 'settings' && <Backup data={data} refresh={refresh} />}
           </div>

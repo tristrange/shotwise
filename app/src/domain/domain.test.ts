@@ -7,6 +7,7 @@ import {
   clubFlags,
   mostImprovedClub,
   reviewCoverage,
+  suggestClub,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
 import { clubOrder, emptyDataset } from './model';
@@ -343,5 +344,108 @@ describe('club order', () => {
   it('puts unknown labels last', () => {
     expect(clubOrder('?')).toBeGreaterThan(clubOrder('lw'));
     expect(clubOrder('misread')).toBeGreaterThan(clubOrder('9i'));
+  });
+});
+
+describe('club suggestions', () => {
+  const session = makeSession({ id: crypto.randomUUID(), date: '2026-11-16' });
+  const known = (club: string, carry: number, count: number, start: number) =>
+    Array.from({ length: count }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: club,
+        rowIndex: start + i,
+        measurements: { flatCarryPremium: carry },
+      }),
+    );
+
+  it('suggests the nearest well-sampled club in the same session', () => {
+    const unknown = makeShot({
+      sessionId: session.id,
+      recordedClub: '?',
+      rowIndex: 21,
+      measurements: { flatCarryPremium: 152 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [...known('7i', 150, 10, 1), ...known('5i', 180, 10, 11), unknown],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toMatchObject({
+      club: '7i',
+      delta: 2,
+      source: 'session',
+      sampleSize: 10,
+    });
+  });
+
+  it('falls back to all sessions when the shot’s own session has too few known shots', () => {
+    const earlier = makeSession({ id: crypto.randomUUID(), date: '2026-11-01' });
+    const recent = makeSession({ id: crypto.randomUUID(), date: '2026-11-16' });
+    const unknown = makeShot({
+      sessionId: recent.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 151 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [earlier, recent],
+      shots: [
+        ...Array.from({ length: 10 }, () =>
+          makeShot({
+            sessionId: earlier.id,
+            recordedClub: '7i',
+            measurements: { flatCarryPremium: 150 },
+          }),
+        ),
+        makeShot({
+          sessionId: recent.id,
+          recordedClub: '5i',
+          measurements: { flatCarryPremium: 180 },
+        }),
+        unknown,
+      ],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toMatchObject({
+      club: '7i',
+      source: 'all',
+    });
+  });
+
+  it('returns nothing when samples are too few or the nearest club is too far away', () => {
+    const sparse = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [...known('7i', 150, 9, 1), makeShot({ sessionId: session.id, recordedClub: '?', measurements: { flatCarryPremium: 152 } })],
+    };
+    expect(suggestClub(sparse.shots.at(-1)!, sparse, 'premium-flat')).toBeNull();
+
+    const distant = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [...known('7i', 150, 10, 1), makeShot({ sessionId: session.id, recordedClub: '?', measurements: { flatCarryPremium: 200 } })],
+    };
+    expect(suggestClub(distant.shots.at(-1)!, distant, 'premium-flat')).toBeNull();
+  });
+
+  it('ignores excluded shots and already-unknown labels when building the baseline', () => {
+    const unknown = makeShot({
+      sessionId: session.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 152 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...known('7i', 50, 10, 1).map((shot) => ({
+          ...shot,
+          review: { ...shot.review, exclusion: { kind: 'excluded' as const, reason: 'bad' } },
+        })),
+        ...known('?', 150, 10, 11),
+        unknown,
+      ],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toBeNull();
   });
 });

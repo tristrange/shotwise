@@ -352,3 +352,79 @@ export function mostImprovedClub(
   }
   return best;
 }
+
+export type ClubSuggestion = {
+  shotId: string;
+  club: string;
+  delta: number;
+  sampleSize: number;
+  source: 'session' | 'all';
+};
+
+const MIN_SUGGESTION_SAMPLES = 10;
+const MAX_SUGGESTION_DELTA = 15;
+
+/** Closest well-sampled club by carry, preferring the shot's own session. */
+export function suggestClub(
+  shot: Shot,
+  data: Dataset,
+  basis: Basis,
+): ClubSuggestion | null {
+  if (
+    shot.review.exclusion.kind !== 'included' ||
+    !isUnknownClub(effectiveClub(shot))
+  )
+    return null;
+  const carryKey = BASES[basis].carry;
+  const carry = shot.measurements[carryKey];
+  if (carry === null) return null;
+
+  const sessions = new Map(
+    data.sessions.filter((s) => !s.archived).map((s) => [s.id, s]),
+  );
+  const known = data.shots.filter(
+    (candidate) =>
+      candidate.id !== shot.id &&
+      sessions.has(candidate.sessionId) &&
+      candidate.review.exclusion.kind === 'included' &&
+      !isUnknownClub(effectiveClub(candidate)) &&
+      candidate.measurements[carryKey] !== null,
+  );
+
+  const propose = (
+    candidates: Shot[],
+    source: 'session' | 'all',
+  ): ClubSuggestion | null => {
+    const groups = new Map<string, number[]>();
+    for (const candidate of candidates) {
+      const value = candidate.measurements[carryKey];
+      if (value === null) continue;
+      const club = effectiveClub(candidate);
+      groups.set(club, [...(groups.get(club) ?? []), value]);
+    }
+    let best: ClubSuggestion | null = null;
+    for (const [club, values] of groups) {
+      if (values.length < MIN_SUGGESTION_SAMPLES) continue;
+      const median = quantile(values, 0.5);
+      if (median === null) continue;
+      const delta = Math.abs(carry - median);
+      if (delta > MAX_SUGGESTION_DELTA) continue;
+      if (!best || delta < best.delta)
+        best = {
+          shotId: shot.id,
+          club,
+          delta,
+          sampleSize: values.length,
+          source,
+        };
+    }
+    return best;
+  };
+
+  return (
+    propose(
+      known.filter((candidate) => candidate.sessionId === shot.sessionId),
+      'session',
+    ) ?? propose(known, 'all')
+  );
+}

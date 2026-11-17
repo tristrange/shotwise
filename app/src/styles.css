@@ -502,6 +502,30 @@ summary {
   font-weight: 400;
   color: var(--text-muted);
 }
+.suggestion-list {
+  display: grid;
+}
+.suggestion-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 160px auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.suggestion-meta {
+  display: grid;
+  gap: 4px;
+}
+.suggestion-meta span {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.suggestion-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
 .review {
   margin-top: 24px;
 }
@@ -706,6 +730,10 @@ hr {
   }
   .panel-heading {
     flex-wrap: wrap;
+  }
+  .suggestion-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
   .form-grid,
   .review-controls .form-grid {
