@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "test:db": "node scripts/test-db.mjs",
-    "verify:csv": "tsx scripts/verify-csv.ts"
+    "verify:csv": "tsx scripts/verify-csv.ts",
+    "verify:unusual": "tsx scripts/verify-unusual-shots.ts"
   },
   "keywords": [],
   "author": "",

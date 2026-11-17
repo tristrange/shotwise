@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { clubFlags } from '../domain/analytics';
+import { assessUnusualShots } from '../domain/unusualShots';
 import { effectiveClub, type Dataset, type Review } from '../domain/model';
 import type { Repository } from '../data/contracts';
 
@@ -29,11 +30,24 @@ export function ShotReview({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const flags = clubFlags(data.shots, data.sessions);
+  const assessments = useMemo(
+    () => assessUnusualShots(data.shots, data.sessions),
+    [data.shots, data.sessions],
+  );
+  const flagged = new Set([
+    ...flags.keys(),
+    ...[...assessments].flatMap(([id, assessment]) =>
+      assessment.kind === 'assessed' && assessment.unusual ? [id] : [],
+    ),
+  ]);
+  const flagCount = data.shots.filter(
+    (s) => (!sessionId || s.sessionId === sessionId) && flagged.has(s.id),
+  ).length;
   const shots = data.shots
     .filter(
       (s) =>
         (!sessionId || s.sessionId === sessionId) &&
-        (filter === 'all' || flags.has(s.id)),
+        (filter === 'all' || flagged.has(s.id)),
     )
     .sort((a, b) => a.rowIndex - b.rowIndex);
   const chosen = data.shots.filter((s) => selected.includes(s.id));
@@ -110,14 +124,37 @@ export function ShotReview({
           <span className="eyebrow">Review shots</span>
           <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
         </div>
-        <span className="pill">{flags.size} flagged</span>
+        <span className="pill">{flagCount} flagged</span>
       </div>
+      <p>
+        Club-label flags and unusual-shot flags are separate suggestions. They
+        never change or exclude a shot. Unusual shots may be mishits or
+        intentional partial swings; ball-flight data cannot tell which. Leave
+        contact uncertain if you do not know.
+      </p>
+      <details>
+        <summary>How unusual-shot flags work (experimental)</summary>
+        <p>
+          Irons 2i–9i only, using range-flat carry and range ball speed. At
+          least 20 earlier shots with both positive measurements are needed. The
+          baseline targets the latest 50 earlier shots within 60 days, keeping
+          the full cutoff date. Unknown intent and unreviewed contact remain
+          eligible; partial swings, known mishits, exclusions and archived
+          sessions are left out. Effective club labels are used.
+        </p>
+        <p>
+          Both values must fall below their median minus 3 × 1.4826 × the median
+          absolute deviation, with a minimum drop of 20% in carry and 10% in
+          speed. Constant or very variable baselines abstain. Untimed or equally
+          timed sessions on the same day are not used to assess one another.
+          These provisional thresholds are not a validated contact classifier.
+          Marking contact typical or mishit, or intent partial, clears the
+          unusual-shot flag; Undo selected restores the previous decision.
+        </p>
+      </details>
       {!sessionId && (
         <>
-          <p>
-            Flags identify unusual club labels using earlier range-flat carry
-            and range ball speed. They do not change or exclude a shot.
-          </p>
+          <p>Browse all to see shots where the unusual-shot rule abstained.</p>
           <div className="tabs">
             <button
               className={filter === 'flags' ? 'active' : ''}
@@ -271,6 +308,7 @@ export function ShotReview({
         <div className="shot-list">
           {shots.map((s) => {
             const flag = flags.get(s.id);
+            const assessment = assessments.get(s.id);
             return (
               <article className="shot" key={s.id}>
                 <label className="shot-title">
@@ -323,6 +361,32 @@ export function ShotReview({
                     {flag.speedMedian.toFixed(1)} kph; thresholds{' '}
                     {flag.carryThreshold.toFixed(1)} m /{' '}
                     {flag.speedThreshold.toFixed(1)} kph).
+                  </p>
+                )}
+                {assessment?.kind === 'assessed' && assessment.unusual && (
+                  <div className="flag">
+                    <strong>Unusual shot · experimental</strong>
+                    <p>
+                      Range-flat carry {assessment.carry.toFixed(1)} m and range
+                      ball speed {assessment.speed.toFixed(1)} kph are both low
+                      for {effectiveClub(s)}. Baseline:{' '}
+                      {assessment.baselineCount} earlier paired shots across{' '}
+                      {assessment.sessions} session(s), including unreviewed
+                      shots.
+                    </p>
+                    <p>
+                      Medians: {assessment.carryMedian.toFixed(1)} m /{' '}
+                      {assessment.speedMedian.toFixed(1)} kph. Flag cutoffs:
+                      below {assessment.carryThreshold.toFixed(1)} m /{' '}
+                      {assessment.speedThreshold.toFixed(1)} kph (rule{' '}
+                      {assessment.ruleVersion}). This does not confirm a mishit.
+                    </p>
+                  </div>
+                )}
+                {assessment?.kind === 'abstained' && (
+                  <p className="notice">
+                    Unusual-shot check unavailable: {assessment.reason}{' '}
+                    {assessment.baselineCount} earlier paired shots available.
                   </p>
                 )}
                 <details>
