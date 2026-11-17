@@ -51,6 +51,8 @@ Premium flat carry is the default and is labelled as an estimate. Measurement al
 
 Club-label flags use earlier range-flat carry and range ball speed: at least 30 shots across three sessions, both above median + 4 × scaled MAD. Zero-MAD, sparse, unknown-club and wedge cases abstain. Flags are review suggestions and never change inclusion or club assignment. The rule is deliberately conservative and has not been validated as a contact-quality classifier.
 
+Review also offers **experimental unusual-shot flags for irons**: both range-flat carry and range ball speed must be unusually low against at least 20 earlier paired shots for the same effective club. Each flag shows measurements, medians, cutoffs and sample size. Browse all shows abstention reasons. These shots could be mishits or intentional partial swings; leave contact uncertain if you cannot tell. Review decisions remain explicit and reversible. See the [rule and evaluation limits](docs/assisted-iron-review.md).
+
 Inrange's Curve measures trajectory deviation from the launch-to-landing line, not landing dispersion. Lateral measurements follow the bay or selected-target aim line. The app does not infer club path or swing mechanics. See [Inrange's metric definitions](https://www.inrangegolf.com/players/faqs).
 
 ## Verify

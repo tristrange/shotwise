@@ -482,6 +482,78 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
   ).toBeVisible();
 });
 
+test('explains unusual iron shots and keeps review decisions explicit and reversible', async ({
+  page,
+  account,
+}, testInfo) => {
+  await account.repository.importCsv({
+    filename: 'unusual-irons.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture([
+          ...Array.from({ length: 20 }, (_, i) => ({
+            'Flat Carry Dist. Range (m)': String(100 + (i % 5)),
+            'Ball Speed (kph)': String(140 + (i % 5)),
+          })),
+          { 'Flat Carry Dist. Range (m)': '40', 'Ball Speed (kph)': '90' },
+        ]),
+      ),
+    ),
+  });
+  const before = await account.repository.load();
+  await login(page, account);
+  await nav(page, 'Review');
+  await expect(
+    page.getByText('Unusual shot · experimental', { exact: false }),
+  ).toBeVisible();
+  const target = page.locator('.shot').filter({ hasText: 'Row 21 · Shot #21' });
+  await expect(target).toContainText('40.0 m');
+  await expect(target).toContainText('90.0 kph');
+  await expect(target).toContainText('20 earlier paired shots');
+  await expect(target).toContainText('102.0 m');
+  await expect(target).toContainText('142.0 kph');
+  await expect(target).toContainText('81.6 m');
+  await expect(target).toContainText('127.8 kph');
+  expect(await account.repository.load()).toEqual(before);
+  await page.screenshot({
+    path: testInfo.outputPath('unusual-review.png'),
+    fullPage: true,
+  });
+  await target.getByRole('checkbox').check();
+  await page
+    .getByRole('combobox', { name: /^Set contact/ })
+    .selectOption('typical');
+  await page.getByRole('button', { name: 'Save review', exact: true }).click();
+  await expect(target).toHaveCount(0);
+  await page.getByRole('button', { name: 'Browse all', exact: true }).click();
+  await expect(target).toContainText('unknown · typical · included');
+  await expect(target).toContainText('7i → 7i');
+  await expect(
+    page
+      .getByText('Needs at least 20 earlier paired shots for this club.', {
+        exact: false,
+      })
+      .first(),
+  ).toBeVisible();
+  await target.getByRole('checkbox').check();
+  await page
+    .getByRole('button', { name: 'Undo selected', exact: true })
+    .click();
+  await expect(target).toContainText('unknown · uncertain · included');
+  await page.getByRole('button', { name: 'Flagged only', exact: true }).click();
+  await expect(target).toContainText('Unusual shot · experimental');
+  const restored = await account.repository.load();
+  expect(restored.shots.map((shot) => ({ ...shot, revision: 0 }))).toEqual(
+    before.shots.map((shot) => ({ ...shot, revision: 0 })),
+  );
+});
+
 test('imports, reviews, corrects, undoes and syncs without losing originals', async ({
   page,
   browser,
