@@ -10,10 +10,109 @@ import {
   practiceInsights,
   reviewCoverage,
   suggestClub,
+  type AnalysisQuery,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
 import { clubOrder, emptyDataset } from './model';
 import type { Review } from './model';
+
+const allTimeQuery = {
+  mode: 'all',
+  today: '2026-11-16',
+  intent: 'all',
+  contact: 'all',
+} satisfies AnalysisQuery;
+
+describe('gapping analysis windows', () => {
+  it('keeps old beginner data out of Recent gapping and curvature insights', () => {
+    const old = makeSession({ date: '2026-01-01' });
+    const recent = makeSession({ date: '2026-11-16' });
+    const shots = [old, recent].flatMap((session, i) =>
+      Array.from({ length: i === 0 ? 30 : 10 }, () =>
+        makeShot({
+          sessionId: session.id,
+          measurements: {
+            flatCarryPremium: i === 0 ? 70 : 120,
+            curve: i === 0 ? -2 : 2,
+          },
+        }),
+      ),
+    );
+    const data = { ...emptyDataset, sessions: [old, recent], shots };
+    const recentQuery: AnalysisQuery = { ...allTimeQuery, mode: 'recent' };
+    expect(clubGaps(data, 'premium-flat', recentQuery)[0]).toMatchObject({
+      median: 120,
+      n: 10,
+    });
+    expect(
+      practiceInsights(data, 'premium-flat', recentQuery).find(
+        (insight) => insight.kind === 'direction',
+      )?.text,
+    ).toContain('curve right');
+    expect(clubGaps(data, 'premium-flat', allTimeQuery)[0]).toMatchObject({
+      median: 70,
+      n: 40,
+    });
+    expect(
+      practiceInsights(data, 'premium-flat', allTimeQuery).find(
+        (insight) => insight.kind === 'direction',
+      )?.text,
+    ).toContain('curve left');
+  });
+
+  it('applies review filters after the cutoff date without backfilling older shots', () => {
+    const sessions = ['2026-11-16', '2026-11-10', '2026-10-01'].map((date) =>
+      makeSession({ date }),
+    );
+    const shots = sessions.flatMap((session, i) =>
+      Array.from({ length: i === 0 ? 30 : 40 }, (_, j) =>
+        makeShot({
+          sessionId: session.id,
+          measurements: { flatCarryPremium: 100 + i * 10 },
+          review: {
+            intent: i === 0 ? 'partial' : i === 1 ? 'unknown' : 'full',
+            contact: i === 1 && j < 10 ? 'typical' : 'uncertain',
+          },
+        }),
+      ),
+    );
+    const data = { ...emptyDataset, sessions, shots };
+    const query: AnalysisQuery = { ...allTimeQuery, mode: 'recent' };
+    expect(clubGaps(data, 'premium-flat', query)[0]).toMatchObject({
+      n: 40,
+      median: 110,
+    });
+    expect(
+      clubGaps(data, 'premium-flat', { ...query, contact: 'typical' })[0],
+    ).toMatchObject({ n: 10, median: 110 });
+    expect(
+      clubGaps(data, 'premium-flat', { ...query, intent: 'full' }),
+    ).toEqual([]);
+    expect(
+      practiceInsights(data, 'premium-flat', { ...query, intent: 'full' }),
+    ).toEqual([]);
+  });
+
+  it('uses only measurements from the selected basis', () => {
+    const session = makeSession();
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: Array.from({ length: 10 }, () =>
+        makeShot({
+          sessionId: session.id,
+          measurements: { flatCarryPremium: null, flatCarryRange: 130 },
+        }),
+      ),
+    };
+    expect(clubGaps(data, 'premium-flat', allTimeQuery)).toEqual([]);
+    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
+    expect(clubGaps(data, 'range-flat', allTimeQuery)[0]).toMatchObject({
+      median: 130,
+      n: 10,
+    });
+  });
+});
 
 describe('lossless CSV boundary', () => {
   it('preserves bytes, extra cells, row order, duplicate source numbers, zero and signed metrics', async () => {
@@ -415,12 +514,10 @@ describe('club gapping', () => {
         }),
       ],
     };
-    expect(clubGaps(data, 'premium-flat').map((row) => row.club)).toEqual([
-      '5i',
-      '7i',
-      'PW',
-    ]);
-    expect(clubGaps(data, 'premium-flat')[1]).toMatchObject({
+    expect(
+      clubGaps(data, 'premium-flat', allTimeQuery).map((row) => row.club),
+    ).toEqual(['5i', '7i', 'PW']);
+    expect(clubGaps(data, 'premium-flat', allTimeQuery)[1]).toMatchObject({
       median: 160,
       n: 10,
       reliable: true,
@@ -455,9 +552,9 @@ describe('club gapping', () => {
       sessions: [session],
       shots: [...base, partial, mishit],
     };
-    expect(clubGaps(data, 'premium-flat').map((row) => row.club)).toEqual([
-      '7i',
-    ]);
+    expect(
+      clubGaps(data, 'premium-flat', allTimeQuery).map((row) => row.club),
+    ).toEqual(['7i']);
   });
 
   it('flags large gaps and overlaps, but never on a thin sample', () => {
@@ -471,7 +568,7 @@ describe('club gapping', () => {
         ...shotsWith('SW', [50, 55, 60]),
       ],
     };
-    const rows = clubGaps(data, 'premium-flat');
+    const rows = clubGaps(data, 'premium-flat', allTimeQuery);
     expect(rows.find((row) => row.club === '9i')).toMatchObject({
       gap: 40,
       flag: 'large',
@@ -494,7 +591,7 @@ describe('club gapping', () => {
         ...shotsWith('6i', Array(10).fill(160)),
       ],
     };
-    expect(clubGaps(data, 'premium-flat')[1]).toMatchObject({
+    expect(clubGaps(data, 'premium-flat', allTimeQuery)[1]).toMatchObject({
       gap: -60,
       flag: null,
     });
@@ -522,7 +619,7 @@ describe('practice insights', () => {
         ...group('7i', [153, 154, 155, 155, 155, 156, 157, 155, 155, 155], []),
       ],
     };
-    const insights = practiceInsights(data, 'premium-flat');
+    const insights = practiceInsights(data, 'premium-flat', allTimeQuery);
     expect(
       insights.some((i) => i.kind === 'overlap' && i.text.includes('7i')),
     ).toBe(true);
@@ -538,7 +635,7 @@ describe('practice insights', () => {
         [],
       ),
     };
-    expect(practiceInsights(data, 'premium-flat')).toEqual(
+    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'inconsistency', shots: 12 }),
       ]),
@@ -554,7 +651,7 @@ describe('practice insights', () => {
         ...group('6i', Array(10).fill(160), []),
       ],
     };
-    expect(practiceInsights(data, 'premium-flat')).toEqual([]);
+    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
   });
 
   it('distinguishes overlapping spreads from nearly equal medians', () => {
@@ -566,7 +663,7 @@ describe('practice insights', () => {
         ...group('7i', [125, 125, 135, 140, 145, 145, 150, 155, 165, 165], []),
       ],
     };
-    const insight = practiceInsights(data, 'premium-flat').find(
+    const insight = practiceInsights(data, 'premium-flat', allTimeQuery).find(
       (i) => i.kind === 'overlap',
     );
     expect(insight?.text).toContain('carry bands overlap');
@@ -580,7 +677,7 @@ describe('practice insights', () => {
       sessions: [session],
       shots: group('3w', Array(10).fill(200), [5, 5, 5, 5, 5, 5, 5, 5, 0, 0]),
     };
-    const insight = practiceInsights(data, 'premium-flat').find(
+    const insight = practiceInsights(data, 'premium-flat', allTimeQuery).find(
       (i) => i.kind === 'direction',
     );
     expect(insight).toMatchObject({ shots: 10 });
@@ -596,7 +693,7 @@ describe('practice insights', () => {
         sessions: [session],
         shots: group('7i', Array(10).fill(150), Array(count).fill(-5)),
       };
-      expect(practiceInsights(data, 'premium-flat')).toEqual([]);
+      expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
     },
   );
 
@@ -610,7 +707,7 @@ describe('practice insights', () => {
         [-2, 2, 0, -2, 2, 0, -2, 2, 0, 0],
       ),
     };
-    expect(practiceInsights(data, 'premium-flat')).toEqual([]);
+    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
   });
 });
 
@@ -625,6 +722,21 @@ describe('club suggestions', () => {
         measurements: { flatCarryPremium: carry },
       }),
     );
+
+  it('does not suggest clubs for a shot in an archived session', () => {
+    const archived = makeSession({ archived: true });
+    const unknown = makeShot({
+      sessionId: archived.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 150 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session, archived],
+      shots: [...known('7i', 150, 10, 1), unknown],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toBeNull();
+  });
 
   it('suggests the nearest well-sampled club in the same session', () => {
     const unknown = makeShot({
@@ -767,7 +879,10 @@ describe('club suggestions', () => {
   });
 
   it('falls back to all sessions when the shot’s own session has too few known shots', () => {
-    const earlier = makeSession({ id: crypto.randomUUID(), date: '2026-11-01' });
+    const earlier = makeSession({
+      id: crypto.randomUUID(),
+      date: '2026-11-01',
+    });
     const recent = makeSession({ id: crypto.randomUUID(), date: '2026-11-16' });
     const unknown = makeShot({
       sessionId: recent.id,
@@ -803,16 +918,34 @@ describe('club suggestions', () => {
     const sparse = {
       ...emptyDataset,
       sessions: [session],
-      shots: [...known('7i', 150, 9, 1), makeShot({ sessionId: session.id, recordedClub: '?', measurements: { flatCarryPremium: 152 } })],
+      shots: [
+        ...known('7i', 150, 9, 1),
+        makeShot({
+          sessionId: session.id,
+          recordedClub: '?',
+          measurements: { flatCarryPremium: 152 },
+        }),
+      ],
     };
-    expect(suggestClub(sparse.shots.at(-1)!, sparse, 'premium-flat')).toBeNull();
+    expect(
+      suggestClub(sparse.shots.at(-1)!, sparse, 'premium-flat'),
+    ).toBeNull();
 
     const distant = {
       ...emptyDataset,
       sessions: [session],
-      shots: [...known('7i', 150, 10, 1), makeShot({ sessionId: session.id, recordedClub: '?', measurements: { flatCarryPremium: 200 } })],
+      shots: [
+        ...known('7i', 150, 10, 1),
+        makeShot({
+          sessionId: session.id,
+          recordedClub: '?',
+          measurements: { flatCarryPremium: 200 },
+        }),
+      ],
     };
-    expect(suggestClub(distant.shots.at(-1)!, distant, 'premium-flat')).toBeNull();
+    expect(
+      suggestClub(distant.shots.at(-1)!, distant, 'premium-flat'),
+    ).toBeNull();
   });
 
   it('ignores excluded shots and already-unknown labels when building the baseline', () => {
@@ -827,7 +960,10 @@ describe('club suggestions', () => {
       shots: [
         ...known('7i', 50, 10, 1).map((shot) => ({
           ...shot,
-          review: { ...shot.review, exclusion: { kind: 'excluded' as const, reason: 'bad' } },
+          review: {
+            ...shot.review,
+            exclusion: { kind: 'excluded' as const, reason: 'bad' },
+          },
         })),
         ...known('?', 150, 10, 11),
         unknown,

@@ -14,26 +14,31 @@ import {
   effectiveClub,
   isUnknownClub,
   localToday,
-  type Basis,
   type Dataset,
-  type Review,
 } from '../domain/model';
-import { reviewCoverage, selectCohort, summarize } from '../domain/analytics';
+import {
+  reviewCoverage,
+  selectCohort,
+  summarize,
+  type AnalysisSettings,
+} from '../domain/analytics';
+import { AnalysisControls } from './AnalysisControls';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
   data,
-  initialMode = 'recent',
+  settings,
+  onSettingsChange,
+  progressView = false,
 }: {
   data: Dataset;
-  initialMode?: 'recent' | 'progress' | 'all';
+  settings: AnalysisSettings;
+  onSettingsChange: (settings: AnalysisSettings) => void;
+  progressView?: boolean;
 }) {
-  const [mode, setMode] = useState(initialMode);
-  const [basis, setBasis] = useState<Basis>('premium-flat');
-  const [intent, setIntent] = useState<Review['intent'] | 'all'>('all');
-  const [contact, setContact] = useState<'all' | 'typical'>('all');
+  const { basis, ...filters } = settings;
   const [club, setClub] = useState('');
-  const query = { mode, today: localToday(), intent, contact };
+  const query = { ...filters, today: localToday() };
   const selected = selectCohort(data.shots, data.sessions, query);
   const clubs = [...new Set(selected.map(effectiveClub))]
     .filter((club) => !isUnknownClub(club))
@@ -98,84 +103,15 @@ export function Analysis({
       <div className="section-heading">
         <div>
           <span className="eyebrow">Ball flight</span>
-          <h1>{initialMode === 'progress' ? 'Progress' : 'Your overview'}</h1>
+          <h1>{progressView ? 'Progress' : 'Your overview'}</h1>
           <p>
-            {initialMode === 'progress'
+            {progressView
               ? 'Median carry for each session, oldest first.'
               : 'Median carry by club, with the sample size behind each figure.'}
           </p>
         </div>
       </div>
-      <div className="filters panel">
-        <label>
-          View
-          <select
-            value={mode}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === 'recent' || v === 'progress' || v === 'all') setMode(v);
-            }}
-          >
-            <option value="recent">Recent</option>
-            <option value="progress">Progress</option>
-            <option value="all">All-time</option>
-          </select>
-        </label>
-        <label>
-          Measurement basis
-          <select
-            value={basis}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (
-                v === 'premium-flat' ||
-                v === 'range-flat' ||
-                v === 'premium' ||
-                v === 'range'
-              )
-                setBasis(v);
-            }}
-          >
-            {Object.entries(BASES).map(([key, v]) => (
-              <option key={key} value={key}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Intent
-          <select
-            value={intent}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (
-                v === 'all' ||
-                v === 'full' ||
-                v === 'partial' ||
-                v === 'unknown'
-              )
-                setIntent(v);
-            }}
-          >
-            <option value="all">All intent</option>
-            <option value="full">Full</option>
-            <option value="partial">Partial</option>
-            <option value="unknown">Unknown</option>
-          </select>
-        </label>
-        <label>
-          Contact
-          <select
-            value={contact}
-            onChange={(e) =>
-              setContact(e.target.value === 'typical' ? 'typical' : 'all')
-            }
-          >
-            <option value="all">All contact</option>
-            <option value="typical">Reviewed typical</option>
-          </select>
-        </label>
+      <AnalysisControls settings={settings} onChange={onSettingsChange}>
         <label>
           Club
           <select value={club} onChange={(e) => setClub(e.target.value)}>
@@ -185,7 +121,7 @@ export function Analysis({
             ))}
           </select>
         </label>
-      </div>
+      </AnalysisControls>
       <p className="context">
         {summary.n} shots · {summary.sessions} sessions ·{' '}
         {dates.length ? `${dates[0]} to ${dates.at(-1)}` : 'No dates'} · Contact
@@ -193,24 +129,21 @@ export function Analysis({
         {coverage.mishits}/{coverage.fullReviewed} reviewed (
         {coverage.unassessed} unassessed)
       </p>
-      {mode === 'recent' && (
+      {settings.mode === 'recent' && summary.n === 0 && (
         <p className="notice">
-          Recent includes up to the latest 50 shots per club in the last 60
-          days, keeping the full cutoff date.{' '}
-          {summary.n === 0 && (
-            <>
-              No recent shots for these filters. Latest session:{' '}
-              {[...data.sessions]
-                .filter((s) => !s.archived)
-                .map((s) => s.date)
-                .sort()
-                .at(-1) ?? 'none'}
-              .{' '}
-              <button className="text-button" onClick={() => setMode('all')}>
-                View all-time
-              </button>
-            </>
-          )}
+          No recent shots for these filters. Latest session:{' '}
+          {[...data.sessions]
+            .filter((s) => !s.archived)
+            .map((s) => s.date)
+            .sort()
+            .at(-1) ?? 'none'}
+          .{' '}
+          <button
+            className="text-button"
+            onClick={() => onSettingsChange({ ...settings, mode: 'all' })}
+          >
+            View all-time
+          </button>
         </p>
       )}
       <div className="stat-grid">
@@ -247,7 +180,7 @@ export function Analysis({
           </small>
         </div>
       </div>
-      {mode === 'progress' ? (
+      {progressView ? (
         <section className="panel">
           <div className="panel-heading">
             <div>
@@ -310,16 +243,32 @@ export function Analysis({
                   data={rows}
                   margin={{ top: 15, right: 20, bottom: 0, left: -15 }}
                 >
-                  <CartesianGrid vertical={false} stroke="#e9efe6" />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip cursor={false} />
+                  <CartesianGrid vertical={false} stroke="var(--border-soft)" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: 'var(--text-muted)' }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: 'var(--text-muted)' }}
+                  />
+                  <Tooltip
+                    cursor={false}
+                    contentStyle={{
+                      backgroundColor: 'var(--surface)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  />
                   {/* Flame overlay parked: see FlameCanvas and mostImprovedClub. */}
                   <Bar
                     isAnimationActive={false}
                     dataKey="carry"
                     name="Median carry (m)"
-                    fill="#244b36"
+                    fill="var(--accent)"
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>

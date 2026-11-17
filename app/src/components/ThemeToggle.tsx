@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { resolveTheme, THEME_KEY, type Theme } from '../theme';
 
-export function ThemeToggle() {
+export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
   );
@@ -26,11 +26,23 @@ export function ThemeToggle() {
     setTheme(next);
   }
 
+  return { theme, toggle };
+}
+
+export function ThemeToggle({
+  theme,
+  onToggle,
+}: {
+  theme: Theme;
+  onToggle: () => void;
+}) {
   return (
     <button
       className="theme-toggle"
-      onClick={toggle}
-      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={onToggle}
+      aria-label={
+        theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+      }
       title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
     >
       {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
