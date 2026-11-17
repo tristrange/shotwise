@@ -119,11 +119,7 @@ export function Sessions({
   return (
     <>
       <div className="section-heading">
-        <div>
-          <span className="eyebrow">Practice log</span>
-          <h1>Sessions & import</h1>
-          <p>Bring your range exports together, one session at a time.</p>
-        </div>
+        <h1>Sessions & import</h1>
       </div>
       <section className="panel">
         <div className="panel-heading">

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   BASES,
   clubOrder,
@@ -9,12 +8,11 @@ import {
 } from '../domain/model';
 import {
   metricStats,
-  reviewCoverage,
   selectCohort,
   summarize,
   type AnalysisSettings,
 } from '../domain/analytics';
-import { AnalysisControls } from './AnalysisControls';
+import { BasisButton, ViewToggle } from './AnalysisControls';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -29,16 +27,10 @@ export function Analysis({
   progressView?: boolean;
 }) {
   const { basis, ...filters } = settings;
-  const [club, setClub] = useState('');
   const query = { ...filters, today: localToday() };
   const selected = selectCohort(data.shots, data.sessions, query);
-  const clubs = [...new Set(selected.map(effectiveClub))]
-    .filter((club) => !isUnknownClub(club))
-    .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
-  const shots = (
-    club ? selected.filter((s) => effectiveClub(s) === club) : selected
-  ).toSorted(
+  const shots = selected.toSorted(
     (a, b) =>
       (sessionDates.get(b.sessionId) ?? '').localeCompare(
         sessionDates.get(a.sessionId) ?? '',
@@ -47,33 +39,30 @@ export function Analysis({
       a.rowIndex - b.rowIndex,
   );
   const summary = summarize(shots, basis);
-  const coverage = reviewCoverage(
-    selectCohort(data.shots, data.sessions, {
-      ...query,
-      contact: 'all',
-      club: club || undefined,
-    }),
-  );
   const dates = data.sessions
     .filter((s) => shots.some((x) => x.sessionId === s.id))
     .map((s) => s.date)
     .sort();
-  const rows = clubs
-    .filter((name) => !club || name === club)
-    .map((name) => {
-      const clubShots = selected.filter((s) => effectiveClub(s) === name);
-      const stats = metricStats(clubShots, BASES[basis].carry);
-      return {
-        name,
-        median: stats.median,
-        low: stats.p10,
-        high: stats.p90,
-        total: clubShots.length,
-        n: stats.n,
-        missing: stats.missing,
-        reliable: stats.n >= 10,
-      };
-    });
+  const cohort = `${summary.n} shots · ${summary.sessions} sessions · ${
+    dates.length ? `${dates[0]} to ${dates.at(-1)}` : 'No dates'
+  }`;
+  const clubs = [...new Set(selected.map(effectiveClub))]
+    .filter((club) => !isUnknownClub(club))
+    .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
+  const rows = clubs.map((name) => {
+    const clubShots = selected.filter((s) => effectiveClub(s) === name);
+    const stats = metricStats(clubShots, BASES[basis].carry);
+    return {
+      name,
+      median: stats.median,
+      low: stats.p10,
+      high: stats.p90,
+      total: clubShots.length,
+      n: stats.n,
+      missing: stats.missing,
+      reliable: stats.n >= 10,
+    };
+  });
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
   const progress = data.sessions
     .filter((s) => shots.some((x) => x.sessionId === s.id))
@@ -92,34 +81,8 @@ export function Analysis({
   return (
     <>
       <div className="section-heading">
-        <div>
-          <span className="eyebrow">Ball flight</span>
-          <h1>{progressView ? 'Progress' : 'Your overview'}</h1>
-          <p>
-            {progressView
-              ? 'Median carry for each session, oldest first.'
-              : 'Median carry by club, with the sample size behind each figure.'}
-          </p>
-        </div>
+        <h1>{progressView ? 'Progress' : 'Overview'}</h1>
       </div>
-      <AnalysisControls settings={settings} onChange={onSettingsChange}>
-        <label>
-          Club
-          <select value={club} onChange={(e) => setClub(e.target.value)}>
-            <option value="">All clubs</option>
-            {clubs.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </label>
-      </AnalysisControls>
-      <p className="context">
-        {summary.n} shots · {summary.sessions} sessions ·{' '}
-        {dates.length ? `${dates[0]} to ${dates.at(-1)}` : 'No dates'} · Contact
-        reviewed {coverage.reviewed}/{coverage.total} · Full-swing mishits{' '}
-        {coverage.mishits}/{coverage.fullReviewed} reviewed (
-        {coverage.unassessed} unassessed)
-      </p>
       {settings.mode === 'recent' && summary.n === 0 && (
         <p className="notice">
           No recent shots for these filters. Latest session:{' '}
@@ -137,48 +100,26 @@ export function Analysis({
           </button>
         </p>
       )}
-      <div className="stat-grid">
-        <div className="stat lead">
-          <span>Median carry</span>
-          <strong>
-            {fmt(summary.carry.median)} <em>m</em>
-          </strong>
-          <small>
-            {summary.carry.n} measured · {summary.carry.missing} missing
-          </small>
-        </div>
-        <div className="stat">
-          <span>Shots</span>
-          <strong>{summary.n}</strong>
-          <small>Across {summary.sessions} sessions</small>
-        </div>
-        <div className="stat">
-          <span>Median ball speed</span>
-          <strong>
-            {fmt(summary.speed.median)} <em>kph</em>
-          </strong>
-          <small>
-            {summary.speed.n} measured · {summary.speed.missing} missing
-          </small>
-        </div>
-        <div className="stat">
-          <span>Median apex</span>
-          <strong>
-            {fmt(summary.apex.median)} <em>m</em>
-          </strong>
-          <small>
-            {summary.apex.n} measured · {summary.apex.missing} missing
-          </small>
-        </div>
-      </div>
       {progressView ? (
         <section className="panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">Session by session</span>
               <h2>Carry over time</h2>
+              <p className="context">{cohort}</p>
             </div>
-            <span className="pill">Medians</span>
+            <div className="card-controls">
+              <ViewToggle
+                mode={settings.mode}
+                onChange={(mode) => onSettingsChange({ ...settings, mode })}
+              />
+              <BasisButton
+                basis={basis}
+                onChange={(next) =>
+                  onSettingsChange({ ...settings, basis: next })
+                }
+              />
+            </div>
           </div>
           <p>
             Each session stands alone. Sessions without a recorded time are not
@@ -220,8 +161,18 @@ export function Analysis({
             <div>
               <span className="eyebrow">Club comparison</span>
               <h2>Median carry by club</h2>
+              <p className="context">{cohort}</p>
             </div>
-            <span className="pill">{BASES[basis].label}</span>
+            <div className="card-controls">
+              <ViewToggle
+                mode={settings.mode}
+                onChange={(mode) => onSettingsChange({ ...settings, mode })}
+              />
+              <BasisButton
+                basis={basis}
+                onChange={(next) => onSettingsChange({ ...settings, basis: next })}
+              />
+            </div>
           </div>
           {rows.length > 0 ? (
             <div className="gap-list" role="list" aria-label="Median carry by club">
@@ -301,14 +252,7 @@ export function Analysis({
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.name}>
-                    <td>
-                      <button
-                        className="text-button"
-                        onClick={() => setClub(r.name)}
-                      >
-                        {r.name}
-                      </button>
-                    </td>
+                    <td>{r.name}</td>
                     <td>{fmt(r.median)} m</td>
                     <td>
                       {r.total}{' '}
@@ -338,7 +282,7 @@ export function Analysis({
             <thead>
               <tr>
                 <th>Metric</th>
-                <th>n / missing</th>
+                <th>n</th>
                 <th>Mean</th>
                 <th>Median</th>
                 <th>IQR</th>
@@ -357,9 +301,7 @@ export function Analysis({
               ).map(([name, s]) => (
                 <tr key={name}>
                   <td>{name}</td>
-                  <td>
-                    {s.n} / {s.missing}
-                  </td>
+                  <td>{s.n}</td>
                   <td>{fmt(s.mean)}</td>
                   <td>{fmt(s.median)}</td>
                   <td>{fmt(s.iqr)}</td>
@@ -372,64 +314,35 @@ export function Analysis({
             </tbody>
           </table>
         </div>
-        <p>Ball flight, not a swing diagnosis. Counts are left / straight / right.</p>
-        <dl className="direction-list">
-          {(
-            [
-              ['Launch direction', summary.launchDirection],
-              ['Curve', summary.curve],
-              ['Lateral from centre', summary.lateral],
-            ] satisfies [string, typeof summary.lateral][]
-          ).map(([name, d]) => (
-            <div key={name}>
-              <dt>{name}</dt>
-              <dd>
-                {d.left} / {d.straight} / {d.right}{' '}
-                <small>
-                  {d.n} measured · {d.missing} missing
-                </small>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-      {club && (
-        <section className="panel">
-          <h2>{club} shots</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Session</th>
-                  <th>Source row / shot #</th>
-                  <th>Recorded / effective club</th>
-                  <th>Carry</th>
-                  <th>Intent / contact</th>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Left</th>
+                <th>Straight</th>
+                <th>Right</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ['Launch direction', summary.launchDirection],
+                  ['Curve', summary.curve],
+                  ['Lateral from centre', summary.lateral],
+                ] satisfies [string, typeof summary.lateral][]
+              ).map(([name, d]) => (
+                <tr key={name}>
+                  <td>{name}</td>
+                  <td>{d.left}</td>
+                  <td>{d.straight}</td>
+                  <td>{d.right}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {shots.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      {data.sessions.find((x) => x.id === s.sessionId)?.date}
-                    </td>
-                    <td>
-                      {s.rowIndex} / {s.sourceNumber}
-                    </td>
-                    <td>
-                      {s.recordedClub} / {effectiveClub(s)}
-                    </td>
-                    <td>{fmt(s.measurements[BASES[basis].carry])}</td>
-                    <td>
-                      {s.review.intent} / {s.review.contact}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }

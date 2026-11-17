@@ -42,7 +42,7 @@ async function login(page: Page, account: Account) {
   await page.getByLabel('Password', { exact: true }).fill(account.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Your overview' }),
+    page.getByRole('heading', { name: 'Overview', exact: true }),
   ).toBeVisible();
 }
 async function nav(page: Page, name: string) {
@@ -345,7 +345,7 @@ test('uses theme colours for carry bands and labels', async ({
   });
 });
 
-test('shares the analysis window, basis and review filters across pages', async ({
+test('shares the analysis window and measurement basis across pages', async ({
   page,
   account,
 }) => {
@@ -372,20 +372,9 @@ test('shares the analysis window, basis and review filters across pages', async 
       ),
     });
   }
-  const data = await account.repository.load();
-  const recent = data.sessions.find(
-    (session) => session.filename === 'recent.csv',
-  );
-  await account.repository.review(
-    data.shots
-      .filter((shot) => shot.sessionId === recent?.id)
-      .slice(0, 5)
-      .map((shot) => ({
-        shotId: shot.id,
-        expectedRevision: shot.revision,
-        review: { ...shot.review, intent: 'full', contact: 'typical' },
-      })),
-  );
+  const window = page.getByRole('group', { name: 'Analysis window' });
+  const basis = page.getByTitle('Change measurement basis');
+
   await login(page, account);
   await expect(
     page.getByRole('table').first().getByRole('row').nth(1),
@@ -394,65 +383,46 @@ test('shares the analysis window, basis and review filters across pages', async 
   const gapping = page.getByRole('list', { name: 'Club carry distances' });
   await expect(gapping).toContainText('Median 120 m');
   await expect(page.getByText(/7i shots tend to curve right/)).toBeVisible();
-  await page
-    .getByRole('combobox', { name: 'View', exact: true })
-    .selectOption('all');
+  await window.getByRole('button', { name: 'All-time' }).click();
   await expect(gapping).toContainText('Median 70 m');
   await expect(page.getByText(/7i shots tend to curve left/)).toBeVisible();
+
   await nav(page, 'Overview');
-  await expect(
-    page.getByRole('combobox', { name: 'View', exact: true }),
-  ).toHaveValue('all');
+  await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(
     page.getByRole('table').first().getByRole('row').nth(1),
   ).toContainText('70.0 m');
-  await page
-    .getByRole('combobox', { name: 'Measurement basis', exact: true })
-    .selectOption('range-flat');
+  await basis.click();
+  await expect(basis).toHaveText('Range · flat');
+
   await nav(page, 'Gapping');
-  await expect(
-    page.getByRole('combobox', { name: 'Measurement basis', exact: true }),
-  ).toHaveValue('range-flat');
+  await expect(basis).toHaveText('Range · flat');
   await expect(gapping).toContainText('Median 80 m');
-  await page
-    .getByRole('combobox', { name: 'Contact', exact: true })
-    .selectOption('typical');
-  await page
-    .getByRole('combobox', { name: 'Intent', exact: true })
-    .selectOption('full');
-  await expect(gapping).toContainText('Median 130 m');
-  await expect(gapping).toContainText('5');
+
   await nav(page, 'Progress');
   await expect(
     page.getByRole('heading', { name: 'Carry over time' }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('combobox', { name: 'Contact', exact: true }),
-  ).toHaveValue('typical');
-  await expect(
-    page.getByRole('combobox', { name: 'Intent', exact: true }),
-  ).toHaveValue('full');
-  await expect(page.getByRole('table').first().getByRole('row')).toHaveCount(2);
-  await expect(
-    page.getByRole('table').first().getByRole('row').nth(1),
-  ).toContainText('130.0 m');
-  await page
-    .getByRole('combobox', { name: 'View', exact: true })
-    .selectOption('recent');
+  await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('table').first().getByRole('row')).toHaveCount(3);
+  await window.getByRole('button', { name: 'Recent' }).click();
+
   await nav(page, 'Overview');
-  await expect(
-    page.getByRole('combobox', { name: 'View', exact: true }),
-  ).toHaveValue('recent');
+  await expect(window.getByRole('button', { name: 'Recent' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(
     page.getByRole('table').first().getByRole('row').nth(1),
   ).toContainText('130.0 m');
   await nav(page, 'Gapping');
-  await page
-    .getByRole('combobox', { name: 'Intent', exact: true })
-    .selectOption('unknown');
-  await expect(
-    page.getByText('No comparable shots for these filters.'),
-  ).toBeVisible();
+  await expect(gapping).toContainText('Median 130 m');
 });
 
 test('shows readable gapping values and distinguishes overlapping carry bands', async ({
@@ -506,9 +476,7 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
     path: testInfo.outputPath('gapping.png'),
     fullPage: true,
   });
-  await page
-    .getByRole('combobox', { name: 'Measurement basis', exact: true })
-    .selectOption('range-flat');
+  await page.getByTitle('Change measurement basis').click();
   await expect(
     page.getByText('No comparable shots for these filters.'),
   ).toBeVisible();
@@ -646,14 +614,21 @@ test('imports, reviews, corrects, undoes and syncs without losing originals', as
   );
   const other = await second.newPage();
   await login(other, account);
-  await other
-    .getByRole('combobox', { name: 'Contact', exact: true })
-    .selectOption('typical');
+  await expect
+    .poll(
+      async () =>
+        (await account.repository.load()).shots.filter(
+          (s) => s.review.contact !== 'uncertain',
+        ).length,
+    )
+    .toBe(1);
   await expect(
-    other.getByText('Contact reviewed 1/3', { exact: false }),
+    other
+      .getByRole('table')
+      .first()
+      .getByRole('row')
+      .filter({ hasText: '9i' }),
   ).toBeVisible();
-  await other.getByRole('button', { name: '9i', exact: true }).click();
-  await expect(other.getByRole('heading', { name: '9i shots' })).toBeVisible();
   await second.close();
   await page.getByRole('button', { name: 'Select range' }).click();
   await page.getByRole('button', { name: 'Undo selected' }).click();
@@ -789,20 +764,17 @@ test('retries duplicate imports, restores private backup and renders accessible 
   });
   expect(again.duplicate).toBe(true);
   await login(page, account);
-  await page
-    .getByRole('combobox', { name: 'Club', exact: true })
-    .selectOption('7i');
-  await expect(page.getByRole('heading', { name: '7i shots' })).toBeVisible();
+  await expect(page.getByText('3 shots', { exact: false })).toBeVisible();
   await expect(
-    page.getByRole('table').last().getByRole('row').nth(1),
-  ).toContainText('1 / 1');
+    page.getByRole('table').first().getByRole('row').filter({ hasText: '7i' }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('overview.png'),
     fullPage: true,
   });
   const tables = page.getByRole('table');
   await expect(tables.first()).toBeVisible();
-  await expect(tables.first().getByRole('row')).toHaveCount(2);
+  await expect(tables.first().getByRole('row')).toHaveCount(3);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
