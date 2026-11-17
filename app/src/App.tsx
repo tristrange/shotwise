@@ -5,6 +5,7 @@ import {
   Flag,
   FolderOpen,
   LogOut,
+  Ruler,
   Settings,
 } from 'lucide-react';
 import type { Session as AuthSession } from '@supabase/supabase-js';
@@ -16,12 +17,20 @@ import { Sessions } from './components/Sessions';
 import { ShotReview } from './components/ShotReview';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ClubSuggestions } from './components/ClubSuggestions';
+import { ClubGaps } from './components/ClubGaps';
 
-type Page = 'overview' | 'sessions' | 'review' | 'progress' | 'settings';
+type Page =
+  | 'overview'
+  | 'sessions'
+  | 'review'
+  | 'gapping'
+  | 'progress'
+  | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'sessions', label: 'Sessions & import', icon: FolderOpen },
   { id: 'review', label: 'Review', icon: ClipboardCheck },
+  { id: 'gapping', label: 'Gapping', icon: Ruler },
   { id: 'progress', label: 'Progress', icon: Flag },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -193,6 +202,7 @@ export default function App() {
           )}
           <div key={session.user.id} hidden={!!error || loading}>
             {page === 'overview' && <Analysis data={data} />}
+            {page === 'gapping' && <ClubGaps data={data} />}
             {page === 'progress' && (
               <Analysis key="progress" data={data} initialMode="progress" />
             )}
