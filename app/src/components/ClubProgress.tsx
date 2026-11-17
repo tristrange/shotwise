@@ -27,6 +27,7 @@ function ProgressPlot({
           : 'Carry spread · lower is more consistent'}{' '}
         (m)
       </figcaption>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- WebKit needs explicit arrow-key scrolling for this focusable region. */}
       <div
         className="progress-plot"
         role="region"
