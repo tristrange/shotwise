@@ -317,7 +317,6 @@ export function Analysis({
                   {/* Flame overlay parked: see FlameCanvas and mostImprovedClub. */}
                   <Bar
                     isAnimationActive={false}
-                    activeBar={false}
                     dataKey="carry"
                     name="Median carry (m)"
                     fill="#244b36"
