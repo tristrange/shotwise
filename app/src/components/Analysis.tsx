@@ -108,10 +108,18 @@ export function Analysis({
               <h2>Carry over time</h2>
               <p className="context">{cohort}</p>
             </div>
-            <ViewToggle
-              mode={settings.mode}
-              onChange={(mode) => onSettingsChange({ ...settings, mode })}
-            />
+            <div className="card-controls">
+              <ViewToggle
+                mode={settings.mode}
+                onChange={(mode) => onSettingsChange({ ...settings, mode })}
+              />
+              <BasisButton
+                basis={basis}
+                onChange={(next) =>
+                  onSettingsChange({ ...settings, basis: next })
+                }
+              />
+            </div>
           </div>
           <p>
             Each session stands alone. Sessions without a recorded time are not
@@ -274,6 +282,7 @@ export function Analysis({
             <thead>
               <tr>
                 <th>Metric</th>
+                <th>n</th>
                 <th>Mean</th>
                 <th>Median</th>
                 <th>IQR</th>
@@ -292,6 +301,7 @@ export function Analysis({
               ).map(([name, s]) => (
                 <tr key={name}>
                   <td>{name}</td>
+                  <td>{s.n}</td>
                   <td>{fmt(s.mean)}</td>
                   <td>{fmt(s.median)}</td>
                   <td>{fmt(s.iqr)}</td>
