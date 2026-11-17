@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import {
   BASES,
+  clubOrder,
   effectiveClub,
   localToday,
   type Basis,
@@ -40,7 +41,9 @@ export function Analysis({
   const [club, setClub] = useState('');
   const query = { mode, today: localToday(), intent, contact };
   const selected = selectCohort(data.shots, data.sessions, query);
-  const clubs = [...new Set(selected.map(effectiveClub))].sort();
+  const clubs = [...new Set(selected.map(effectiveClub))].sort(
+    (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
+  );
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
   const shots = (
     club ? selected.filter((s) => effectiveClub(s) === club) : selected
@@ -320,6 +323,7 @@ export function Analysis({
                   <Tooltip />
                   <Bar
                     isAnimationActive={false}
+                    activeBar={false}
                     dataKey="carry"
                     name="Median carry (m)"
                     fill="#244b36"

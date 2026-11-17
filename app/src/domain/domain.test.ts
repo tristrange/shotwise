@@ -9,7 +9,7 @@ import {
   reviewCoverage,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
-import { emptyDataset } from './model';
+import { clubOrder, emptyDataset } from './model';
 import type { Review } from './model';
 
 describe('lossless CSV boundary', () => {
@@ -330,5 +330,18 @@ describe('most improved club', () => {
     const data = { ...emptyDataset, sessions, shots };
     expect(mostImprovedClub(data, 'premium-flat')?.club).toBe('7i');
     expect(mostImprovedClub(data, 'range-flat')?.club).toBe('5i');
+  });
+});
+
+describe('club order', () => {
+  it('runs longest to shortest, with wedges last in pw, gw, sw, lw order', () => {
+    const clubs = ['lw', '7i', 'PW', '3w', '4H', 'D', '5i', 'sw', 'gw', '9i', '2h', '5w'];
+    expect(
+      [...clubs].sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b)),
+    ).toEqual(['D', '3w', '5w', '2h', '4H', '5i', '7i', '9i', 'PW', 'gw', 'sw', 'lw']);
+  });
+  it('puts unknown labels last', () => {
+    expect(clubOrder('?')).toBeGreaterThan(clubOrder('lw'));
+    expect(clubOrder('misread')).toBeGreaterThan(clubOrder('9i'));
   });
 });
