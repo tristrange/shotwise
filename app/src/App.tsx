@@ -21,6 +21,7 @@ import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
 import { ShotShapes } from './components/ShotShapes';
 import type { AnalysisSettings } from './domain/analytics';
+import { useScrollReveal } from './reveal';
 
 const initialAnalysisSettings: AnalysisSettings = {
   mode: 'recent',
@@ -57,6 +58,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState<Page>(pageFromHash);
+  useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
   const refresh = useCallback(async () => {

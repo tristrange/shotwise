@@ -14,6 +14,7 @@ import {
 } from '../domain/analytics';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { ClubProgress } from './ClubProgress';
+import { Hero } from './Hero';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -67,9 +68,18 @@ export function Analysis({
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
   return (
     <>
-      <div className="section-heading">
-        <h1>{progressView ? 'Progress' : 'Overview'}</h1>
-      </div>
+      {progressView ? (
+        <div className="section-heading">
+          <h1>Progress</h1>
+        </div>
+      ) : (
+        <Hero
+          shots={summary.n}
+          sessions={summary.sessions}
+          clubs={clubs.length}
+          dateRange={dates.length ? `${dates[0]} → ${dates.at(-1)}` : 'No dates'}
+        />
+      )}
       {settings.mode === 'recent' && summary.n === 0 && (
         <p className="notice">
           No recent shots for these filters. Latest session:{' '}
