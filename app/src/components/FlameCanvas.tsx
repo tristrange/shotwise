@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import type { MostImproved as MostImprovedResult } from '../domain/analytics';
 
 const VERTEX = `
   attribute vec2 a_pos;
@@ -34,7 +33,7 @@ const FRAGMENT = `
     float n = fbm(sp * 1.15 + warp * 2.3);
 
     float env = smoothstep(1.15, 0.0, uv.y) * smoothstep(0.0, 0.03, uv.y);
-    float body = smoothstep(0.22, 0.64, n * env * 1.45);
+    float body = smoothstep(0.28, 0.56, n * env * 1.5);
 
     vec2 eg = vec2(floor(uv.x * 80.0), floor((uv.y + t * 0.6) * 60.0));
     vec2 ef = fract(vec2(uv.x * 80.0, (uv.y + t * 0.6) * 60.0)) - 0.5;
@@ -46,7 +45,7 @@ const FRAGMENT = `
     col += vec3(0.65, 0.06, 0.0) * smoothstep(0.02, 0.36, body);
     col += vec3(1.0, 0.32, 0.0) * smoothstep(0.28, 0.64, body);
     col += vec3(1.0, 0.82, 0.22) * smoothstep(0.58, 0.88, body);
-    col += vec3(1.0, 1.0, 0.86) * smoothstep(0.86, 1.0, body);
+    col += vec3(1.0, 1.0, 0.86) * smoothstep(0.92, 1.0, body);
 
     float alpha = clamp(body * 1.3 + spark * 0.5, 0.0, 1.0);
     gl_FragColor = vec4(col, alpha);
@@ -65,8 +64,8 @@ function compile(gl: WebGLRenderingContext, type: number, source: string) {
   return shader;
 }
 
-/** A single canvas flame behind the one card that earned it. */
-export function MostImproved({ result }: { result: MostImprovedResult }) {
+/** Transparent flame canvas; fills its parent. */
+export function FlameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -169,24 +168,5 @@ export function MostImproved({ result }: { result: MostImprovedResult }) {
     };
   }, []);
 
-  return (
-    <section className="most-improved" aria-label="Most improved club">
-      <div className="most-improved-glow" aria-hidden="true" />
-      <canvas ref={canvasRef} className="most-improved-fire" aria-hidden="true" />
-      <div className="most-improved-card">
-        <span className="eyebrow">Most improved</span>
-        <h2>{result.club}</h2>
-        <p>
-          +{result.delta.toFixed(1)} m vs earlier sessions
-        </p>
-        <div className="most-improved-figure">
-          {result.recentMedian.toFixed(1)} <em>m</em>
-        </div>
-        <p className="most-improved-meta">
-          {result.recentShots} shots on {result.recentDate} · baseline{' '}
-          {result.baselineShots} shots at {result.baselineMedian.toFixed(1)} m
-        </p>
-      </div>
-    </section>
-  );
+  return <canvas ref={canvasRef} className="bar-flame" aria-hidden="true" />;
 }
