@@ -502,6 +502,22 @@ summary {
   font-weight: 400;
   color: var(--text-muted);
 }
+.insight-list {
+  display: grid;
+  gap: 12px;
+}
+.insight {
+  border-left: 2px solid var(--accent);
+  padding: 4px 0 4px 16px;
+}
+.insight p {
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.insight span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
 .gap-list {
   display: grid;
 }
