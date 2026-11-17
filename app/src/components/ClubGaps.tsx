@@ -4,7 +4,7 @@ import {
   type AnalysisSettings,
 } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
-import { BasisButton, ViewToggle } from './AnalysisControls';
+import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 
 export function ClubGaps({
   data,
@@ -33,7 +33,8 @@ export function ClubGaps({
             <h2>Typical carry and the gap to the next club</h2>
           </div>
           <div className="card-controls">
-            <ViewToggle
+            <MishitToggle settings={settings} onChange={onSettingsChange} />
+              <ViewToggle
               mode={settings.mode}
               onChange={(mode) => onSettingsChange({ ...settings, mode })}
             />
@@ -47,7 +48,7 @@ export function ClubGaps({
           Unreviewed shots count unless you filter by review. Partial and
           mishit shots never do. The dot is median carry; the bar is the middle
           80%. Grey rows have fewer than ten shots. A negative gap means this
-          club carried farther than the one above.
+          club carried farther than the one above. Gap recommendations use medians, not overlapping bands.
         </p>
         {rows.length === 0 ? (
           <p>
@@ -104,7 +105,8 @@ export function ClubGaps({
                       className={`gap-value${row.flag === 'large' ? ' big' : ''}`}
                     >
                       {row.gap === null ? '—' : `Gap: ${row.gap.toFixed(0)} m`}
-                      {row.flag === 'overlap' && <small>bands overlap</small>}
+                      {row.flag === 'small' && <small>small median gap</small>}
+                      {row.flag === 'reversed' && <small>medians reversed</small>}
                       {row.flag === 'large' && <small>large gap</small>}
                     </span>
                   </div>

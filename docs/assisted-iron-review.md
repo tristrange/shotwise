@@ -1,70 +1,72 @@
-# Assisted iron review — experimental rule
+# Automatic likely-mishit filter — experimental rule
 
-The review queue helps someone find unusual shots after a long session without
-claiming to remember their intent or diagnose contact. Club-label flags remain
-separate. Only an explicit review changes intent, contact, club or exclusion;
-existing revision checks, persistence and undo remain authoritative.
+The review queue and optional stats filter share rule `low-flight-2`. A flag is
+an unusually short, slow shot, not a confirmed contact diagnosis. “Hide likely
+mishits” is off by default, changes only the current analysis view, and never
+writes reviews, changes measurements or permanently excludes shots.
 
-## Rule `low-iron-1`
+## Rule
 
-- Assess included, non-archived shots with effective labels 2i–9i and uncertain
-  contact. Known partial swings and mishits are ineligible. Confirming a club
-  label does not constitute a contact decision.
-- Require positive **range-flat carry and range ball speed**, on the same shot.
-  Never substitute premium estimates or combine disjoint measurement samples.
-- Use earlier shots with exactly the same effective club, excluding known partial
-  swings, mishits, exclusions and archived sessions. Unknown intent and unreviewed
-  contact remain included. Reviewed typical shots can contribute to the baseline.
+- Support recognised drivers, woods, hybrids, irons and wedges, using effective
+  labels. Unknown/unrecognised clubs abstain. Only included, non-archived shots count.
+- Assess uncertain contact. A reviewed typical decision overrides an automatic
+  flag; reviewed typical shots can contribute baseline evidence. Existing reviewed
+  partials and mishits are not evidence. The stats filter also hides reviewed
+  mishits. Existing Gapping eligibility still excludes reviewed partials/mishits
+  in both views; no partial-swing workflow is added.
+- Require positive range-flat carry and range ball speed on the same shot. Never
+  substitute premium estimates or combine disjoint measurement samples.
+- Require 20 earlier paired shots of exactly the same effective club within 60
+  calendar days ending on the shot date. Target the latest 50, retaining the full
+  cutoff date. Unknown intent and unreviewed contact contribute.
 - Earlier means an earlier date, an earlier source row in the same session, or a
-  strictly earlier recorded time in a different session on the same date. Equal
-  times and missing times cannot establish cross-session order. Import order,
-  source shot numbers and UUID order do not establish chronology.
-- Take evidence within 60 calendar days ending on the shot's session date. Target
-  the latest 50 eligible earlier shots, retaining the whole cutoff date to avoid
-  arbitrarily selecting between untimed sessions. Require at least 20 paired shots.
-- Compute the median and median absolute deviation (MAD) separately for carry and
-  speed, from that paired sample. The carry cutoff is the median minus the larger
-  of `3 × 1.4826 × MAD` and `20% × median`. The speed cutoff uses `10% × median`
-  instead. Flag only when **both** measurements are strictly below their cutoffs.
-- Abstain for missing/nonpositive measurements, insufficient history, zero MAD,
-  or nonpositive cutoffs. No flag is not a contact-quality assessment.
+  strictly earlier known time in another session on the same date. Equal/missing
+  times, import order, shot numbers and UUIDs do not establish cross-session order.
+- Reference each metric's 75th percentile. Flag only carry strictly below 65% of
+  its reference AND ball speed strictly below 80% of its reference. Reference
+  values need not belong to a single shot. Show medians, references, cutoffs and
+  sample sizes beside flags.
+- Missing, nonpositive or insufficient evidence abstains and stays included in
+  stats. Future shots never classify earlier ones. Automatic flags themselves do
+  not remove baseline evidence, so the filter does not change its own reference.
 
-The percentage floors avoid highlighting tiny absolute deviations in narrowly
-clustered measurements. The multiplier and floors are provisional conservative
-choices, not calibrated false-positive rates or a validated contact classifier.
-A recorded typical/mishit contact decision or partial-swing intent removes the
-advisory flag; undo makes the shot eligible again when appropriate.
+The old iron-only median-minus-MAD rule could abstain on broad distributions.
+An upper-quartile reference can identify substantial joint losses even in a
+wide mixture of short and longer shots, including rounded constant baselines.
+These provisional thresholds are not calibrated probabilities or validated
+contact classifications. A mostly poor baseline can hide real mishits. Flight
+alone cannot establish intent or separate equipment, measurement and contact effects.
 
 ## Local evaluation
 
-Run `npm run verify:unusual -- /absolute/path/to/exports` from `app/`. The script
-uses the real parser and rule, checks byte/shot preservation, input-order
-independence and earlier-assessment invariance when adding later sessions. It
-prints aggregate counts only and never writes exports or connects to a database.
-Filename dates are assumed solely for this check; the import flow still requires
-the user to confirm session dates.
+Run `npm run verify:unusual -- /absolute/path/to/exports` from `app/`. It checks
+byte/shot preservation, input-order independence and earlier-assessment invariance
+when later sessions are added, printing aggregate counts only. It writes no
+exports and contacts no database. Filename dates are assumed only for this check.
 
 On 17 November 2026, five supplied exports parsed without warnings: 517 shots,
-including 282 eligible irons. The final rule assessed 172, abstained on 110 and
-flagged seven. An exploratory comparison of 15/20/30-shot minimums and 3/4-scaled-MAD
-cutoffs showed sensitivity to these choices: with a 20-shot minimum, the stricter
-4-scaled-MAD version flagged four shots. That comparison used a strict 50-shot
-cap; the production rule retains cutoff-date ties. No personal rows, filenames,
-measurements or exports are fixtures or committed artifacts.
+510 eligible known-club shots, 312 assessed, 198 abstained and 34 flagged. Seven
+unknown-club shots remained outside assessment. Exploratory sensitivity checks
+flagged 25 with 60% carry / 75% speed and 38 with 70% / 80%. The selected 65% / 80%
+rule includes driver/wedge candidates without aiming to remove all band overlap.
 
-There are no independently labelled contact or intent outcomes in these exports.
-Counts establish coverage and candidate behavior, not precision, recall, useful
-practice advice or a distinction between mishits and intentional partial swings.
-Unknown-intent baseline shots can themselves include partial swings; robust
-statistics reduce some contamination but cannot solve that ambiguity. Check
-flags with the player before relying on their usefulness. Zero-MAD and highly
-variable baselines can hide real unusual shots through deliberate abstention.
+The exports have no independently labelled contact ground truth. Counts show
+coverage and sensitivity, not precision, recall or accuracy. No personal rows,
+filenames, measurements or exports are committed as fixtures.
 
-## Verification boundaries
+## Analysis and verification
 
-The agreed public boundaries are the pure assessment function and the browser
-review flow. Unit tests cover joint low values, thresholds, paired missingness,
-chronology, limited history, effective clubs, review eligibility and abstention.
-Browser tests use synthetic CSVs through local Auth and the real repository,
-show evidence, save an explicit contact decision, and undo it while retaining
-original shot data. No database schema or persistence contract changes are needed.
+The toggle is shared across Overview, Gapping, Progress and Shot shape and resets
+on reload/account changes with other analysis settings. Recent membership is
+chosen before filtering; removed shots are not backfilled with older history.
+The selected basis controls displayed carry; detection consistently uses the
+named range-flat fields.
+
+Gap flags/recommendations use medians, with ten measured carries per neighbour:
+0–10 m prioritises the longer club, reversed medians identify the longer club
+carrying less, and gaps over 30 m remain labelled large. Overlapping P10–P90 bands
+alone produce no gap advice. Spread/directional insights remain separate.
+
+Public tests cover joint losses, sparse/missing evidence, rounded/broad baselines,
+chronology, review precedence, unchanged data, reversible filtering across views,
+and the 5i 111 m / 6i 109 m example. No persistence/schema changes are required.

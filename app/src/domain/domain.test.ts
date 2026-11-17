@@ -1,9 +1,9 @@
+import { quantile } from './statistics';
 import { describe, expect, it } from 'vitest';
 import { parseCsv, suggestDate, toBase64, fromBase64 } from './csv';
 import {
   clubGaps,
   summarize,
-  quantile,
   selectCohort,
   clubFlags,
   mostImprovedClub,
@@ -557,7 +557,7 @@ describe('club gapping', () => {
     ).toEqual(['7i']);
   });
 
-  it('flags large gaps and overlaps, but never on a thin sample', () => {
+  it('flags large and small median gaps, but never on a thin sample', () => {
     const data = {
       ...emptyDataset,
       sessions: [session],
@@ -574,7 +574,7 @@ describe('club gapping', () => {
       flag: 'large',
     });
     expect(rows.find((row) => row.club === 'PW')).toMatchObject({
-      flag: 'overlap',
+      flag: 'small',
     });
     expect(rows.find((row) => row.club === 'SW')).toMatchObject({
       reliable: false,
@@ -582,7 +582,7 @@ describe('club gapping', () => {
     });
   });
 
-  it('does not call disjoint carry bands an overlap when distances are reversed', () => {
+  it('identifies reversed medians without calling them overlapping bands', () => {
     const data = {
       ...emptyDataset,
       sessions: [session],
@@ -593,7 +593,7 @@ describe('club gapping', () => {
     };
     expect(clubGaps(data, 'premium-flat', allTimeQuery)[1]).toMatchObject({
       gap: -60,
-      flag: null,
+      flag: 'reversed',
     });
   });
 });
@@ -621,7 +621,7 @@ describe('practice insights', () => {
     };
     const insights = practiceInsights(data, 'premium-flat', allTimeQuery);
     expect(
-      insights.some((i) => i.kind === 'overlap' && i.text.includes('7i')),
+      insights.some((i) => i.kind === 'gapping' && i.text.includes('Work on 6i') && i.text.includes('7i')),
     ).toBe(true);
   });
 
@@ -651,10 +651,13 @@ describe('practice insights', () => {
         ...group('6i', Array(10).fill(160), []),
       ],
     };
-    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
+    const advice = practiceInsights(data, 'premium-flat', allTimeQuery).find((i) => i.kind === 'gapping');
+    expect(advice?.text).toContain('Work on 5i');
+    expect(advice?.text).toContain('currently carries less');
+    expect(advice?.text).not.toContain('only');
   });
 
-  it('distinguishes overlapping spreads from nearly equal medians', () => {
+  it('does not generate gap advice from overlapping spreads when medians differ by 25 m', () => {
     const data = {
       ...emptyDataset,
       sessions: [session],
@@ -664,11 +667,9 @@ describe('practice insights', () => {
       ],
     };
     const insight = practiceInsights(data, 'premium-flat', allTimeQuery).find(
-      (i) => i.kind === 'overlap',
+      (i) => i.kind === 'gapping',
     );
-    expect(insight?.text).toContain('carry bands overlap');
-    expect(insight?.text).toContain('170 m vs 145 m');
-    expect(insight?.text).not.toMatch(/almost the same|Work on/);
+    expect(insight).toBeUndefined();
   });
 
   it('flags a one-sided tendency with the count behind it', () => {
