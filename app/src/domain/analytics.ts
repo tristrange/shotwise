@@ -379,8 +379,8 @@ export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
     if (
       !sessions.has(shot.sessionId) ||
       shot.review.exclusion.kind !== 'included' ||
-      shot.review.intent !== 'full' ||
-      shot.review.contact !== 'typical' ||
+      shot.review.intent === 'partial' ||
+      shot.review.contact === 'mishit' ||
       shot.measurements[key] === null
     )
       continue;
