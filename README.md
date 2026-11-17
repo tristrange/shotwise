@@ -29,9 +29,9 @@ Open the printed local URL and sign in. An unconfigured app shows setup instruct
 
 ## Import and review
 
-Choose CSV files under **Sessions & import**. Confirm the practice date for each export; a suggested filename date is not proof. One export represents one session. Source row order is retained independently of the exported shot number.
+Choose CSV files under **Sessions & import**. A valid date in the filename fills the practice date automatically; it remains editable. Enter a valid date when the filename has none. No confirmation checkbox is needed. One export represents one session. Source row order is retained independently of the exported shot number.
 
-The optional full-swing confirmation marks non-wedge shots as full. Wedges and unknown clubs retain unknown intent. Select source-row ranges to tag partial drills, contact quality, club corrections or exclusions. Every dimension is independent. Exclusions require a reason. Undo restores earlier manual decisions while retaining the audit history.
+Import leaves intent unknown and requires no full-swing confirmation. If a different export conflicts with an existing session date, an explicit “Import as a separate session” retry preserves the same-day import safeguard without a checkbox. Select source-row ranges to tag partial drills, contact quality, club corrections or exclusions. Every dimension is independent. Exclusions require a reason. Undo restores earlier manual decisions while retaining the audit history.
 
 Duplicate complete exports return the existing session, including renamed files or changed line endings. Different exports on the same date need acknowledgement because overlapping exports cannot safely be merged automatically. Malformed measurements remain in the original file and appear as missing values with import warnings. Structurally invalid CSV files are rejected before saving.
 

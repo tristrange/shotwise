@@ -663,10 +663,6 @@ test('imports, reviews, corrects, undoes and syncs without losing originals', as
     buffer: Buffer.from(fixture()),
   });
   await page.getByLabel('Session date', { exact: true }).fill(localToday());
-  await page.getByLabel('I confirm this session date').check();
-  await page
-    .getByLabel('Mark non-wedge shots as full swings.', { exact: false })
-    .check();
   await page.getByRole('button', { name: 'Import valid files' }).click();
   await expect(
     page.getByText('Imported successfully.', { exact: true }),
@@ -679,7 +675,7 @@ test('imports, reviews, corrects, undoes and syncs without losing originals', as
   expect(
     before.shots
       .filter((s) => s.recordedClub === '7i')
-      .every((s) => s.review.intent === 'full'),
+      .every((s) => s.review.intent === 'unknown'),
   ).toBe(true);
   await page.getByRole('button', { name: /3 shots →/ }).click();
   await page.getByLabel('From source row').fill('1');
@@ -886,7 +882,6 @@ test('retries duplicate imports, restores private backup and renders accessible 
       buffer: Buffer.from(fixture()),
     });
   await page.getByLabel('Session date', { exact: true }).fill(localToday());
-  await page.getByLabel('I confirm this session date').check();
   await page.getByRole('button', { name: 'Import valid files' }).click();
   await expect(
     page.getByText('Duplicate export — already imported.', { exact: true }),
@@ -1023,4 +1018,86 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   await expect(
     page.getByRole('heading', { name: 'Shot shape', exact: true }),
   ).toBeVisible();
+});
+
+test('imports filename dates without confirmation and requires manual dates only when missing', async ({
+  page,
+  account,
+}, testInfo) => {
+  await login(page, account);
+  await nav(
+    page,
+    testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
+  );
+  await page.getByLabel('Choose CSV files').setInputFiles({
+    name: `shots_${localToday()}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from(fixture()),
+  });
+  await expect(page.getByLabel('Session date', { exact: true })).toHaveValue(
+    localToday(),
+  );
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Import valid files', exact: true })
+    .click();
+  await expect(
+    page.getByText('Imported successfully.', { exact: true }),
+  ).toBeVisible();
+  expect(
+    (await account.repository.load()).shots.every(
+      (s) => s.review.intent === 'unknown',
+    ),
+  ).toBe(true);
+  await page.getByLabel('Choose CSV files').setInputFiles({
+    name: 'export.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csvFixture([{ 'Carry Dist. Range (m)': '103' }])),
+  });
+  const manual = page
+    .locator('.preview')
+    .filter({
+      has: page.getByRole('heading', { name: 'export.csv', exact: true }),
+    });
+  await expect(manual.getByLabel('Session date', { exact: true })).toHaveValue(
+    '',
+  );
+  await page
+    .getByRole('button', { name: 'Import valid files', exact: true })
+    .click();
+  await expect(manual).toContainText(
+    'Enter a valid session date before importing.',
+  );
+  expect((await account.repository.load()).sessions).toHaveLength(1);
+  await manual
+    .getByLabel('Session date', { exact: true })
+    .fill(shiftDate(localToday(), -1));
+  await page
+    .getByRole('button', { name: 'Import valid files', exact: true })
+    .click();
+  await expect(manual).toContainText('Imported successfully.');
+  await page.getByLabel('Choose CSV files').setInputFiles({
+    name: `another_${localToday()}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csvFixture([{ 'Carry Dist. Range (m)': '115' }])),
+  });
+  await page
+    .getByRole('button', { name: 'Import valid files', exact: true })
+    .click();
+  await expect(
+    page.getByText('Same-day import requires acknowledgement', { exact: true }),
+  ).toBeVisible();
+  expect((await account.repository.load()).sessions).toHaveLength(2);
+  await page.getByLabel('Session date', { exact: true }).last().fill(shiftDate(localToday(), -1));
+  await expect(page.getByRole('button', { name: 'Import as a separate session', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Import valid files', exact: true }).click();
+  await expect(page.getByText('Same-day import requires acknowledgement', { exact: true })).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Import as a separate session', exact: true })
+    .click();
+  await expect(
+    page.getByText('Imported successfully.', { exact: true }),
+  ).toHaveCount(3);
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  expect((await account.repository.load()).sessions).toHaveLength(3);
 });
