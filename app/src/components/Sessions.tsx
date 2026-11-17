@@ -70,7 +70,8 @@ export function Sessions({
   async function importAll(separateSessionId?: number) {
     setBusy(true);
     for (const p of previews) {
-      if (separateSessionId !== undefined && p.id !== separateSessionId) continue;
+      if (separateSessionId !== undefined && p.id !== separateSessionId)
+        continue;
       if (
         !p.preview ||
         p.result.startsWith('Imported') ||
@@ -179,7 +180,16 @@ export function Sessions({
                       type="date"
                       required
                       value={p.date}
-                      onChange={(e) => patch(p.id, { date: e.target.value })}
+                      onChange={(e) =>
+                        patch(p.id, {
+                          date: e.target.value,
+                          result:
+                            p.result ===
+                            'Same-day import requires acknowledgement'
+                              ? ''
+                              : p.result,
+                        })
+                      }
                     />
                   </label>
                   <label>

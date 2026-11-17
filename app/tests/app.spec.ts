@@ -1088,6 +1088,10 @@ test('imports filename dates without confirmation and requires manual dates only
     page.getByText('Same-day import requires acknowledgement', { exact: true }),
   ).toBeVisible();
   expect((await account.repository.load()).sessions).toHaveLength(2);
+  await page.getByLabel('Session date', { exact: true }).last().fill(shiftDate(localToday(), -1));
+  await expect(page.getByRole('button', { name: 'Import as a separate session', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Import valid files', exact: true }).click();
+  await expect(page.getByText('Same-day import requires acknowledgement', { exact: true })).toBeVisible();
   await page
     .getByRole('button', { name: 'Import as a separate session', exact: true })
     .click();
