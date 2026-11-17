@@ -354,6 +354,23 @@ export function mostImprovedClub(
   return best;
 }
 
+/** Shots that can be compared: known club, carry on this basis, not a known bad shot. */
+function eligibleShots(data: Dataset, basis: Basis): Shot[] {
+  const sessions = new Set(
+    data.sessions.filter((s) => !s.archived).map((s) => s.id),
+  );
+  const key = BASES[basis].carry;
+  return data.shots.filter(
+    (shot) =>
+      sessions.has(shot.sessionId) &&
+      shot.review.exclusion.kind === 'included' &&
+      shot.review.intent !== 'partial' &&
+      shot.review.contact !== 'mishit' &&
+      shot.measurements[key] !== null &&
+      !isUnknownClub(effectiveClub(shot)),
+  );
+}
+
 export type ClubGap = {
   club: string;
   n: number;
@@ -370,22 +387,10 @@ const LARGE_GAP_M = 30;
 
 /** Carry bands for each club, with the gap and overlap against the next club down. */
 export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
-  const sessions = new Set(
-    data.sessions.filter((s) => !s.archived).map((s) => s.id),
-  );
   const key = BASES[basis].carry;
   const groups = new Map<string, Shot[]>();
-  for (const shot of data.shots) {
-    if (
-      !sessions.has(shot.sessionId) ||
-      shot.review.exclusion.kind !== 'included' ||
-      shot.review.intent === 'partial' ||
-      shot.review.contact === 'mishit' ||
-      shot.measurements[key] === null
-    )
-      continue;
+  for (const shot of eligibleShots(data, basis)) {
     const club = effectiveClub(shot);
-    if (isUnknownClub(club)) continue;
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
 
@@ -421,6 +426,77 @@ export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
     else if (gap > LARGE_GAP_M) lower.flag = 'large';
   }
   return rows;
+}
+
+export type PracticeInsight = {
+  id: string;
+  kind: 'overlap' | 'inconsistency' | 'direction';
+  text: string;
+  rule: string;
+  shots: number;
+};
+
+const MIN_INSIGHT_SHOTS = 10;
+
+/** Plain-language, rule-based pointers at clubs worth practising. */
+export function practiceInsights(
+  data: Dataset,
+  basis: Basis,
+): PracticeInsight[] {
+  const key = BASES[basis].carry;
+  const insights: PracticeInsight[] = [];
+  const gaps = clubGaps(data, basis);
+
+  for (let i = 1; i < gaps.length; i++) {
+    const upper = gaps[i - 1];
+    const lower = gaps[i];
+    if (!upper?.reliable || !lower?.reliable) continue;
+    if (lower.flag === 'overlap' || (lower.gap !== null && lower.gap <= 10))
+      insights.push({
+        id: `overlap-${lower.club}`,
+        kind: 'overlap',
+        text: `${upper.club} and ${lower.club} carry almost the same — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m. Work on ${lower.club} to separate them.`,
+        rule: 'neighbouring clubs within 10 m or overlapping carry bands',
+        shots: Math.min(upper.n, lower.n),
+      });
+  }
+
+  const groups = new Map<string, Shot[]>();
+  for (const shot of eligibleShots(data, basis)) {
+    const club = effectiveClub(shot);
+    groups.set(club, [...(groups.get(club) ?? []), shot]);
+  }
+
+  for (const [club, shots] of groups) {
+    if (shots.length < MIN_INSIGHT_SHOTS) continue;
+
+    const carry = metricStats(shots, key);
+    if (
+      carry.median !== null &&
+      carry.iqr !== null &&
+      carry.iqr > carry.median * 0.25
+    )
+      insights.push({
+        id: `inconsistency-${club}`,
+        kind: 'inconsistency',
+        text: `${club} carry varies a lot: the middle half spans ${carry.iqr.toFixed(0)} m around ${carry.median.toFixed(0)} m.`,
+        rule: 'carry IQR above 25% of the median',
+        shots: shots.length,
+      });
+
+    const curve = summarize(shots, basis).curve;
+    const side = curve.left >= curve.right ? 'left' : 'right';
+    const count = side === 'left' ? curve.left : curve.right;
+    if (curve.n > 0 && count / curve.n >= 0.7)
+      insights.push({
+        id: `direction-${club}`,
+        kind: 'direction',
+        text: `${club} shots tend ${side} — ${count} of ${curve.n} went that way.`,
+        rule: 'at least 70% of measured curves on one side',
+        shots: curve.n,
+      });
+  }
+  return insights;
 }
 
 export type ClubSuggestion = {

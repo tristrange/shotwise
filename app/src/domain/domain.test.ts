@@ -7,6 +7,7 @@ import {
   selectCohort,
   clubFlags,
   mostImprovedClub,
+  practiceInsights,
   reviewCoverage,
   suggestClub,
 } from './analytics';
@@ -451,6 +452,67 @@ describe('club gapping', () => {
       reliable: false,
       flag: null,
     });
+  });
+});
+
+describe('practice insights', () => {
+  const session = makeSession({ date: '2026-11-16' });
+  const group = (club: string, values: number[], curves: number[]) =>
+    values.map((carry, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: club,
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: carry, curve: curves[i] ?? 0 },
+      }),
+    );
+
+  it('flags neighbouring clubs that carry almost the same', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...group('6i', [158, 159, 160, 160, 160, 161, 162, 160, 160, 160], []),
+        ...group('7i', [153, 154, 155, 155, 155, 156, 157, 155, 155, 155], []),
+      ],
+    };
+    const insights = practiceInsights(data, 'premium-flat');
+    expect(insights.some((i) => i.kind === 'overlap' && i.text.includes('7i'))).toBe(true);
+  });
+
+  it('flags a club whose carry varies widely', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: group('PW', [80, 120, 80, 120, 80, 120, 80, 120, 80, 120, 100, 100], []),
+    };
+    expect(practiceInsights(data, 'premium-flat')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'inconsistency', shots: 12 }),
+      ]),
+    );
+  });
+
+  it('flags a one-sided tendency with the count behind it', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: group('3w', Array(10).fill(200), [5, 5, 5, 5, 5, 5, 5, 5, 0, 0]),
+    };
+    const insight = practiceInsights(data, 'premium-flat').find(
+      (i) => i.kind === 'direction',
+    );
+    expect(insight).toMatchObject({ shots: 10 });
+    expect(insight?.text).toContain('8 of 10');
+  });
+
+  it('says nothing for steady, balanced data', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: group('7i', [158, 159, 160, 160, 160, 161, 162, 160, 160, 160], [-2, 2, 0, -2, 2, 0, -2, 2, 0, 0]),
+    };
+    expect(practiceInsights(data, 'premium-flat')).toEqual([]);
   });
 });
 

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { clubGaps } from '../domain/analytics';
+import { clubGaps, practiceInsights } from '../domain/analytics';
 import { BASES, type Basis, type Dataset } from '../domain/model';
 
 export function ClubGaps({ data }: { data: Dataset }) {
   const [basis, setBasis] = useState<Basis>('premium-flat');
   const rows = clubGaps(data, basis);
+  const insights = practiceInsights(data, basis);
   const scale = Math.max(...rows.map((row) => row.high ?? row.median), 1) * 1.1;
 
   return (
@@ -92,6 +93,28 @@ export function ClubGaps({ data }: { data: Dataset }) {
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Where to spend time</span>
+            <h2>Practice insights</h2>
+          </div>
+        </div>
+        {insights.length === 0 ? (
+          <p>No clear patterns yet. Keep logging shots and check back later.</p>
+        ) : (
+          <div className="insight-list">
+            {insights.map((insight) => (
+              <div className="insight" key={insight.id}>
+                <p>{insight.text}</p>
+                <span>
+                  {insight.rule} · {insight.shots} shots
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </section>
