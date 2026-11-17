@@ -22,10 +22,22 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run typecheck && npm run lint && npm test && npm run build
-      - name: Start isolated local database and API
-        run: npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('app/package-lock.json') }}
+      - name: Start local services and install browsers
+        run: |
+          set -e
+          npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1 &
+          SUPABASE_PID=$!
+          npx playwright install --with-deps chromium webkit
+          if ! wait "$SUPABASE_PID"; then
+            cat "$RUNNER_TEMP/shotwise-supabase.log"
+            exit 1
+          fi
       - run: npm run test:db
-      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v6
         if: failure()
