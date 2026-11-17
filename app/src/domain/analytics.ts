@@ -408,7 +408,10 @@ export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
         flag: null,
       };
     })
-    .sort((a, b) => clubOrder(a.club) - clubOrder(b.club) || a.club.localeCompare(b.club));
+    .sort(
+      (a, b) =>
+        clubOrder(a.club) - clubOrder(b.club) || a.club.localeCompare(b.club),
+    );
 
   for (let i = 1; i < rows.length; i++) {
     const upper = rows[i - 1];
@@ -419,8 +422,11 @@ export function clubGaps(data: Dataset, basis: Basis): ClubGap[] {
     if (!upper.reliable || !lower.reliable) continue;
     if (
       upper.low !== null &&
+      upper.high !== null &&
+      lower.low !== null &&
       lower.high !== null &&
-      upper.low <= lower.high
+      upper.low <= lower.high &&
+      lower.low <= upper.high
     )
       lower.flag = 'overlap';
     else if (gap > LARGE_GAP_M) lower.flag = 'large';
@@ -451,12 +457,17 @@ export function practiceInsights(
     const upper = gaps[i - 1];
     const lower = gaps[i];
     if (!upper?.reliable || !lower?.reliable) continue;
-    if (lower.flag === 'overlap' || (lower.gap !== null && lower.gap <= 10))
+    const nearby = lower.gap !== null && Math.abs(lower.gap) <= 10;
+    if (lower.flag === 'overlap' || nearby)
       insights.push({
         id: `overlap-${lower.club}`,
         kind: 'overlap',
-        text: `${upper.club} and ${lower.club} carry almost the same — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m. Work on ${lower.club} to separate them.`,
-        rule: 'neighbouring clubs within 10 m or overlapping carry bands',
+        text: nearby
+          ? `${upper.club} and ${lower.club} have similar median carry — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m.`
+          : `${upper.club} and ${lower.club} carry bands overlap, with different medians — ${upper.median.toFixed(0)} m vs ${lower.median.toFixed(0)} m.`,
+        rule: nearby
+          ? 'neighbouring club medians within 10 m'
+          : 'neighbouring clubs with overlapping middle 80% carry bands',
         shots: Math.min(upper.n, lower.n),
       });
   }
@@ -487,12 +498,12 @@ export function practiceInsights(
     const curve = summarize(shots, basis).curve;
     const side = curve.left >= curve.right ? 'left' : 'right';
     const count = side === 'left' ? curve.left : curve.right;
-    if (curve.n > 0 && count / curve.n >= 0.7)
+    if (curve.n >= MIN_INSIGHT_SHOTS && count / curve.n >= 0.7)
       insights.push({
         id: `direction-${club}`,
         kind: 'direction',
-        text: `${club} shots tend ${side} — ${count} of ${curve.n} went that way.`,
-        rule: 'at least 70% of measured curves on one side',
+        text: `${club} shots tend to curve ${side} — ${count} of ${curve.n} measured curves bend that way.`,
+        rule: 'at least 10 measured curves, with 70% or more on one side',
         shots: curve.n,
       });
   }
@@ -509,8 +520,9 @@ export type ClubSuggestion = {
 
 const MIN_SUGGESTION_SAMPLES = 10;
 const MAX_SUGGESTION_DELTA = 15;
+const MIN_SUGGESTION_ADVANTAGE = 5;
 
-/** Closest well-sampled club by carry, preferring the shot's own session. */
+/** Closest well-sampled club by carry, abstaining when two candidates are too close. */
 export function suggestClub(
   shot: Shot,
   data: Dataset,
@@ -540,7 +552,7 @@ export function suggestClub(
   const propose = (
     candidates: Shot[],
     source: 'session' | 'all',
-  ): ClubSuggestion | null => {
+  ): ClubSuggestion[] => {
     const groups = new Map<string, number[]>();
     for (const candidate of candidates) {
       const value = candidate.measurements[carryKey];
@@ -548,29 +560,34 @@ export function suggestClub(
       const club = effectiveClub(candidate);
       groups.set(club, [...(groups.get(club) ?? []), value]);
     }
-    let best: ClubSuggestion | null = null;
+    const ranked: ClubSuggestion[] = [];
     for (const [club, values] of groups) {
       if (values.length < MIN_SUGGESTION_SAMPLES) continue;
       const median = quantile(values, 0.5);
       if (median === null) continue;
       const delta = Math.abs(carry - median);
-      if (delta > MAX_SUGGESTION_DELTA) continue;
-      if (!best || delta < best.delta)
-        best = {
-          shotId: shot.id,
-          club,
-          delta,
-          sampleSize: values.length,
-          source,
-        };
+      ranked.push({
+        shotId: shot.id,
+        club,
+        delta,
+        sampleSize: values.length,
+        source,
+      });
     }
-    return best;
+    return ranked.sort((a, b) => a.delta - b.delta);
   };
 
-  return (
-    propose(
-      known.filter((candidate) => candidate.sessionId === shot.sessionId),
-      'session',
-    ) ?? propose(known, 'all')
+  const sessionCandidates = propose(
+    known.filter((candidate) => candidate.sessionId === shot.sessionId),
+    'session',
   );
+  const candidates =
+    sessionCandidates[0] && sessionCandidates[0].delta <= MAX_SUGGESTION_DELTA
+      ? sessionCandidates
+      : propose(known, 'all');
+  const [best, runnerUp] = candidates;
+  if (!best || best.delta > MAX_SUGGESTION_DELTA) return null;
+  if (runnerUp && runnerUp.delta - best.delta < MIN_SUGGESTION_ADVANTAGE)
+    return null;
+  return best;
 }

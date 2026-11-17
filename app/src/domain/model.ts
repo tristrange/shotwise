@@ -213,6 +213,18 @@ export function isUnknownClub(club: string): boolean {
 export function clubOrder(club: string): number {
   const value = club.trim().toLowerCase();
   if (/^(d|dr|driver|1w)$/.test(value)) return 0;
+  // Nominal lofts only place named wedges among loft-labelled clubs; actual lofts vary.
+  const wedgeLoft = new Map([
+    ['pw', 46],
+    ['gw', 50],
+    ['aw', 50],
+    ['uw', 50],
+    ['sw', 56],
+    ['lw', 60],
+  ]).get(value);
+  if (wedgeLoft !== undefined) return 100 + wedgeLoft;
+  const loft = value.match(/^(\d{2})°?$/);
+  if (loft) return 100 + Number(loft[1]);
   const match = value.match(/^(\d+)(w|h|i)?$/);
   if (match) {
     const number = Number(match[1]);
@@ -221,10 +233,6 @@ export function clubOrder(club: string): number {
     if (family === 'h') return 30 + number;
     return 50 + number;
   }
-  const wedge = ['pw', 'gw', 'sw', 'lw', 'aw', 'uw'].indexOf(value);
-  if (wedge >= 0) return 100 + wedge;
-  const loft = value.match(/^(\d+)°$/);
-  if (loft) return 100 + Math.max(0, 60 - Number(loft[1]));
   return 200;
 }
 export function localToday(date = new Date()): string {

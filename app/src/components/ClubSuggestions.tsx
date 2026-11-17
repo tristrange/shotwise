@@ -77,7 +77,9 @@ export function ClubSuggestions({
       <p>
         These shots have no readable club label. The suggestion compares carry
         with clubs that have at least ten known shots, using the premium flat
-        estimate. Confirm one to add it to that club’s stats.
+        estimate. A suggestion must be within 15 m of a club’s median and at
+        least 5 m closer than the next candidate. This is a rough carry-based
+        guess. Confirm one to add it to that club’s stats.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -93,14 +95,15 @@ export function ClubSuggestions({
             <div className="suggestion-row" key={shot.id}>
               <div className="suggestion-meta">
                 <strong>
-                  Row {shot.rowIndex} · {sessionDates.get(shot.sessionId) ?? 'Unknown date'}
+                  Row {shot.rowIndex} ·{' '}
+                  {sessionDates.get(shot.sessionId) ?? 'Unknown date'}
                 </strong>
                 <span>{carry === null ? '—' : carry.toFixed(1)} m carry</span>
               </div>
               <span className="suggestion-hint">
                 {suggestion
                   ? `Suggested ${suggestion.club} · ${suggestion.delta.toFixed(1)} m from ${suggestion.sampleSize} shots (${suggestion.source})`
-                  : 'Not enough data for a suggestion'}
+                  : 'No clear carry-based suggestion — choose a club if you know it'}
               </span>
               <select
                 aria-label={`Club for row ${shot.rowIndex}`}

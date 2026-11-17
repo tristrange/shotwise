@@ -545,6 +545,18 @@ summary {
 .gap-club {
   font-weight: 500;
 }
+.gap-stats {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.gap-stats small,
+.gap-n small,
+.gap-value small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
 .gap-track {
   position: relative;
   height: 16px;

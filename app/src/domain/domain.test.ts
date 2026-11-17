@@ -347,6 +347,37 @@ describe('club order', () => {
     expect(clubOrder('?')).toBeGreaterThan(clubOrder('lw'));
     expect(clubOrder('misread')).toBeGreaterThan(clubOrder('9i'));
   });
+
+  it('orders wedge lofts low to high and keeps approach and utility wedges before sand and lob wedges', () => {
+    const clubs = [
+      '60°',
+      'LW',
+      '56',
+      'SW',
+      'UW',
+      'AW',
+      'GW',
+      '52°',
+      '48°',
+      'PW',
+      '9i',
+    ];
+    expect(
+      clubs.sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b)),
+    ).toEqual([
+      '9i',
+      'PW',
+      '48°',
+      'AW',
+      'GW',
+      'UW',
+      '52°',
+      '56',
+      'SW',
+      '60°',
+      'LW',
+    ]);
+  });
 });
 
 describe('club gapping', () => {
@@ -453,6 +484,21 @@ describe('club gapping', () => {
       flag: null,
     });
   });
+
+  it('does not call disjoint carry bands an overlap when distances are reversed', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...shotsWith('5i', Array(10).fill(100)),
+        ...shotsWith('6i', Array(10).fill(160)),
+      ],
+    };
+    expect(clubGaps(data, 'premium-flat')[1]).toMatchObject({
+      gap: -60,
+      flag: null,
+    });
+  });
 });
 
 describe('practice insights', () => {
@@ -463,7 +509,7 @@ describe('practice insights', () => {
         sessionId: session.id,
         recordedClub: club,
         rowIndex: i + 1,
-        measurements: { flatCarryPremium: carry, curve: curves[i] ?? 0 },
+        measurements: { flatCarryPremium: carry, curve: curves[i] ?? null },
       }),
     );
 
@@ -477,20 +523,55 @@ describe('practice insights', () => {
       ],
     };
     const insights = practiceInsights(data, 'premium-flat');
-    expect(insights.some((i) => i.kind === 'overlap' && i.text.includes('7i'))).toBe(true);
+    expect(
+      insights.some((i) => i.kind === 'overlap' && i.text.includes('7i')),
+    ).toBe(true);
   });
 
   it('flags a club whose carry varies widely', () => {
     const data = {
       ...emptyDataset,
       sessions: [session],
-      shots: group('PW', [80, 120, 80, 120, 80, 120, 80, 120, 80, 120, 100, 100], []),
+      shots: group(
+        'PW',
+        [80, 120, 80, 120, 80, 120, 80, 120, 80, 120, 100, 100],
+        [],
+      ),
     };
     expect(practiceInsights(data, 'premium-flat')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'inconsistency', shots: 12 }),
       ]),
     );
+  });
+
+  it('does not describe a large reversed gap as nearly equal carry', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...group('5i', Array(10).fill(100), []),
+        ...group('6i', Array(10).fill(160), []),
+      ],
+    };
+    expect(practiceInsights(data, 'premium-flat')).toEqual([]);
+  });
+
+  it('distinguishes overlapping spreads from nearly equal medians', () => {
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...group('6i', [150, 150, 160, 165, 170, 170, 175, 180, 190, 190], []),
+        ...group('7i', [125, 125, 135, 140, 145, 145, 150, 155, 165, 165], []),
+      ],
+    };
+    const insight = practiceInsights(data, 'premium-flat').find(
+      (i) => i.kind === 'overlap',
+    );
+    expect(insight?.text).toContain('carry bands overlap');
+    expect(insight?.text).toContain('170 m vs 145 m');
+    expect(insight?.text).not.toMatch(/almost the same|Work on/);
   });
 
   it('flags a one-sided tendency with the count behind it', () => {
@@ -504,13 +585,30 @@ describe('practice insights', () => {
     );
     expect(insight).toMatchObject({ shots: 10 });
     expect(insight?.text).toContain('8 of 10');
+    expect(insight?.text).toContain('curve right');
   });
+
+  it.each([1, 9])(
+    'withholds curve advice with only %s measured curves',
+    (count) => {
+      const data = {
+        ...emptyDataset,
+        sessions: [session],
+        shots: group('7i', Array(10).fill(150), Array(count).fill(-5)),
+      };
+      expect(practiceInsights(data, 'premium-flat')).toEqual([]);
+    },
+  );
 
   it('says nothing for steady, balanced data', () => {
     const data = {
       ...emptyDataset,
       sessions: [session],
-      shots: group('7i', [158, 159, 160, 160, 160, 161, 162, 160, 160, 160], [-2, 2, 0, -2, 2, 0, -2, 2, 0, 0]),
+      shots: group(
+        '7i',
+        [158, 159, 160, 160, 160, 161, 162, 160, 160, 160],
+        [-2, 2, 0, -2, 2, 0, -2, 2, 0, 0],
+      ),
     };
     expect(practiceInsights(data, 'premium-flat')).toEqual([]);
   });
@@ -545,6 +643,126 @@ describe('club suggestions', () => {
       delta: 2,
       source: 'session',
       sampleSize: 10,
+    });
+  });
+
+  it.each([
+    [150, 150],
+    [150, 153],
+    [164, 166],
+  ])(
+    'withholds ambiguous suggestions regardless of shot order (%s m and %s m)',
+    (firstCarry, secondCarry) => {
+      const unknown = makeShot({
+        sessionId: session.id,
+        recordedClub: '?',
+        measurements: { flatCarryPremium: 150 },
+      });
+      const data = {
+        ...emptyDataset,
+        sessions: [session],
+        shots: [
+          ...known('6i', firstCarry, 10, 1),
+          ...known('7i', secondCarry, 10, 11),
+          unknown,
+        ],
+      };
+      expect(suggestClub(unknown, data, 'premium-flat')).toBeNull();
+      expect(
+        suggestClub(
+          unknown,
+          { ...data, shots: [...data.shots].reverse() },
+          'premium-flat',
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it('does not override ambiguous session evidence with a historical winner', () => {
+    const earlier = makeSession({ date: '2026-11-01' });
+    const unknown = makeShot({
+      sessionId: session.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 150 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session, earlier],
+      shots: [
+        ...known('6i', 150, 10, 1),
+        ...known('7i', 150, 10, 11),
+        ...known('6i', 180, 20, 1).map((shot) => ({
+          ...shot,
+          sessionId: earlier.id,
+        })),
+        unknown,
+      ],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toBeNull();
+  });
+
+  it.each([
+    [150, 155],
+    [165, 180],
+  ])(
+    'allows a clear suggestion at the distance and runner-up boundaries (%s m and %s m)',
+    (firstCarry, secondCarry) => {
+      const unknown = makeShot({
+        sessionId: session.id,
+        recordedClub: '?',
+        measurements: { flatCarryPremium: 150 },
+      });
+      const data = {
+        ...emptyDataset,
+        sessions: [session],
+        shots: [
+          ...known('6i', firstCarry, 10, 1),
+          ...known('7i', secondCarry, 10, 11),
+          unknown,
+        ],
+      };
+      expect(suggestClub(unknown, data, 'premium-flat')?.club).toBe('6i');
+    },
+  );
+
+  it('also withholds ambiguous suggestions when falling back to other sessions', () => {
+    const recent = makeSession();
+    const unknown = makeShot({
+      sessionId: recent.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 150 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session, recent],
+      shots: [...known('6i', 150, 10, 1), ...known('7i', 150, 10, 11), unknown],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toBeNull();
+  });
+
+  it('can use historical data when no session candidate is within the 15 m tolerance', () => {
+    const earlier = makeSession({ date: '2026-11-01' });
+    const unknown = makeShot({
+      sessionId: session.id,
+      recordedClub: '?',
+      measurements: { flatCarryPremium: 150 },
+    });
+    const data = {
+      ...emptyDataset,
+      sessions: [session, earlier],
+      shots: [
+        ...known('6i', 166, 10, 1),
+        ...known('7i', 167, 10, 11),
+        ...known('6i', 150, 20, 1).map((shot) => ({
+          ...shot,
+          sessionId: earlier.id,
+        })),
+        unknown,
+      ],
+    };
+    expect(suggestClub(unknown, data, 'premium-flat')).toMatchObject({
+      club: '6i',
+      source: 'all',
     });
   });
 

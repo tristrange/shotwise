@@ -95,6 +95,65 @@ async function seed(account: Account) {
   });
 }
 
+test('shows readable gapping values and distinguishes overlapping carry bands', async ({
+  page,
+  account,
+}, testInfo) => {
+  const carries = [110, 110, 120, 122, 123, 123, 124, 130, 136, 136];
+  await account.repository.importCsv({
+    filename: 'gapping.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture([
+          ...carries.map((carry) => ({
+            Club: '6i',
+            'Flat Carry Dist. Premium (m)': String(carry + 25),
+          })),
+          ...carries.map((carry) => ({
+            Club: '7i',
+            'Flat Carry Dist. Premium (m)': String(carry),
+          })),
+          { Club: 'SW', 'Flat Carry Dist. Premium (m)': '60' },
+        ]),
+      ),
+    ),
+  });
+  await login(page, account);
+  await nav(page, 'Gapping');
+  const rows = page
+    .getByRole('list', { name: 'Club carry distances' })
+    .getByRole('listitem');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(1)).toContainText('Median 123 m');
+  await expect(rows.nth(1)).toContainText('Middle 80%: 110–136 m');
+  await expect(rows.nth(1)).toContainText('Gap: 25 m');
+  await expect(rows.nth(1)).toContainText('bands overlap');
+  await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
+  await expect(page.getByText(/6i and 7i carry bands overlap/)).toBeVisible();
+  expect(await rows.nth(1).ariaSnapshot()).toContain('Median 123 m');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('gapping.png'),
+    fullPage: true,
+  });
+  await page
+    .getByRole('combobox', { name: 'Basis', exact: true })
+    .selectOption('range-flat');
+  await expect(
+    page.getByText('No comparable shots on this basis yet.'),
+  ).toBeVisible();
+});
+
 test('imports, reviews, corrects, undoes and syncs without losing originals', async ({
   page,
   browser,

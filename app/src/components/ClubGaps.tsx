@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { clubGaps, practiceInsights } from '../domain/analytics';
-import { BASES, type Basis, type Dataset } from '../domain/model';
+import { BASES, basisSchema, type Basis, type Dataset } from '../domain/model';
 
 export function ClubGaps({ data }: { data: Dataset }) {
   const [basis, setBasis] = useState<Basis>('premium-flat');
@@ -30,7 +30,7 @@ export function ClubGaps({ data }: { data: Dataset }) {
             Basis
             <select
               value={basis}
-              onChange={(e) => setBasis(e.target.value as Basis)}
+              onChange={(e) => setBasis(basisSchema.parse(e.target.value))}
             >
               {Object.entries(BASES).map(([key, value]) => (
                 <option key={key} value={key}>
@@ -44,10 +44,14 @@ export function ClubGaps({ data }: { data: Dataset }) {
           All shots with a readable club, including ones you have not reviewed.
           Shots marked partial or mishit are left out. The dot is the median
           carry; the bar is the middle 80%. Fewer than ten shots is shown in
-          grey and not flagged.
+          grey and not flagged. Gaps compare medians with the club above; a
+          negative gap means this club carried farther.
         </p>
         {rows.length === 0 ? (
-          <p>No full swings with typical contact yet.</p>
+          <p>
+            No comparable shots on this basis yet. Shots need a readable club
+            and carry, and must not be marked partial or mishit.
+          </p>
         ) : (
           <div className="gap-list">
             <div className="gap-head">
@@ -56,43 +60,55 @@ export function ClubGaps({ data }: { data: Dataset }) {
               <span>Shots</span>
               <span>Gap</span>
             </div>
-            {rows.map((row) => {
-              const low = row.low ?? row.median;
-              const high = row.high ?? row.median;
-              return (
-                <div
-                  className={`gap-row${row.reliable ? '' : ' low'}`}
-                  key={row.club}
-                >
-                  <span className="gap-club">{row.club}</span>
-                  <div className="gap-track">
-                    <span
-                      className="gap-band"
-                      style={{
-                        left: `${(low / scale) * 100}%`,
-                        width: `${((high - low) / scale) * 100}%`,
-                      }}
-                    />
-                    <span
-                      className="gap-dot"
-                      style={{ left: `${(row.median / scale) * 100}%` }}
-                    />
-                  </div>
-                  <span className="gap-n">{row.n}</span>
-                  <span
-                    className={`gap-value${row.flag === 'large' ? ' big' : ''}`}
+            <div role="list" aria-label="Club carry distances">
+              {rows.map((row) => {
+                const low = row.low ?? row.median;
+                const high = row.high ?? row.median;
+                return (
+                  <div
+                    className={`gap-row${row.reliable ? '' : ' low'}`}
+                    key={row.club}
+                    role="listitem"
                   >
-                    {row.flag === 'overlap' ? (
-                      <>overlap</>
-                    ) : row.gap === null ? (
-                      '—'
-                    ) : (
-                      `${row.gap.toFixed(0)} m`
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+                    <span className="gap-club">{row.club}</span>
+                    <div className="gap-carry">
+                      <div className="gap-stats">
+                        <strong>Median {row.median.toFixed(0)} m</strong>
+                        <small>
+                          {row.low !== null && row.high !== null
+                            ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
+                            : 'Spread needs 10 shots'}
+                        </small>
+                      </div>
+                      <div className="gap-track" aria-hidden="true">
+                        <span
+                          className="gap-band"
+                          style={{
+                            left: `${(low / scale) * 100}%`,
+                            width: `${((high - low) / scale) * 100}%`,
+                          }}
+                        />
+                        <span
+                          className="gap-dot"
+                          style={{ left: `${(row.median / scale) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="gap-n">
+                      {row.n}
+                      <small>{row.n === 1 ? 'shot' : 'shots'}</small>
+                    </span>
+                    <span
+                      className={`gap-value${row.flag === 'large' ? ' big' : ''}`}
+                    >
+                      {row.gap === null ? '—' : `Gap: ${row.gap.toFixed(0)} m`}
+                      {row.flag === 'overlap' && <small>bands overlap</small>}
+                      {row.flag === 'large' && <small>large gap</small>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </section>
