@@ -338,7 +338,7 @@ a,
 }
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 16px;
   margin: 24px 0;
 }
@@ -351,6 +351,9 @@ a,
   flex-direction: column;
   gap: 8px;
 }
+.stat.lead {
+  grid-column: span 2;
+}
 .stat span {
   font-size: 0.75rem;
   letter-spacing: 0.02em;
@@ -359,10 +362,13 @@ a,
   text-transform: none;
 }
 .stat strong {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 400;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+.stat.lead strong {
+  font-size: 2.75rem;
 }
 .stat em {
   font-size: 0.875rem;
@@ -856,6 +862,9 @@ hr {
   }
   .stat strong {
     font-size: 1.5rem;
+  }
+  .stat.lead strong {
+    font-size: 2rem;
   }
   .stat small {
     line-height: 1.4;
