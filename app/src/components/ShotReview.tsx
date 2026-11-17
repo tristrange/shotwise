@@ -371,8 +371,8 @@ export function ShotReview({
                       ball speed {assessment.speed.toFixed(1)} kph are both low
                       for {effectiveClub(s)}. Baseline:{' '}
                       {assessment.baselineCount} earlier paired shots across{' '}
-                      {assessment.sessions} session(s), including unreviewed
-                      shots.
+                      {assessment.sessions} session(s). Unreviewed shots may be
+                      included.
                     </p>
                     <p>
                       Medians: {assessment.carryMedian.toFixed(1)} m /{' '}
