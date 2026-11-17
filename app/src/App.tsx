@@ -37,6 +37,11 @@ const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'progress', label: 'Progress', icon: Flag },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
+function pageFromHash(): Page {
+  const hash = window.location.hash.slice(1);
+  return nav.some((item) => item.id === hash) ? (hash as Page) : 'overview';
+}
+
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const [analysisSettings, setAnalysisSettings] = useState(
@@ -47,7 +52,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState<Page>('overview');
+  const [page, setPage] = useState<Page>(pageFromHash);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
   const refresh = useCallback(async () => {
@@ -108,6 +113,14 @@ export default function App() {
     window.addEventListener('focus', focus);
     return () => window.removeEventListener('focus', focus);
   }, [session, refresh]);
+  useEffect(() => {
+    const onHashChange = () => setPage(pageFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  useEffect(() => {
+    if (window.location.hash.slice(1) !== page) window.location.hash = page;
+  }, [page]);
   if (backend.kind === 'unconfigured')
     return (
       <div className="auth-shell">
