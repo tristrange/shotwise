@@ -16,6 +16,7 @@
   --sidebar-text: #cedccd;
   --sidebar-muted: #93ab97;
   --brand-mark: #c9e979;
+  --on-accent: #fff;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   font-family: 'DM Sans', sans-serif;
@@ -39,13 +40,8 @@
   --sidebar-bg: #0c120f;
   --sidebar-text: #cedccd;
   --sidebar-muted: #93ab97;
+  --on-accent: #142018;
   color-scheme: dark;
-}
-:root[data-theme='dark'] button:not(.text-button):not(.secondary):not(.theme-toggle),
-:root[data-theme='dark'] .file-button,
-:root[data-theme='dark'] .sidebar nav button.active,
-:root[data-theme='dark'] .tabs button.active {
-  color: #142018;
 }
 * {
   box-sizing: border-box;
@@ -66,7 +62,7 @@ button {
   border: 0;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 500;
   padding: 12px 20px;
 }
@@ -230,7 +226,7 @@ a,
 }
 .sidebar nav button.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .side-footer {
   margin-top: auto;
@@ -509,7 +505,7 @@ summary {
 .file-button {
   display: inline-block;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 8px;
   padding: 12px 20px;
   font-size: 0.875rem;
@@ -585,7 +581,7 @@ summary {
 }
 .tabs button.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .shot {
   border-bottom: 1px solid var(--border-soft);
