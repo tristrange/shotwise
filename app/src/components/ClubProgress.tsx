@@ -1,6 +1,7 @@
 import { clubProgress } from '../domain/progress';
-import type { AnalysisQuery } from '../domain/analytics';
-import { BASES, type Basis, type Dataset } from '../domain/model';
+import type { AnalysisSettings } from '../domain/analytics';
+import { localToday, type Dataset } from '../domain/model';
+import { BasisButton, ViewToggle } from './AnalysisControls';
 
 type SessionPoint = ReturnType<typeof clubProgress>[number]['sessions'][number];
 
@@ -32,6 +33,11 @@ function ProgressPlot({
         aria-label={`${club} ${label} chart`}
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard focus enables horizontal scrolling.
         tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          event.currentTarget.scrollBy({ left: event.key === 'ArrowRight' ? 80 : -80 });
+        }}
       >
         <svg
           width="100%"
@@ -91,13 +97,17 @@ function ProgressPlot({
 
 export function ClubProgress({
   data,
-  basis,
-  query,
+  settings,
+  onSettingsChange,
+  cohort,
 }: {
   data: Dataset;
-  basis: Basis;
-  query: AnalysisQuery;
+  settings: AnalysisSettings;
+  onSettingsChange: (settings: AnalysisSettings) => void;
+  cohort: string;
 }) {
+  const { basis, ...filters } = settings;
+  const query = { ...filters, today: localToday() };
   const groups = clubProgress(data, basis, query);
   return (
     <section className="panel">
@@ -105,8 +115,12 @@ export function ClubProgress({
         <div>
           <span className="eyebrow">Session by session</span>
           <h2>Carry over time</h2>
+          <p className="context">{cohort}</p>
         </div>
-        <span className="pill">{BASES[basis].label}</span>
+        <div className="card-controls">
+          <ViewToggle mode={settings.mode} onChange={(mode) => onSettingsChange({ ...settings, mode })} />
+          <BasisButton basis={basis} onChange={(next) => onSettingsChange({ ...settings, basis: next })} />
+        </div>
       </div>
       <p>
         Compare each club with itself. Higher median carry means more distance;

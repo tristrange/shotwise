@@ -153,7 +153,6 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <Brand />
-        <div className="side-label">Your space</div>
         <nav aria-label="Main navigation">
           {nav.map(({ id, label, icon: Icon }) => (
             <button
@@ -247,6 +246,11 @@ export default function App() {
             )}
             {page === 'sessions' && (
               <Sessions data={data} repository={repository} refresh={refresh} />
+            )}
+            {page === 'review' && (
+              <div className="section-heading">
+                <h1>Review</h1>
+              </div>
             )}
             <ClubSuggestions
               active={page === 'review'}
@@ -397,11 +401,7 @@ function Backup({
   return (
     <>
       <div className="section-heading">
-        <div>
-          <span className="eyebrow">Your data</span>
-          <h1>Settings</h1>
-          <p>Keep a copy of your practice history.</p>
-        </div>
+        <h1>Settings</h1>
       </div>
       <section className="panel">
         <h2>Backups</h2>
