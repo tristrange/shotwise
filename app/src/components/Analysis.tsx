@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { BarShapeProps } from 'recharts';
 import {
   Bar,
   BarChart,
@@ -22,7 +23,7 @@ import {
   selectCohort,
   summarize,
 } from '../domain/analytics';
-import { MostImproved } from './MostImproved';
+import { FlameCanvas } from './FlameCanvas';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -109,7 +110,6 @@ export function Analysis({
           </p>
         </div>
       </div>
-      {improved && <MostImproved result={improved} />}
       <div className="filters panel">
         <label>
           View
@@ -312,7 +312,7 @@ export function Analysis({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={rows}
-                  margin={{ top: 15, right: 20, bottom: 0, left: -15 }}
+                  margin={{ top: 108, right: 20, bottom: 0, left: -15 }}
                 >
                   <CartesianGrid vertical={false} stroke="#e9efe6" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
@@ -323,7 +323,34 @@ export function Analysis({
                     dataKey="carry"
                     name="Median carry (m)"
                     fill="#244b36"
-                    radius={[4, 4, 0, 0]}
+                    shape={(bar: BarShapeProps) => {
+                      const isWinner = bar.payload?.name === improved?.club;
+                      return (
+                        <g>
+                          <rect
+                            x={bar.x}
+                            y={bar.y}
+                            width={bar.width}
+                            height={bar.height}
+                            rx={4}
+                            fill="#244b36"
+                          />
+                          {isWinner && (
+                            <foreignObject
+                              x={bar.x - 12}
+                              y={bar.y - 104}
+                              width={bar.width + 24}
+                              height={112}
+                              pointerEvents="none"
+                            >
+                              <div className="bar-flame-wrap">
+                                <FlameCanvas />
+                              </div>
+                            </foreignObject>
+                          )}
+                        </g>
+                      );
+                    }}
                   />
                 </BarChart>
               </ResponsiveContainer>
