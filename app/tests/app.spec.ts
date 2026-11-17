@@ -781,3 +781,12 @@ test('retries duplicate imports, restores private backup and renders accessible 
   await expect(otherRepo.restore(original)).rejects.toThrow('empty dataset');
   await admin.auth.admin.deleteUser(otherUser.data.user.id);
 });
+
+test('keeps the active tab after a reload', async ({ page, account }) => {
+  await login(page, account);
+  await nav(page, 'Progress');
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('#progress');
+});
