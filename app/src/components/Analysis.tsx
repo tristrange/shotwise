@@ -15,6 +15,7 @@ import {
   type AnalysisSettings,
 } from '../domain/analytics';
 import { AnalysisControls } from './AnalysisControls';
+import { ClubProgress } from './ClubProgress';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -75,20 +76,6 @@ export function Analysis({
       };
     });
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
-  const progress = data.sessions
-    .filter((s) => shots.some((x) => x.sessionId === s.id))
-    .sort(
-      (a, b) =>
-        a.date.localeCompare(b.date) ||
-        (a.time ?? '').localeCompare(b.time ?? ''),
-    )
-    .map((s) => ({
-      session: s,
-      stats: summarize(
-        shots.filter((x) => x.sessionId === s.id),
-        basis,
-      ),
-    }));
   return (
     <>
       <div className="section-heading">
@@ -97,7 +84,7 @@ export function Analysis({
           <h1>{progressView ? 'Progress' : 'Your overview'}</h1>
           <p>
             {progressView
-              ? 'Median carry for each session, oldest first.'
+              ? 'Distance and consistency, session by session for each club.'
               : 'Median carry by club, with the sample size behind each figure.'}
           </p>
         </div>
@@ -172,48 +159,11 @@ export function Analysis({
         </div>
       </div>
       {progressView ? (
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">Session by session</span>
-              <h2>Carry over time</h2>
-            </div>
-            <span className="pill">Medians</span>
-          </div>
-          <p>
-            Each session stands alone. Sessions without a recorded time are not
-            ordered within a day.
-          </p>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Session</th>
-                  <th>Median carry</th>
-                  <th>Shots</th>
-                </tr>
-              </thead>
-              <tbody>
-                {progress.map(({ session, stats }) => (
-                  <tr key={session.id}>
-                    <td>{session.date}</td>
-                    <td>{session.time ?? 'Unknown'}</td>
-                    <td>{session.venue || session.filename}</td>
-                    <td>{fmt(stats.carry.median)} m</td>
-                    <td>
-                      {stats.carry.n}{' '}
-                      {stats.carry.n < 5 && (
-                        <span className="pill">Sparse</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <ClubProgress
+          data={data}
+          basis={basis}
+          query={{ ...query, club: club || undefined }}
+        />
       ) : (
         <section className="panel">
           <div className="panel-heading">

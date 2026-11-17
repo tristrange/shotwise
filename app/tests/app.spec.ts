@@ -514,6 +514,51 @@ test('shows readable gapping values and distinguishes overlapping carry bands', 
   ).toBeVisible();
 });
 
+test('shows separate carry and consistency charts per club with sparse and missing data', async ({ page, account }, testInfo) => {
+  for (let i = 0; i < 3; i++) {
+    const carries = i === 0 ? [90, 100, 110, 120] : i === 1 ? [110, 115, 120, 125] : [null];
+    await account.repository.importCsv({
+      filename: `progress-${i}.csv`, date: shiftDate(localToday(), i - 2),
+      time: null, venue: '', notes: '', confirmedFull: false, allowSameDay: false,
+      preview: await parseCsv(new TextEncoder().encode(csvFixture([
+        ...carries.map((carry) => ({ 'Flat Carry Dist. Premium (m)': carry === null ? '--' : String(carry) })),
+        { Club: '9i', 'Flat Carry Dist. Premium (m)': '60' },
+      ]))),
+    });
+  }
+  await login(page, account);
+  await nav(page, 'Progress');
+  const median = page.getByRole('region', { name: '7i median carry chart', exact: true });
+  const spread = page.getByRole('region', { name: '7i carry spread chart', exact: true });
+  await expect(median).toBeVisible();
+  await expect(spread).toBeVisible();
+  await expect(median.locator('svg')).toContainText('105.0');
+  await expect(median.locator('svg')).toContainText('117.5');
+  await expect(spread.locator('svg')).toContainText('15.0');
+  await expect(spread.locator('svg')).toContainText('7.5');
+  await expect(median.locator('rect')).toHaveCount(2);
+  const details = page.getByRole('table', { name: '7i session details', exact: true });
+  await expect(details.getByRole('row').nth(1)).toContainText('105.0 m');
+  await expect(details.getByRole('row').nth(1)).toContainText('15.0 m');
+  await expect(details.getByRole('row').nth(2)).toContainText('117.5 m');
+  await expect(details.getByRole('row').nth(2)).toContainText('7.5 m');
+  await expect(details.getByRole('row').nth(3)).toContainText('No carry');
+  await expect(details.getByRole('row').nth(3)).toContainText('Needs 4 measured shots');
+  await expect(page.getByRole('table', { name: '9i session details', exact: true })).toContainText('60.0 m');
+  await expect(details).toContainText('Sample limited');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (await median.evaluate((element) => element.scrollWidth > element.clientWidth)) {
+    await median.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => median.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  }
+  await page.screenshot({ path: testInfo.outputPath('club-progress.png'), fullPage: true });
+  await page.getByRole('combobox', { name: 'Club', exact: true }).selectOption('7i');
+  await expect(page.getByRole('table', { name: '9i session details', exact: true })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Contact', exact: true }).selectOption('typical');
+  await expect(page.getByText('No club sessions match these filters.', { exact: true })).toBeVisible();
+});
+
 test('imports, reviews, corrects, undoes and syncs without losing originals', async ({
   page,
   browser,
