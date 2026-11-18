@@ -2,12 +2,13 @@ import { quantile } from './statistics';
 import {
   clubOrder,
   effectiveClub,
+  isWedge,
   shiftDate,
   type Session,
   type Shot,
 } from './model';
 
-export const UNUSUAL_SHOT_RULE = 'low-flight-2';
+export const UNUSUAL_SHOT_RULE = 'low-flight-3';
 export type UnusualShotAssessment =
   | { kind: 'abstained'; reason: string; baselineCount: number }
   | {
@@ -31,14 +32,17 @@ export function assessUnusualShots(shots: Shot[], sessions: Session[]) {
   const active = new Map(
     sessions.filter((s) => !s.archived).map((s) => [s.id, s]),
   );
-  const eligible = shots.filter(
-    (s) =>
+  const eligible = shots.filter((s) => {
+    const club = effectiveClub(s);
+    return (
       active.has(s.sessionId) &&
-      clubOrder(effectiveClub(s)) < 200 &&
+      clubOrder(club) < 200 &&
       s.review.intent !== 'partial' &&
+      (!isWedge(club) || s.review.intent === 'full') &&
       s.review.contact !== 'mishit' &&
-      s.review.exclusion.kind === 'included',
-  );
+      s.review.exclusion.kind === 'included'
+    );
+  });
   const assessments = new Map<string, UnusualShotAssessment>();
   for (const shot of eligible) {
     if (shot.review.contact !== 'uncertain') continue;

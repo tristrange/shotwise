@@ -87,6 +87,7 @@ it('lets the user hide automatic and reviewed mishits while preserving typical, 
       sessionId: session.id,
       recordedClub: 'PW',
       rowIndex: i + 1,
+      review: { intent: 'full' },
       measurements: {
         flatCarryRange: 100 + (i % 5),
         speedRange: 140 + (i % 5),
@@ -97,6 +98,7 @@ it('lets the user hide automatic and reviewed mishits while preserving typical, 
     sessionId: session.id,
     recordedClub: 'PW',
     rowIndex: 21,
+    review: { intent: 'full' },
     measurements: { flatCarryRange: 40, speedRange: 90 },
   });
   const typical = {

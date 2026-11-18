@@ -189,6 +189,11 @@ test('toggles automatic mishits across stats without changing reviews and recomm
     .first()
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: 'D', exact: true }) });
+  const pitchingWedge = page
+    .getByRole('table')
+    .first()
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: 'PW', exact: true }) });
   await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
   const toggle = page.getByRole('button', {
     name: 'Hide likely mishits',
@@ -198,6 +203,7 @@ test('toggles automatic mishits across stats without changing reviews and recomm
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(driver.getByRole('cell').nth(2)).toHaveText('20');
+  await expect(pitchingWedge.getByRole('cell').nth(2)).toHaveText('23');
   await page.screenshot({
     path: testInfo.outputPath('filtered-stats.png'),
     fullPage: true,
@@ -217,7 +223,7 @@ test('toggles automatic mishits across stats without changing reviews and recomm
   ).toContainText('20 / 0');
   await nav(page, 'Shot shape');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.context')).toContainText('60 shots');
+  await expect(page.locator('.context')).toContainText('63 shots');
   await nav(page, 'Overview');
   await toggle.click();
   await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
