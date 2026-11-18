@@ -15,14 +15,17 @@ export function useScrollReveal(key: string) {
     const root = document.querySelector<HTMLElement>('.main-content');
     if (!root) return;
 
-    const targets = root.querySelectorAll<HTMLElement>(
-      '.reveal, .panel, .gap-list, .progress-plots, .shape-club, .insight-list, .session-list, .shot-list',
-    );
+    // Reveal figure-sized blocks, not whole panels: a tall panel entering the
+    // viewport would otherwise animate charts that are still far below the fold.
+    const REVEAL =
+      '.hero.reveal, .statstrip.reveal, .panel-heading, .gap-list, .table-wrap, .insight-list, .progress-plots, .shape-club, .shape-detail, .session-list, .shot, .suggestion-row, .notice';
+    const targets = root.querySelectorAll<HTMLElement>(REVEAL);
     const teardown: (() => void)[] = [];
 
     targets.forEach((target) => {
-      // Skip containers nested inside another reveal target: the parent handles them.
-      if (target.parentElement?.closest('.reveal, .panel, .gap-list, .progress-plots, .shape-club, .session-list, .shot-list')) return;
+      // Skip nested units (the outer one handles them) and collapsed tables.
+      if (target.parentElement?.closest(REVEAL)) return;
+      if (target.closest('details')) return;
 
       const marks = target.querySelectorAll<SVGElement>(
         '.gap-band, .gap-dot, .shape-point, .progress-plot svg rect, .hero-lanes path, .review .pill',
