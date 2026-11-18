@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { selectCohort } from './analytics';
 import { assessUnusualShots } from './unusualShots';
 import { makeSession, makeShot } from './fixtures';
 import type { Review } from './model';
@@ -233,6 +234,68 @@ describe('unusual shots', () => {
         [{ ...session, archived: true }],
       ).size,
     ).toBe(0);
+  });
+
+  it('keeps a targeted 30 m wedge available for practice and requires explicitly full wedge evidence', () => {
+    const wedge = makeShot({
+      id: 'targeted-wedge',
+      recordedClub: '7i',
+      sessionId: session.id,
+      rowIndex: 21,
+      measurements: { flatCarryRange: 30, speedRange: 55, target: 30 },
+      review: { club: { kind: 'corrected', club: 'SW' } },
+    });
+    const baseline = history.map((shot, i) =>
+      makeShot({
+        ...shot,
+        id: 'wedge-practice-' + i,
+        recordedClub: 'SW',
+        review: { intent: 'full', contact: 'typical' },
+      }),
+    );
+    const shots = [...baseline, wedge];
+    expect(assessUnusualShots(shots, [session]).has(wedge.id)).toBe(false);
+    expect(
+      selectCohort(shots, [session], {
+        mode: 'all',
+        today: session.date,
+        intent: 'all',
+        contact: 'all',
+        hideLikelyMishits: true,
+      }),
+    ).toContainEqual(wedge);
+
+    const explicitlyFull = {
+      ...wedge,
+      review: { ...wedge.review, intent: 'full' },
+    } satisfies typeof wedge;
+    expect(
+      assessUnusualShots([...baseline, explicitlyFull], [session]).get(
+        wedge.id,
+      ),
+    ).toMatchObject({
+      kind: 'assessed',
+      unusual: true,
+      baselineCount: 20,
+      ruleVersion: 'low-flight-3',
+    });
+    const uncertain = baseline.map((shot, i) =>
+      i === 0
+        ? ({
+            ...shot,
+            review: { ...shot.review, intent: 'unknown' },
+          } satisfies typeof shot)
+        : shot,
+    );
+    expect(
+      assessUnusualShots([...uncertain, explicitlyFull], [session]).get(
+        wedge.id,
+      ),
+    ).toMatchObject({
+      kind: 'abstained',
+      baselineCount: 19,
+    });
+    expect(wedge.review.contact).toBe('uncertain');
   });
 
   it('uses strictly earlier timed sessions and keeps earlier assessments unchanged when later evidence is added', () => {
