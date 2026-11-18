@@ -8,9 +8,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    # WebKit's system libraries are present on 24.04; on the current
-    # ubuntu-latest (26.04) `playwright install --with-deps` apt-gets ~140 MB.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
@@ -35,6 +33,9 @@ jobs:
           npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1 &
           SUPABASE_PID=$!
           npx playwright install chromium webkit
+          # WebKit's MiniBrowser needs these on current ubuntu-latest images.
+          sudo apt-get install -y libevent-2.1-7t64 || sudo apt-get install -y libevent-2.1-7
+          sudo apt-get install -y libopus0
           if ! wait "$SUPABASE_PID"; then
             cat "$RUNNER_TEMP/shotwise-supabase.log"
             exit 1
