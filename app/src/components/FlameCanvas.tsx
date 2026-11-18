@@ -92,6 +92,7 @@ export function FlameCanvas() {
       gl.deleteShader(fragment);
       return;
     }
+    // oxlint-disable-next-line react/hooks -- WebGL's useProgram is not a React hook.
     gl.useProgram(program);
 
     const buffer = gl.createBuffer();
