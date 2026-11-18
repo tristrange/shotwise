@@ -59,7 +59,7 @@ export function Hero({
         </svg>
         <div className="hero-copy">
           <span className="eyebrow night">Shotwise / Range log</span>
-          <h1>Every shot, accounted for.</h1>
+          <h2>Every shot, accounted for.</h2>
           <p className="hero-dek">
             Carry, speed and shape by club — and the shots that should never
             have been counted. Session by session, without changing what was

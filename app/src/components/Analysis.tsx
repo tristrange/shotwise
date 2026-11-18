@@ -73,12 +73,15 @@ export function Analysis({
           <h1>Progress</h1>
         </div>
       ) : (
-        <Hero
-          shots={summary.n}
-          sessions={summary.sessions}
-          clubs={clubs.length}
-          dateRange={dates.length ? `${dates[0]} → ${dates.at(-1)}` : 'No dates'}
-        />
+        <>
+          <h1 className="sr-only">Overview</h1>
+          <Hero
+            shots={summary.n}
+            sessions={summary.sessions}
+            clubs={clubs.length}
+            dateRange={dates.length ? `${dates[0]} → ${dates.at(-1)}` : 'No dates'}
+          />
+        </>
       )}
       {settings.mode === 'recent' && summary.n === 0 && (
         <p className="notice">
