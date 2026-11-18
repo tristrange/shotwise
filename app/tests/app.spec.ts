@@ -775,7 +775,7 @@ test('imports, reviews, corrects, undoes and syncs without losing originals', as
       .filter((s) => s.recordedClub === '7i')
       .every((s) => s.review.intent === 'unknown'),
   ).toBe(true);
-  await page.getByRole('button', { name: /3 shots →/ }).click();
+  await page.getByRole('link', { name: /3 shots →/ }).click();
   await page.getByLabel('From source row').fill('1');
   await page.getByLabel('To source row').fill('1');
   await page.getByRole('button', { name: 'Select range' }).click();
@@ -855,7 +855,7 @@ test('preserves drafts through focus refresh, network failure and stale-save con
     page,
     testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
   );
-  await page.getByRole('button', { name: /3 shots →/ }).click();
+  await page.getByRole('link', { name: /3 shots →/ }).click();
   await page.getByLabel('Notes', { exact: true }).fill('Draft to keep');
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByLabel('Notes', { exact: true })).toHaveValue(
@@ -901,7 +901,7 @@ test('keeps metadata stable while a save is pending', async ({
     page,
     testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
   );
-  await page.getByRole('button', { name: /3 shots →/ }).click();
+  await page.getByRole('link', { name: /3 shots →/ }).click();
   await page
     .getByLabel('Notes', { exact: true })
     .fill('Saved without losing edits');
@@ -984,6 +984,21 @@ test('retries duplicate imports, restores private backup and renders accessible 
   await expect(
     page.getByText('Duplicate export — already imported.', { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Session details' }),
+  ).toHaveCount(0);
+  const duplicateRecap = page.getByRole('link', {
+    name: 'View recap',
+    exact: true,
+  });
+  await expect(duplicateRecap).toHaveAttribute(
+    'href',
+    `#sessions/${again.sessionId}`,
+  );
+  await duplicateRecap.click();
+  await expect(
+    page.getByRole('region', { name: 'Session details' }),
+  ).toContainText('synthetic.csv');
   const otherEmail = `restore-${crypto.randomUUID()}@example.test`;
   const otherPassword = crypto.randomUUID() + 'Aa1!';
   const otherUser = await admin.auth.admin.createUser({
@@ -1197,5 +1212,200 @@ test('imports filename dates without confirmation and requires manual dates only
     page.getByText('Imported successfully.', { exact: true }),
   ).toHaveCount(3);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
-  expect((await account.repository.load()).sessions).toHaveLength(3);
+  const saved = (await account.repository.load()).sessions;
+  expect(saved).toHaveLength(3);
+  const first = saved.find((s) => s.filename === 'export.csv');
+  const separate = saved.find(
+    (s) => s.filename === `another_${localToday()}.csv`,
+  );
+  expect(first?.date).toBe(separate?.date);
+  expect(first?.id).not.toBe(separate?.id);
+  const sameDayRecap = page
+    .locator('.preview')
+    .last()
+    .getByRole('link', { name: 'View recap' });
+  await expect(sameDayRecap).toHaveAttribute(
+    'href',
+    `#sessions/${separate?.id}`,
+  );
+  await sameDayRecap.click();
+  await expect(
+    page.getByRole('region', { name: 'Session details' }),
+  ).toContainText(separate?.filename ?? 'missing session');
+  await page.goBack();
+  await expect(sameDayRecap).toBeFocused();
+  await manual.getByRole('link', { name: 'View recap' }).click();
+  await expect(
+    page.getByRole('region', { name: 'Session details' }),
+  ).toContainText('export.csv');
+});
+
+test('opens saved recaps and supporting shots from imports and the logbook', async ({
+  page,
+  account,
+}, testInfo) => {
+  await login(page, account);
+  await nav(
+    page,
+    testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
+  );
+  await expect(
+    page.getByText('No sessions yet. Import a CSV above to begin.'),
+  ).toBeVisible();
+
+  const today = localToday();
+  const history = [shiftDate(today, -4), shiftDate(today, -2)];
+  const exportFile = (date: string, carries: (number | null)[]) => ({
+    name: `recap_${date}.csv`,
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      csvFixture(
+        carries.map((carry) => ({
+          Club: '7i',
+          'Flat Carry Dist. Premium (m)': carry === null ? '' : String(carry),
+          'Flat Carry Dist. Range (m)': '90',
+        })),
+      ),
+    ),
+  });
+  const [older, prior] = history.map((date, offset) =>
+    exportFile(
+      date,
+      Array.from({ length: 16 }, (_, i) => 90 + offset + (i % 4) * 4),
+    ),
+  );
+  if (!older || !prior) throw new Error('Missing historical fixtures');
+  const recent = exportFile(today, [
+    ...Array.from({ length: 12 }, (_, i) => 120 + (i % 4)),
+    null,
+  ]);
+  const picker = page.getByLabel('Choose CSV files');
+  const importFiles = page.getByRole('button', { name: 'Import valid files' });
+  const recapLink = (filename: string) =>
+    page
+      .locator('.preview')
+      .filter({
+        has: page.getByRole('heading', { name: filename, exact: true }),
+      })
+      .getByRole('link', { name: 'View recap', exact: true });
+  const details = page.getByRole('region', { name: 'Session details' });
+  const heading = details.getByRole('heading', { name: 'Session details' });
+  const recap = details.getByRole('region', { name: 'Session recap' });
+
+  await picker.setInputFiles([older, prior]);
+  await importFiles.click();
+  await expect(
+    page.getByRole('link', { name: 'View recap', exact: true }),
+  ).toHaveCount(2);
+  await expect(details).toHaveCount(0);
+  expect(await recapLink(older.name).getAttribute('href')).not.toBe(
+    await recapLink(prior.name).getAttribute('href'),
+  );
+  await recapLink(older.name).click();
+  await expect(heading).toBeFocused();
+  await expect(recap).toContainText('Sparse comparable history');
+  await page.goBack();
+  await expect(recapLink(older.name)).toBeFocused();
+  await expect(details).toHaveCount(0);
+
+  await picker.setInputFiles(recent);
+  await importFiles.click();
+  await recapLink(recent.name).click();
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await expect(recap).toContainText('13 recorded · 13 included shots');
+  await expect(recap).toContainText('Median carry 25 m longer');
+  await expect(recap).toContainText('Carry spread 4.5 m tighter');
+  await expect(recap).toContainText('12 measured shots vs');
+  await recap.screenshot({ path: testInfo.outputPath('session-recap.png') });
+
+  const club = recap
+    .locator('details')
+    .filter({ hasText: '7i metric details' });
+  await expect(club).not.toHaveAttribute('open', '');
+  await club.locator('summary').click();
+  const broader = club
+    .locator('.recap-metric')
+    .filter({ hasText: 'Median carry · broader estimate' });
+  await expect(broader).toContainText('12 measured, 1 missing');
+  await expect(broader).toContainText(
+    '32 measured, 0 missing · 2 sessions across 2 dates',
+  );
+  await expect(broader).toContainText(history[0] ?? 'missing date');
+  await expect(broader).toContainText(history[1] ?? 'missing date');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await broader.screenshot({ path: testInfo.outputPath('recap-metric.png') });
+
+  const evidence = details.getByRole('region', { name: 'Supporting shots' });
+  const priorEvidence = broader
+    .getByRole('listitem')
+    .filter({ hasText: history[1] })
+    .getByRole('link');
+  await priorEvidence.click();
+  await expect(
+    evidence.getByRole('heading', { name: 'Supporting shots' }),
+  ).toBeFocused();
+  await expect(
+    evidence.getByRole('heading', { name: 'Supporting shots' }),
+  ).toBeInViewport();
+  await expect(evidence).toContainText(
+    `${history[1]} · Premium · flat (estimate) · 16 measured shots`,
+  );
+  await expect(evidence.getByRole('checkbox')).toHaveCount(16);
+  await page.goBack();
+  await expect(heading).toBeFocused();
+  await expect(club).toHaveAttribute('open', '');
+
+  await recap
+    .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
+    .click();
+  await expect(
+    recap.getByRole('button', { name: 'Range · flat', exact: true }),
+  ).toBeVisible();
+  await expect(recap).toContainText(
+    'No noteworthy changes in the comparable metrics.',
+  );
+  await nav(page, 'Overview');
+  await expect(
+    page.getByRole('button', { name: 'Range · flat', exact: true }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(recap).toContainText(
+    'No noteworthy changes in the comparable metrics.',
+  );
+
+  await page.reload();
+  await expect(heading).toBeFocused();
+  await expect(details).toContainText(recent.name);
+  const carry = recap
+    .locator('.recap-highlights li')
+    .filter({ hasText: 'Median carry 25 m longer' });
+  await carry.getByRole('link', { name: 'View supporting shots' }).click();
+  await expect(
+    evidence.getByRole('heading', { name: 'Supporting shots' }),
+  ).toBeFocused();
+  await expect(evidence.getByRole('checkbox')).toHaveCount(12);
+  await evidence.getByLabel('From source row').fill('1');
+  await evidence.getByLabel('To source row').fill('3');
+  await evidence.getByRole('button', { name: 'Select range' }).click();
+  await evidence
+    .getByRole('combobox', { name: 'Exclusion', exact: true })
+    .selectOption('excluded');
+  await evidence.getByLabel('Exclusion reason').fill('Synthetic review');
+  await evidence.getByRole('button', { name: 'Save review' }).click();
+  await expect(evidence.getByRole('checkbox')).toHaveCount(9);
+  await expect(recap).toContainText('13 recorded · 10 included shots');
+  await expect(recap).not.toContainText('Median carry 25 m longer');
+  await expect(recap).not.toContainText('Carry spread 4.5 m tighter');
+  await page.goBack();
+  await expect(heading).toBeFocused();
+  await page.getByRole('link', { name: new RegExp(older.name) }).click();
+  await expect(recap).toContainText('Sparse comparable history');
+  await expect(recap).toContainText('16 recorded · 16 included shots');
 });

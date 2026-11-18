@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import type { Session as AuthSession } from '@supabase/supabase-js';
 import { backend } from './data/repository';
-import { emptyDataset, type Dataset } from './domain/model';
+import { emptyDataset, idSchema, type Dataset } from './domain/model';
 import { parseBackup, serializeBackup } from './domain/backup';
 import { Analysis } from './components/Analysis';
 import { Sessions } from './components/Sessions';
@@ -32,7 +32,13 @@ const initialAnalysisSettings: AnalysisSettings = {
 };
 
 type Page =
-  'overview' | 'sessions' | 'review' | 'gapping' | 'progress' | 'shape' | 'settings';
+  | 'overview'
+  | 'sessions'
+  | 'review'
+  | 'gapping'
+  | 'progress'
+  | 'shape'
+  | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'sessions', label: 'Sessions & import', icon: FolderOpen },
@@ -42,9 +48,16 @@ const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'shape', label: 'Shot shape', icon: ScatterChart },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
-function pageFromHash(): Page {
-  const hash = window.location.hash.slice(1);
-  return nav.some((item) => item.id === hash) ? (hash as Page) : 'overview';
+function routeFromHash() {
+  const [path, query] = window.location.hash.slice(1).split('?');
+  const [name, id, extra] = (path ?? '').split('/');
+  const page = nav.find((item) => item.id === name)?.id ?? 'overview';
+  return {
+    page,
+    sessionId:
+      page === 'sessions' && !extra ? idSchema.safeParse(id).data : undefined,
+    evidence: query ?? '',
+  };
 }
 
 export default function App() {
@@ -57,7 +70,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState<Page>(pageFromHash);
+  const [{ page, sessionId, evidence }, setRoute] = useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
@@ -120,13 +133,10 @@ export default function App() {
     return () => window.removeEventListener('focus', focus);
   }, [session, refresh]);
   useEffect(() => {
-    const onHashChange = () => setPage(pageFromHash());
+    const onHashChange = () => setRoute(routeFromHash());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
-  useEffect(() => {
-    if (window.location.hash.slice(1) !== page) window.location.hash = page;
-  }, [page]);
   if (backend.kind === 'unconfigured')
     return (
       <div className="auth-shell">
@@ -164,7 +174,10 @@ export default function App() {
             <button
               key={id}
               className={page === id ? 'active' : ''}
-              onClick={() => setPage(id)}
+              aria-current={page === id ? 'page' : undefined}
+              onClick={() => {
+                window.location.hash = id;
+              }}
             >
               <Icon size={18} />
               {label}
@@ -203,7 +216,9 @@ export default function App() {
             <button
               key={id}
               aria-current={page === id ? 'page' : undefined}
-              onClick={() => setPage(id)}
+              onClick={() => {
+                window.location.hash = id;
+              }}
             >
               <Icon size={18} />
               <span>{id === 'sessions' ? 'Sessions' : label}</span>
@@ -258,7 +273,17 @@ export default function App() {
               />
             )}
             {page === 'sessions' && (
-              <Sessions data={data} repository={repository} refresh={refresh} />
+              <Sessions
+                data={data}
+                repository={repository}
+                refresh={refresh}
+                sessionId={sessionId}
+                evidenceQuery={evidence}
+                basis={analysisSettings.basis}
+                onBasisChange={(basis) =>
+                  setAnalysisSettings((current) => ({ ...current, basis }))
+                }
+              />
             )}
             {page === 'review' && (
               <div className="section-heading">

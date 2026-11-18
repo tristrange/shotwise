@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseCsv, suggestDate, type CsvPreview } from '../domain/csv';
-import { dateSchema, type Dataset, type Session } from '../domain/model';
+import {
+  dateSchema,
+  type Basis,
+  type Dataset,
+  type Session,
+} from '../domain/model';
+import { sessionRecap } from '../domain/recap';
 import type { Repository } from '../data/contracts';
+import { SessionRecap, recapEvidence, sessionHref } from './SessionRecap';
 import { ShotReview } from './ShotReview';
 
 type Preview = {
@@ -13,21 +20,32 @@ type Preview = {
   venue: string;
   notes: string;
   result: string;
+  saved?: Awaited<ReturnType<Repository['importCsv']>>;
 };
 export function Sessions({
   data,
   repository,
   refresh,
+  sessionId,
+  evidenceQuery,
+  basis,
+  onBasisChange,
 }: {
   data: Dataset;
   repository: Repository;
   refresh: () => Promise<void>;
+  sessionId: string | undefined;
+  evidenceQuery: string;
+  basis: Basis;
+  onBasisChange: (basis: Basis) => void;
 }) {
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState('');
-  const [error, setError] = useState('');
-  const session = data.sessions.find((s) => s.id === selected);
+  const returnLink = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!sessionId) returnLink.current?.focus();
+  }, [sessionId]);
+  const session = data.sessions.find((s) => s.id === sessionId);
   async function filesChosen(files: File[]) {
     setBusy(true);
     const next: Preview[] = [];
@@ -72,12 +90,7 @@ export function Sessions({
     for (const p of previews) {
       if (separateSessionId !== undefined && p.id !== separateSessionId)
         continue;
-      if (
-        !p.preview ||
-        p.result.startsWith('Imported') ||
-        p.result.startsWith('Duplicate')
-      )
-        continue;
+      if (!p.preview || p.saved) continue;
       if (!dateSchema.safeParse(p.date).success) {
         patch(p.id, {
           result: 'Enter a valid session date before importing.',
@@ -85,7 +98,7 @@ export function Sessions({
         continue;
       }
       try {
-        const result = await repository.importCsv({
+        const saved = await repository.importCsv({
           filename: p.filename,
           date: p.date,
           time: p.time || null,
@@ -95,12 +108,8 @@ export function Sessions({
           allowSameDay: p.id === separateSessionId,
           preview: p.preview,
         });
-        patch(p.id, {
-          result: result.duplicate
-            ? 'Duplicate export — already imported.'
-            : 'Imported successfully.',
-        });
         await refresh();
+        patch(p.id, { saved, result: '' });
       } catch (e) {
         patch(p.id, {
           result: e instanceof Error ? e.message : 'Import failed. Try again.',
@@ -270,6 +279,23 @@ export function Sessions({
                 {p.result}
               </p>
             )}
+            {p.saved && (
+              <div className="import-result">
+                <p role="status">
+                  {p.saved.duplicate
+                    ? 'Duplicate export — already imported.'
+                    : 'Imported successfully.'}
+                </p>
+                <a
+                  href={sessionHref(p.saved.sessionId)}
+                  onClick={(e) => {
+                    returnLink.current = e.currentTarget;
+                  }}
+                >
+                  View recap
+                </a>
+              </div>
+            )}
           </div>
         ))}
         {previews.length > 0 && (
@@ -293,26 +319,40 @@ export function Sessions({
             {[...data.sessions]
               .sort((a, b) => b.date.localeCompare(a.date))
               .map((s) => (
-                <button
-                  className={`session-row ${selected === s.id ? 'active' : ''}`}
+                <a
+                  className={`session-row ${sessionId === s.id ? 'active' : ''}`}
                   key={s.id}
-                  onClick={() => setSelected(s.id)}
+                  href={sessionHref(s.id)}
+                  aria-current={sessionId === s.id ? 'true' : undefined}
+                  onClick={(e) => {
+                    returnLink.current = e.currentTarget;
+                  }}
                 >
                   <span>
-                    <strong>{s.date}</strong>
+                    <strong>
+                      {s.date}
+                      {s.time && ` · ${s.time.slice(0, 5)}`}
+                    </strong>
                     <small>
-                      {s.venue || s.filename} {s.archived && '· Archived'}
+                      {s.venue && `${s.venue} · `}
+                      {s.filename}
+                      {s.archived && ' · Archived'}
                     </small>
                   </span>
                   <span>
                     {data.shots.filter((x) => x.sessionId === s.id).length}{' '}
                     shots →
                   </span>
-                </button>
+                </a>
               ))}
           </div>
         )}
       </section>
+      {sessionId && !session && data.sessions.length > 0 && (
+        <p className="notice" role="status">
+          This session is unavailable. Choose a session from the logbook.
+        </p>
+      )}
       {session && (
         <SessionDetail
           key={session.id}
@@ -320,8 +360,9 @@ export function Sessions({
           data={data}
           repository={repository}
           refresh={refresh}
-          error={error}
-          setError={setError}
+          evidenceQuery={evidenceQuery}
+          basis={basis}
+          onBasisChange={onBasisChange}
         />
       )}
     </>
@@ -332,20 +373,38 @@ function SessionDetail({
   data,
   repository,
   refresh,
-  error,
-  setError,
+  evidenceQuery,
+  basis,
+  onBasisChange,
 }: {
   session: Session;
   data: Dataset;
   repository: Repository;
   refresh: () => Promise<void>;
-  error: string;
-  setError: (s: string) => void;
+  evidenceQuery: string;
+  basis: Basis;
+  onBasisChange: (basis: Basis) => void;
 }) {
+  const [error, setError] = useState('');
   const [draft, setDraft] = useState(session);
   const [baseline, setBaseline] = useState(session);
   const [conflict, setConflict] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
+  const recap = useMemo(
+    () => sessionRecap(data, session.id, basis),
+    [data, session.id, basis],
+  );
+  const evidence = recap && recapEvidence(recap, evidenceQuery);
+  const headingId = sessionHref(session.id).slice(1);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const evidenceHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const heading = evidenceQuery
+      ? evidenceHeading.current
+      : detailHeading.current;
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: 'start' });
+  }, [evidenceQuery]);
   async function save(next: Session) {
     setBusy(true);
     setError('');
@@ -375,9 +434,19 @@ function SessionDetail({
     setBusy(false);
   }
   return (
-    <section className="panel">
-      <span className="eyebrow">Session detail</span>
-      <h2>{session.filename}</h2>
+    <section className="panel session-detail" aria-labelledby={headingId}>
+      <h2 id={headingId} tabIndex={-1} ref={detailHeading}>
+        Session details
+      </h2>
+      <p className="session-filename">{session.filename}</p>
+      {recap ? (
+        <SessionRecap recap={recap} onBasisChange={onBasisChange} />
+      ) : (
+        <p className="notice">
+          This session is archived. Unarchive it to see its recap.
+        </p>
+      )}
+      <h3>Session metadata</h3>
       <div className="form-grid">
         <label>
           Date
@@ -465,12 +534,38 @@ function SessionDetail({
           </button>
         </div>
       )}
-      <ShotReview
-        data={data}
-        repository={repository}
-        refresh={refresh}
-        sessionId={session.id}
-      />
+      {evidenceQuery ? (
+        <section
+          aria-labelledby="session-evidence"
+          className="session-evidence"
+        >
+          <h3 id="session-evidence" tabIndex={-1} ref={evidenceHeading}>
+            Supporting shots
+          </h3>
+          <p>
+            <a href={sessionHref(session.id)}>Back to recap</a>
+          </p>
+          {evidence ? (
+            <ShotReview
+              key={evidenceQuery}
+              data={data}
+              repository={repository}
+              refresh={refresh}
+              sessionId={evidence.sessionId}
+              evidence={evidence}
+            />
+          ) : (
+            <p>These supporting shots are unavailable for the current recap.</p>
+          )}
+        </section>
+      ) : (
+        <ShotReview
+          data={data}
+          repository={repository}
+          refresh={refresh}
+          sessionId={session.id}
+        />
+      )}
     </section>
   );
 }
