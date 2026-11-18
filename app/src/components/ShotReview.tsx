@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import { clubFlags } from '../domain/analytics';
 import { assessUnusualShots } from '../domain/unusualShots';
-import { effectiveClub, type Dataset, type Review } from '../domain/model';
+import {
+  effectiveClub,
+  FIELD_HEADERS,
+  type Dataset,
+  type MetricKey,
+  type Review,
+} from '../domain/model';
 import type { Repository } from '../data/contracts';
 
 export function ShotReview({
@@ -9,11 +15,17 @@ export function ShotReview({
   repository,
   refresh,
   sessionId,
+  evidence,
 }: {
   data: Dataset;
   repository: Repository;
   refresh: () => Promise<void>;
   sessionId?: string;
+  evidence?: {
+    shotIds: string[];
+    key: MetricKey;
+    context: string;
+  };
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [filter, setFilter] = useState<'flags' | 'all'>(
@@ -40,17 +52,17 @@ export function ShotReview({
       assessment.kind === 'assessed' && assessment.unusual ? [id] : [],
     ),
   ]);
-  const flagCount = data.shots.filter(
-    (s) => (!sessionId || s.sessionId === sessionId) && flagged.has(s.id),
-  ).length;
-  const shots = data.shots
-    .filter(
-      (s) =>
-        (!sessionId || s.sessionId === sessionId) &&
-        (filter === 'all' || flagged.has(s.id)),
-    )
+  const evidenceIds = evidence && new Set(evidence.shotIds);
+  const scoped = data.shots.filter(
+    (shot) =>
+      (!sessionId || shot.sessionId === sessionId) &&
+      (!evidenceIds || evidenceIds.has(shot.id)),
+  );
+  const flagCount = scoped.filter((shot) => flagged.has(shot.id)).length;
+  const shots = scoped
+    .filter((s) => filter === 'all' || flagged.has(s.id))
     .sort((a, b) => a.rowIndex - b.rowIndex);
-  const chosen = data.shots.filter((s) => selected.includes(s.id));
+  const chosen = scoped.filter((s) => selected.includes(s.id));
   async function run(undo = false) {
     if (!chosen.length) {
       setError('Select at least one shot.');
@@ -123,6 +135,11 @@ export function ShotReview({
         <div>
           <span className="eyebrow">Review shots</span>
           <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
+          {evidence && (
+            <p>
+              {evidence.context} · {shots.length} measured shots
+            </p>
+          )}
         </div>
         <span className="pill">{flagCount} flagged</span>
       </div>
@@ -138,9 +155,11 @@ export function ShotReview({
           carry and range ball speed. At least 20 earlier shots with both
           positive measurements are needed. The baseline targets the latest 50
           earlier shots within 60 days, keeping the full cutoff date. Unknown
-          intent and unreviewed contact remain eligible; partial swings, known
-          mishits, exclusions and archived sessions are left out. Effective club
-          labels are used.
+          intent remains eligible for drivers, woods, hybrids and irons. Wedge
+          shots need explicit full intent for assessment and baseline evidence.
+          Unreviewed contact remains eligible. Partial swings, known mishits,
+          exclusions and archived sessions are left out. Effective club labels
+          are used.
         </p>
         <p>
           The reference is the 75th percentile of each earlier measurement.
@@ -183,7 +202,7 @@ export function ShotReview({
           <button className="text-button" onClick={() => setSelected([])}>
             Clear selection
           </button>
-          <span>{selected.length} selected</span>
+          <span>{chosen.length} selected</span>
         </div>
         {sessionId && (
           <div className="range-controls">
@@ -338,6 +357,12 @@ export function ShotReview({
                       {s.recordedClub} → {effectiveClub(s)}
                     </strong>
                   </span>
+                  {evidence && (
+                    <span>
+                      {FIELD_HEADERS[evidence.key]}{' '}
+                      {s.measurements[evidence.key] ?? '—'}
+                    </span>
+                  )}
                   <span>
                     Premium flat carry (estimate){' '}
                     {s.measurements.flatCarryPremium ?? '—'} m

@@ -18,7 +18,7 @@ export function useScrollReveal(key: string) {
     // Reveal figure-sized blocks, not whole panels: a tall panel entering the
     // viewport would otherwise animate charts that are still far below the fold.
     const REVEAL =
-      '.hero.reveal, .statstrip.reveal, .panel-heading, .gap-list, .table-wrap, .insight-list, .progress-plots, .shape-club, .shape-detail, .session-list, .shot, .suggestion-row, .notice';
+      '.hero.reveal, .statstrip.reveal, .panel-heading, .gap-list, .table-wrap, .insight-list, .progress-plots, .shape-club, .shape-detail, .shot, .suggestion-row, .notice';
     const targets = root.querySelectorAll<HTMLElement>(REVEAL);
     const teardown: (() => void)[] = [];
 
