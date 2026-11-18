@@ -258,10 +258,10 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .gap-carry { min-width: 0; }
 .gap-stats { display: grid; gap: 3px; margin-bottom: 9px; }
 .gap-stats small, .gap-n small, .gap-value small { display: block; font: 400 11px/1.4 'Instrument Sans', sans-serif; color: var(--mute); }
-.gap-track { position: relative; height: 14px; background: transparent; }
+.gap-track { position: relative; height: 14px; background: var(--surface-subtle); }
 .gap-track::after { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 1px; background: var(--line); }
 .gap-band { position: absolute; top: 4px; height: 7px; border-radius: 1px; background: rgba(154,134,255,.45); }
-.gap-dot { position: absolute; top: 2px; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; background: var(--ink); z-index: 1; }
+.gap-dot { position: absolute; top: 2px; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; background: var(--accent); z-index: 1; }
 .gap-row.low .gap-band { background: rgba(127,127,127,.2); }
 .gap-row.low .gap-dot { background: var(--mute); }
 .gap-n { text-align: right; color: var(--mute); font: 400 12px/1.4 var(--mono); }

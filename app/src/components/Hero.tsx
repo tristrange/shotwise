@@ -66,7 +66,7 @@ export function Hero({
             recorded.
           </p>
           <p className="hero-meta mono">
-            {dateRange} <span>·</span> {shots} shots across {sessions}{' '}
+            {dateRange} <span>·</span> {shots} recorded shots across {sessions}{' '}
             {sessions === 1 ? 'session' : 'sessions'}
           </p>
         </div>
