@@ -33,6 +33,8 @@ jobs:
           npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1 &
           SUPABASE_PID=$!
           npx playwright install chromium webkit
+          # WebKit's MiniBrowser needs libevent 2.1, which current ubuntu-latest images no longer ship.
+          sudo apt-get install -y libevent-2.1-7t64 || sudo apt-get install -y libevent-2.1-7
           if ! wait "$SUPABASE_PID"; then
             cat "$RUNNER_TEMP/shotwise-supabase.log"
             exit 1
