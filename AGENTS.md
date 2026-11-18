@@ -8,6 +8,7 @@
 - For straightforward work, implement directly. For complex changes, plan briefly before implementation.
 - Use skills and subagents when they add clear value. Avoid overlapping workflows, redundant reviews, and unnecessary documentation.
 - Keep updates and final summaries concise. Report meaningful risks and verification that could not be completed.
+- In a top-level T3 Code thread with access to T3's `delegate_task`, read [T3 orchestration](docs/agents/t3-orchestration.md) before starting project work.
 
 ## Project structure
 
