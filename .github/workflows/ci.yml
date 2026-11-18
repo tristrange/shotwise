@@ -32,7 +32,7 @@ jobs:
           set -e
           npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > "$RUNNER_TEMP/shotwise-supabase.log" 2>&1 &
           SUPABASE_PID=$!
-          npx playwright install --with-deps chromium webkit
+          npx playwright install chromium webkit
           if ! wait "$SUPABASE_PID"; then
             cat "$RUNNER_TEMP/shotwise-supabase.log"
             exit 1
