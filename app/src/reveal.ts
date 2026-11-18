@@ -73,5 +73,6 @@ export function useScrollReveal(key: string) {
     });
 
     return () => teardown.forEach((stop) => stop());
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- key is an intentional re-run trigger, not a value read in the effect.
   }, [key]);
 }

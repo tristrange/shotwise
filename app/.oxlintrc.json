@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "react", "jsx-a11y"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "eslint/no-shadow": "off"
+  },
+  "env": { "browser": true, "es2022": true },
+  "overrides": [
+    { "files": ["**/*.mjs"], "env": { "node": true, "es2022": true } }
+  ],
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "playwright-report",
+    "test-results",
+    "supabase/.temp",
+    ".superpowers"
+  ]
+}
