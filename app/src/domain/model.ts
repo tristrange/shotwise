@@ -206,6 +206,15 @@ export function effectiveClub(shot: Shot): string {
 export function isWedge(club: string): boolean {
   return /^(PW|SW|GW|LW|AW|UW|W|\d{2}°?)$/i.test(club.trim());
 }
+export function fullSwingCandidate(shot: Shot) {
+  return shot.review.intent === 'full' ||
+    (shot.review.intent === 'unknown' && !isWedge(effectiveClub(shot)));
+}
+
+export function venueKey(session: Session) {
+  return session.venue.trim().toLowerCase();
+}
+
 export function isUnknownClub(club: string): boolean {
   return !club.trim() || ['?', 'unknown', '--'].includes(club.toLowerCase());
 }

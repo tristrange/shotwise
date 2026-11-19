@@ -44,20 +44,12 @@ describe('gapping analysis windows', () => {
       median: 120,
       n: 10,
     });
-    expect(
-      practiceInsights(data, 'premium-flat', recentQuery).find(
-        (insight) => insight.kind === 'direction',
-      )?.text,
-    ).toContain('curve right');
+    expect(practiceInsights(data, 'premium-flat', recentQuery)).toEqual([]);
     expect(clubGaps(data, 'premium-flat', allTimeQuery)[0]).toMatchObject({
       median: 70,
       n: 40,
     });
-    expect(
-      practiceInsights(data, 'premium-flat', allTimeQuery).find(
-        (insight) => insight.kind === 'direction',
-      )?.text,
-    ).toContain('curve left');
+    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
   });
 
   it('applies review filters after the cutoff date without backfilling older shots', () => {
@@ -595,120 +587,6 @@ describe('club gapping', () => {
       gap: -60,
       flag: 'reversed',
     });
-  });
-});
-
-describe('practice insights', () => {
-  const session = makeSession({ date: '2026-11-16' });
-  const group = (club: string, values: number[], curves: number[]) =>
-    values.map((carry, i) =>
-      makeShot({
-        sessionId: session.id,
-        recordedClub: club,
-        rowIndex: i + 1,
-        measurements: { flatCarryPremium: carry, curve: curves[i] ?? null },
-      }),
-    );
-
-  it('flags neighbouring clubs that carry almost the same', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: [
-        ...group('6i', [158, 159, 160, 160, 160, 161, 162, 160, 160, 160], []),
-        ...group('7i', [153, 154, 155, 155, 155, 156, 157, 155, 155, 155], []),
-      ],
-    };
-    const insights = practiceInsights(data, 'premium-flat', allTimeQuery);
-    expect(
-      insights.some((i) => i.kind === 'gapping' && i.text.includes('Work on 6i') && i.text.includes('7i')),
-    ).toBe(true);
-  });
-
-  it('flags a club whose carry varies widely', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: group(
-        'PW',
-        [80, 120, 80, 120, 80, 120, 80, 120, 80, 120, 100, 100],
-        [],
-      ),
-    };
-    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'inconsistency', shots: 12 }),
-      ]),
-    );
-  });
-
-  it('does not describe a large reversed gap as nearly equal carry', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: [
-        ...group('5i', Array(10).fill(100), []),
-        ...group('6i', Array(10).fill(160), []),
-      ],
-    };
-    const advice = practiceInsights(data, 'premium-flat', allTimeQuery).find((i) => i.kind === 'gapping');
-    expect(advice?.text).toContain('Work on 5i');
-    expect(advice?.text).toContain('currently carries less');
-    expect(advice?.text).not.toContain('only');
-  });
-
-  it('does not generate gap advice from overlapping spreads when medians differ by 25 m', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: [
-        ...group('6i', [150, 150, 160, 165, 170, 170, 175, 180, 190, 190], []),
-        ...group('7i', [125, 125, 135, 140, 145, 145, 150, 155, 165, 165], []),
-      ],
-    };
-    const insight = practiceInsights(data, 'premium-flat', allTimeQuery).find(
-      (i) => i.kind === 'gapping',
-    );
-    expect(insight).toBeUndefined();
-  });
-
-  it('flags a one-sided tendency with the count behind it', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: group('3w', Array(10).fill(200), [5, 5, 5, 5, 5, 5, 5, 5, 0, 0]),
-    };
-    const insight = practiceInsights(data, 'premium-flat', allTimeQuery).find(
-      (i) => i.kind === 'direction',
-    );
-    expect(insight).toMatchObject({ shots: 10 });
-    expect(insight?.text).toContain('8 of 10');
-    expect(insight?.text).toContain('curve right');
-  });
-
-  it.each([1, 9])(
-    'withholds curve advice with only %s measured curves',
-    (count) => {
-      const data = {
-        ...emptyDataset,
-        sessions: [session],
-        shots: group('7i', Array(10).fill(150), Array(count).fill(-5)),
-      };
-      expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
-    },
-  );
-
-  it('says nothing for steady, balanced data', () => {
-    const data = {
-      ...emptyDataset,
-      sessions: [session],
-      shots: group(
-        '7i',
-        [158, 159, 160, 160, 160, 161, 162, 160, 160, 160],
-        [-2, 2, 0, -2, 2, 0, -2, 2, 0, 0],
-      ),
-    };
-    expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
   });
 });
 

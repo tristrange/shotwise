@@ -15,6 +15,7 @@ import {
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { ClubProgress } from './ClubProgress';
 import { Hero } from './Hero';
+import { PracticeInsights } from './PracticeInsights';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 export function Analysis({
@@ -81,6 +82,7 @@ export function Analysis({
             clubs={clubs.length}
             dateRange={dates.length ? `${dates[0]} → ${dates.at(-1)}` : 'No dates'}
           />
+          <PracticeInsights data={data} settings={settings} overview />
         </>
       )}
       {settings.mode === 'recent' && summary.n === 0 && (

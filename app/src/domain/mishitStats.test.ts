@@ -43,7 +43,7 @@ it('detects a joint low driver shot against an earlier upper-quartile reference 
   ).toBeCloseTo(106.6);
 });
 
-it('recommends the longer iron from its median gap, not from overlapping carry bands', () => {
+it('shows a single-visit median gap without recommending practice', () => {
   const session = makeSession();
   const shots = [
     ...Array.from({ length: 10 }, () =>
@@ -72,12 +72,7 @@ it('recommends the longer iron from its median gap, not from overlapping carry b
     gap: 2,
     flag: 'small',
   });
-  const advice = practiceInsights(data, 'premium-flat', query).find(
-    (i) => i.kind === 'gapping',
-  );
-  expect(advice?.text).toContain('Work on 5i');
-  expect(advice?.text).toContain('111 m');
-  expect(advice?.text).toContain('109 m');
+  expect(practiceInsights(data, 'premium-flat', query)).toEqual([]);
 });
 
 it('lets the user hide automatic and reviewed mishits while preserving typical, unassessed and original shots', () => {

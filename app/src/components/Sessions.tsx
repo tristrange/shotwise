@@ -8,6 +8,7 @@ import {
 } from '../domain/model';
 import { sessionRecap } from '../domain/recap';
 import type { Repository } from '../data/contracts';
+import { resolvePracticeEvidence } from './PracticeInsights';
 import { SessionRecap, recapEvidence, sessionHref } from './SessionRecap';
 import { ShotReview } from './ShotReview';
 
@@ -394,7 +395,11 @@ function SessionDetail({
     () => sessionRecap(data, session.id, basis),
     [data, session.id, basis],
   );
-  const evidence = recap && recapEvidence(recap, evidenceQuery);
+  const params = new URLSearchParams(evidenceQuery);
+  const practice = params.has('practice');
+  const evidence = practice
+    ? resolvePracticeEvidence(data, session.id, params)
+    : recap && recapEvidence(recap, evidenceQuery);
   const headingId = sessionHref(session.id).slice(1);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const evidenceHeading = useRef<HTMLHeadingElement>(null);
@@ -543,7 +548,9 @@ function SessionDetail({
             Supporting shots
           </h3>
           <p>
-            <a href={sessionHref(session.id)}>Back to recap</a>
+            <a href={sessionHref(session.id)}>
+              {practice ? 'View full session recap' : 'Back to recap'}
+            </a>
           </p>
           {evidence ? (
             <ShotReview
@@ -555,7 +562,7 @@ function SessionDetail({
               evidence={evidence}
             />
           ) : (
-            <p>These supporting shots are unavailable for the current recap.</p>
+            <p>These supporting shots are unavailable for the current data.</p>
           )}
         </section>
       ) : (

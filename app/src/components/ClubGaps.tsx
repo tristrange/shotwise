@@ -1,10 +1,8 @@
-import {
-  clubGaps,
-  practiceInsights,
-  type AnalysisSettings,
-} from '../domain/analytics';
+import { useEffect, useRef } from 'react';
+import { clubGaps, type AnalysisSettings } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import { PracticeInsights } from './PracticeInsights';
 
 export function ClubGaps({
   data,
@@ -18,13 +16,19 @@ export function ClubGaps({
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
   const rows = clubGaps(data, basis, query);
-  const insights = practiceInsights(data, basis, query);
   const scale = Math.max(...rows.map((row) => row.high ?? row.median), 1) * 1.1;
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+    heading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, []);
 
   return (
     <>
       <div className="section-heading">
-        <h1>Club gapping</h1>
+        <h1 id="gapping" tabIndex={-1} ref={heading}>
+          Club gapping
+        </h1>
       </div>
       <section className="panel">
         <div className="panel-heading">
@@ -34,21 +38,24 @@ export function ClubGaps({
           </div>
           <div className="card-controls">
             <MishitToggle settings={settings} onChange={onSettingsChange} />
-              <ViewToggle
+            <ViewToggle
               mode={settings.mode}
               onChange={(mode) => onSettingsChange({ ...settings, mode })}
             />
             <BasisButton
               basis={basis}
-              onChange={(next) => onSettingsChange({ ...settings, basis: next })}
+              onChange={(next) =>
+                onSettingsChange({ ...settings, basis: next })
+              }
             />
           </div>
         </div>
         <p>
-          Unreviewed shots count unless you filter by review. Partial and
-          mishit shots never do. The dot is median carry; the bar is the middle
-          80%. Grey rows have fewer than ten shots. A negative gap means this
-          club carried farther than the one above. Gap recommendations use medians, not overlapping bands.
+          Unreviewed shots count unless you filter by review. Partial and mishit
+          shots never do. The dot is median carry; the bar is the middle 80%.
+          Grey rows have fewer than ten shots. A negative gap means this club
+          carried farther than the one above. Gap recommendations use
+          medians from comparable visits on multiple dates.
         </p>
         {rows.length === 0 ? (
           <p>
@@ -106,7 +113,9 @@ export function ClubGaps({
                     >
                       {row.gap === null ? '—' : `Gap: ${row.gap.toFixed(0)} m`}
                       {row.flag === 'small' && <small>small median gap</small>}
-                      {row.flag === 'reversed' && <small>medians reversed</small>}
+                      {row.flag === 'reversed' && (
+                        <small>medians reversed</small>
+                      )}
                       {row.flag === 'large' && <small>large gap</small>}
                     </span>
                   </div>
@@ -116,28 +125,7 @@ export function ClubGaps({
           </div>
         )}
       </section>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Where to spend time</span>
-            <h2>Practice insights</h2>
-          </div>
-        </div>
-        {insights.length === 0 ? (
-          <p>No clear patterns yet. Keep logging shots and check back later.</p>
-        ) : (
-          <div className="insight-list">
-            {insights.map((insight) => (
-              <div className="insight" key={insight.id}>
-                <p>{insight.text}</p>
-                <span>
-                  {insight.rule} · {insight.shots} shots
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <PracticeInsights data={data} settings={settings} />
     </>
   );
 }
