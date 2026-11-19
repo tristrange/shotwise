@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Page, type TestInfo } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { localStack } from './local';
 import { csvFixture } from '../src/domain/fixtures';
@@ -2039,4 +2039,315 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
   await page.goBack();
   await expect(benchmark).toContainText('Median 44 m');
   await expect(target).toContainText('1 full, 1 partial, 3 unknown intent');
+});
+
+const CORRECTION_FILENAME = 'consecutive-correction.csv';
+const CORRECTION_LABEL = '6i';
+const CORRECTION_TIME = '10:00';
+
+async function seedClubCorrection(account: Account) {
+  const date = localToday();
+  const result = await account.repository.importCsv({
+    filename: CORRECTION_FILENAME,
+    date,
+    time: CORRECTION_TIME,
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture(
+          Array.from({ length: 14 }, (_, i) => ({
+            'Flat Carry Dist. Range (m)': String(100 + (i % 5)),
+            'Ball Speed (kph)': String(140 + (i % 5)),
+            'Flat Carry Dist. Premium (m)': String(120 + (i % 5)),
+          })),
+        ),
+      ),
+    ),
+  });
+  const data = await account.repository.load();
+  const at = (row: number) => {
+    const shot = data.shots.find(
+      (s) => s.sessionId === result.sessionId && s.rowIndex === row,
+    );
+    if (!shot) throw new Error(`Missing seeded row ${row}`);
+    return shot;
+  };
+  const reviewedContact = at(1);
+  const confirmed = at(2);
+  const corrected = at(11);
+  // Two pre-reviewed labels inside the 12-row selection; both must be skipped.
+  await account.repository.review([
+    {
+      shotId: reviewedContact.id,
+      expectedRevision: reviewedContact.revision,
+      review: {
+        ...reviewedContact.review,
+        intent: 'partial',
+        contact: 'typical',
+        exclusion: { kind: 'excluded', reason: 'Synthetic exclusion' },
+      },
+    },
+    {
+      shotId: confirmed.id,
+      expectedRevision: confirmed.revision,
+      review: { ...confirmed.review, club: { kind: 'confirmed' } },
+    },
+    {
+      shotId: corrected.id,
+      expectedRevision: corrected.revision,
+      review: {
+        ...corrected.review,
+        club: { kind: 'corrected', club: '8i' },
+      },
+    },
+  ]);
+  return date;
+}
+
+async function openCorrectionSession(
+  page: Page,
+  account: Account,
+  testInfo: TestInfo,
+) {
+  await login(page, account);
+  await nav(
+    page,
+    testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
+  );
+  await page.getByRole('link', { name: /consecutive-correction\.csv/ }).click();
+}
+
+async function selectCorrectionRange(page: Page, from: number, to: number) {
+  await page.getByLabel('From source row', { exact: true }).fill(String(from));
+  await page.getByLabel('To source row', { exact: true }).fill(String(to));
+  await page.getByRole('button', { name: 'Select range', exact: true }).click();
+}
+
+async function openCorrectionPreview(page: Page, club = CORRECTION_LABEL) {
+  await page
+    .getByRole('combobox', { name: 'Club decision', exact: true })
+    .selectOption('corrected');
+  await page.getByLabel('Corrected club', { exact: true }).fill(club);
+  await page
+    .getByRole('button', { name: 'Preview club correction', exact: true })
+    .click();
+  return page.getByRole('region', {
+    name: 'Club correction preview',
+    exact: true,
+  });
+}
+
+test('previews, applies and exactly undoes a ten-row club correction without touching originals or skipped decisions', async ({
+  page,
+  account,
+}, testInfo) => {
+  const date = await seedClubCorrection(account);
+  const before = await account.repository.load();
+  const appliedIds = new Set(
+    before.shots
+      .filter(
+        (shot) => shot.rowIndex <= 12 && shot.review.club.kind === 'unreviewed',
+      )
+      .map((shot) => shot.id),
+  );
+  expect(appliedIds.size).toBe(10);
+  await openCorrectionSession(page, account, testInfo);
+
+  // Record writes issued by the page: preview and cancel must be read-only.
+  let writes = 0;
+  await page.route('**/rest/v1/rpc/apply_reviews', (route) => {
+    writes++;
+    return route.continue();
+  });
+  await page.route('**/rest/v1/rpc/undo_reviews', (route) => {
+    writes++;
+    return route.continue();
+  });
+
+  await selectCorrectionRange(page, 1, 12);
+  await expect(page.getByText('12 selected', { exact: true })).toBeVisible();
+  const preview = await openCorrectionPreview(page);
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole('heading')).toBeFocused();
+  await expect(preview).toContainText(CORRECTION_FILENAME);
+  await expect(preview).toContainText(date);
+  await expect(preview).toContainText(CORRECTION_TIME);
+  await expect(preview).toContainText('7i'); // old effective label
+  await expect(preview).toContainText(CORRECTION_LABEL); // proposed label
+  await expect(preview).toContainText('8i'); // corrected row's effective label
+  await expect(preview).toContainText(/skip/i); // skipped confirmed + corrected
+  await expect(preview).toContainText('10 of 12 selected rows will change');
+  await expect(
+    page.getByRole('button', { name: 'Save review', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByLabel('Corrected club', { exact: true }),
+  ).toBeDisabled();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await expect(
+    preview.getByRole('button', { name: 'Apply club correction', exact: true }),
+  ).toBeVisible();
+  const cancel = preview.getByRole('button', {
+    name: 'Cancel preview',
+    exact: true,
+  });
+  await expect(cancel).toBeVisible();
+
+  // Native-button keyboard activation; cancelling writes nothing.
+  await cancel.focus();
+  await page.keyboard.press('Enter');
+  await expect(preview).toHaveCount(0);
+  expect(writes).toBe(0);
+  expect(await account.repository.load()).toEqual(before);
+
+  // Re-open with the same selection and apply via the keyboard.
+  await selectCorrectionRange(page, 1, 12);
+  await openCorrectionPreview(page);
+  await expect(preview).toBeVisible();
+  await preview
+    .getByRole('button', { name: 'Apply club correction', exact: true })
+    .focus();
+  await page.keyboard.press('Enter');
+  const undo = page.getByRole('button', { name: 'Undo club correction' });
+  await expect(undo).toBeEnabled();
+  expect((await account.repository.load()).shots).toEqual(
+    before.shots.map((shot) =>
+      appliedIds.has(shot.id)
+        ? {
+            ...shot,
+            revision: shot.revision + 1,
+            review: {
+              ...shot.review,
+              club: { kind: 'corrected', club: CORRECTION_LABEL },
+            },
+          }
+        : shot,
+    ),
+  );
+  expect(writes).toBe(1);
+
+  // Change the selection to a different range: undo must still act on the
+  // exact applied IDs, not whatever is now selected.
+  await selectCorrectionRange(page, 13, 14);
+  await expect(page.getByText('2 selected', { exact: true })).toBeVisible();
+  await undo.click();
+  await expect
+    .poll(async () => (await account.repository.load()).shots)
+    .toEqual(
+      before.shots.map((shot) =>
+        appliedIds.has(shot.id)
+          ? { ...shot, revision: shot.revision + 2 }
+          : shot,
+      ),
+    );
+  expect(writes).toBe(2);
+
+  // Rows already carrying the proposed label stay untouched even with opt-in.
+  await selectCorrectionRange(page, 1, 12);
+  await openCorrectionPreview(page, '7I');
+  const apply = preview.getByRole('button', { name: 'Apply club correction' });
+  await expect(apply).toBeDisabled();
+  await preview
+    .getByRole('checkbox', { name: 'Include previously reviewed clubs' })
+    .check();
+  await expect(preview).toContainText('1 of 12 selected rows will change');
+  await cancel.click();
+  expect(writes).toBe(2);
+});
+
+test('pins previewed revisions so an intervening edit rejects the batch atomically', async ({
+  page,
+  account,
+}, testInfo) => {
+  await seedClubCorrection(account);
+  await openCorrectionSession(page, account, testInfo);
+  await selectCorrectionRange(page, 1, 12);
+  const preview = await openCorrectionPreview(page);
+  await expect(preview).toBeVisible();
+
+  // A second repository edit advances a later selected row after the preview
+  // captured its revision.
+  const loaded = await account.repository.load();
+  const later = loaded.shots.find((s) => s.rowIndex === 12);
+  if (!later) throw new Error('Missing later row');
+  await account.repository.review([
+    {
+      shotId: later.id,
+      expectedRevision: later.revision,
+      review: { ...later.review, intent: 'full' },
+    },
+  ]);
+  const afterEdit = await account.repository.load();
+  expect(afterEdit.shots.find((s) => s.id === later.id)?.review.intent).toBe(
+    'full',
+  );
+  expect(afterEdit.shots.find((s) => s.id === later.id)?.revision).toBe(
+    later.revision + 1,
+  );
+
+  // Trigger the app's focus refresh; the pinned preview must survive it, and
+  // the refreshed data must still show the intervening edit.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(preview).toBeVisible();
+  await expect(
+    page.locator('.shot').filter({ hasText: 'Row 12 · Shot #12' }),
+  ).toContainText('full · uncertain · included');
+
+  await preview
+    .getByRole('button', { name: 'Apply club correction', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    /another device|conflict|revision/i,
+  );
+  // Atomic rejection: no shot changed beyond the external edit.
+  expect(await account.repository.load()).toEqual(afterEdit);
+});
+
+test('exact undo conflicts and restores zero shots after an intervening edit', async ({
+  page,
+  account,
+}, testInfo) => {
+  await seedClubCorrection(account);
+  await openCorrectionSession(page, account, testInfo);
+  await selectCorrectionRange(page, 1, 12);
+  const preview = await openCorrectionPreview(page);
+  await preview
+    .getByRole('button', { name: 'Apply club correction', exact: true })
+    .click();
+  const undo = page.getByRole('button', { name: 'Undo club correction' });
+  await expect(undo).toBeEnabled();
+  const afterApply = await account.repository.load();
+
+  // Advance one touched row's revision after apply, so the pinned undo is stale.
+  const touched = afterApply.shots.find((s) => s.rowIndex === 12);
+  if (!touched) throw new Error('Missing touched row');
+  await account.repository.review([
+    {
+      shotId: touched.id,
+      expectedRevision: touched.revision,
+      review: { ...touched.review, intent: 'full' },
+    },
+  ]);
+  const afterEdit = await account.repository.load();
+  expect(afterEdit.shots.find((s) => s.id === touched.id)?.review.intent).toBe(
+    'full',
+  );
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(
+    page.locator('.shot').filter({ hasText: 'Row 12 · Shot #12' }),
+  ).toContainText('full · uncertain · included');
+  await undo.click();
+  await expect(page.getByRole('alert')).toContainText(
+    /another device|conflict|revision/i,
+  );
+  // Zero shots restored: state is unchanged from the post-edit snapshot.
+  expect(await account.repository.load()).toEqual(afterEdit);
 });
