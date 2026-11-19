@@ -7,8 +7,11 @@ import {
   type Dataset,
   type MetricKey,
   type Review,
+  type Shot,
 } from '../domain/model';
 import type { Repository } from '../data/contracts';
+
+type Filter = 'flags' | 'reviewed' | 'all';
 
 export function ShotReview({
   data,
@@ -27,10 +30,39 @@ export function ShotReview({
     context: string;
   };
 }) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [filter, setFilter] = useState<'flags' | 'all'>(
-    sessionId ? 'all' : 'flags',
+  const assessments = useMemo(
+    () => assessUnusualShots(data.shots, data.sessions),
+    [data.shots, data.sessions],
   );
+  const flags = clubFlags(data.shots, data.sessions);
+  const flagged = new Set([
+    ...flags.keys(),
+    ...[...assessments].flatMap(([id, assessment]) =>
+      assessment.kind === 'assessed' && assessment.unusual ? [id] : [],
+    ),
+  ]);
+  const reviewedIds = useMemo(
+    () =>
+      new Set(
+        data.events
+          .filter((event) => !event.undone)
+          .map((event) => event.shotId),
+      ),
+    [data.events],
+  );
+  const evidenceIds = evidence && new Set(evidence.shotIds);
+  const scoped = data.shots.filter(
+    (shot) =>
+      (!sessionId || shot.sessionId === sessionId) &&
+      (!evidenceIds || evidenceIds.has(shot.id)),
+  );
+  scoped.sort((a, b) => a.rowIndex - b.rowIndex);
+  const matches = (shot: Shot, filter: Filter) =>
+    filter === 'all' ||
+    (filter === 'flags' ? flagged.has(shot.id) : reviewedIds.has(shot.id));
+  const [filter, setFilter] = useState<Filter>(sessionId ? 'all' : 'flags');
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const [intent, setIntent] = useState('');
   const [contact, setContact] = useState('');
   const [club, setClub] = useState('');
@@ -39,31 +71,69 @@ export function ShotReview({
   const [reason, setReason] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<'save' | 'undo' | null>(null);
   const [error, setError] = useState('');
-  const flags = clubFlags(data.shots, data.sessions);
-  const assessments = useMemo(
-    () => assessUnusualShots(data.shots, data.sessions),
-    [data.shots, data.sessions],
-  );
-  const flagged = new Set([
-    ...flags.keys(),
-    ...[...assessments].flatMap(([id, assessment]) =>
-      assessment.kind === 'assessed' && assessment.unusual ? [id] : [],
-    ),
-  ]);
-  const evidenceIds = evidence && new Set(evidence.shotIds);
-  const scoped = data.shots.filter(
-    (shot) =>
-      (!sessionId || shot.sessionId === sessionId) &&
-      (!evidenceIds || evidenceIds.has(shot.id)),
-  );
+  const busy = pending !== null;
+  const shots = scoped.filter((shot) => matches(shot, filter));
+  const focus =
+    scoped.find((shot) => shot.id === focusedId) ?? shots[0] ?? null;
+  // The focused shot keeps its card visible even when it leaves the filter,
+  // until navigation or an intentional filter change moves the focus.
+  const shown =
+    focus && !shots.some((shot) => shot.id === focus.id)
+      ? [focus, ...shots]
+      : shots;
   const flagCount = scoped.filter((shot) => flagged.has(shot.id)).length;
-  const shots = scoped
-    .filter((s) => filter === 'all' || flagged.has(s.id))
-    .sort((a, b) => a.rowIndex - b.rowIndex);
-  const chosen = scoped.filter((s) => selected.includes(s.id));
+  const chosen = shown.filter((shot) => selected.includes(shot.id));
+  const sessionRows = focus
+    ? data.shots
+        .filter((shot) => shot.sessionId === focus.sessionId)
+        .sort((a, b) => a.rowIndex - b.rowIndex)
+    : [];
+  const navRows = focus
+    ? shots.filter((shot) => shot.sessionId === focus.sessionId)
+    : [];
+  const previous = focus
+    ? (navRows.findLast((shot) => shot.rowIndex < focus.rowIndex) ?? null)
+    : null;
+  const next = focus
+    ? (navRows.find((shot) => shot.rowIndex > focus.rowIndex) ?? null)
+    : null;
+  const focusIndex = focus
+    ? sessionRows.findIndex((shot) => shot.id === focus.id)
+    : -1;
+  const nearby =
+    focusIndex >= 0
+      ? sessionRows.slice(Math.max(0, focusIndex - 1), focusIndex + 2)
+      : [];
+  const sessionFor = (id: string) =>
+    data.sessions.find((session) => session.id === id);
+  const focusedSession = focus && sessionFor(focus.sessionId);
+  function resetDrafts() {
+    setIntent('');
+    setContact('');
+    setClub('');
+    setCorrected('');
+    setExclusion('');
+    setReason('');
+  }
+  function changeFilter(nextFilter: Filter) {
+    if (busy || nextFilter === filter) return;
+    setFilter(nextFilter);
+    setSelected([]);
+    setFocusedId(null);
+    setError('');
+    resetDrafts();
+  }
+  function go(target: Shot | null) {
+    if (busy || !target) return;
+    setFocusedId(target.id);
+    setSelected([target.id]);
+    setError('');
+    resetDrafts();
+  }
   async function run(undo = false) {
+    if (busy) return;
     if (!chosen.length) {
       setError('Select at least one shot.');
       return;
@@ -76,7 +146,8 @@ export function ShotReview({
       setError('Enter the corrected club.');
       return;
     }
-    setBusy(true);
+    setFocusedId(focus?.id ?? null);
+    setPending(undo ? 'undo' : 'save');
     setError('');
     try {
       if (undo)
@@ -120,6 +191,7 @@ export function ShotReview({
         );
       await refresh();
       setSelected([]);
+      resetDrafts();
     } catch (e) {
       setError(
         e instanceof Error
@@ -127,7 +199,7 @@ export function ShotReview({
           : 'Save failed. Your choices are preserved; refresh if the data changed elsewhere.',
       );
     }
-    setBusy(false);
+    setPending(null);
   }
   return (
     <div className="review">
@@ -137,7 +209,7 @@ export function ShotReview({
           <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
           {evidence && (
             <p>
-              {evidence.context} · {shots.length} measured shots
+              {evidence.context} · {scoped.length} measured shots
             </p>
           )}
         </div>
@@ -172,34 +244,103 @@ export function ShotReview({
           Undo selected restores the previous decision.
         </p>
       </details>
-      {!sessionId && (
-        <>
-          <p>Browse all to see shots where the unusual-shot rule abstained.</p>
-          <div className="tabs">
+      <p>All shots includes shots where the unusual-shot rule abstained.</p>
+      <div className="tabs">
+        <button
+          aria-pressed={filter === 'flags'}
+          className={filter === 'flags' ? 'active' : ''}
+          disabled={busy}
+          onClick={() => changeFilter('flags')}
+        >
+          Open flags
+        </button>
+        <button
+          aria-pressed={filter === 'reviewed'}
+          className={filter === 'reviewed' ? 'active' : ''}
+          disabled={busy}
+          onClick={() => changeFilter('reviewed')}
+        >
+          Manually reviewed
+        </button>
+        <button
+          aria-pressed={filter === 'all'}
+          className={filter === 'all' ? 'active' : ''}
+          disabled={busy}
+          onClick={() => changeFilter('all')}
+        >
+          All shots
+        </button>
+      </div>
+      <section className="focused-review" aria-label="Focused shot">
+        <div className="focused-head">
+          <p className="focused-label" aria-live="polite">
+            {focus ? (
+              <>
+                Focused:{' '}
+                <strong>
+                  Row {focus.rowIndex} · Shot #{focus.sourceNumber || '—'}
+                </strong>{' '}
+                {focusedSession &&
+                  `· ${focusedSession.date} · ${focusedSession.filename}`}
+              </>
+            ) : (
+              'No shot in focus'
+            )}
+          </p>
+          <div className="focused-nav">
             <button
-              className={filter === 'flags' ? 'active' : ''}
-              onClick={() => setFilter('flags')}
+              className="secondary"
+              disabled={busy || !previous}
+              onClick={() => go(previous)}
             >
-              Flagged only
+              Previous shot
             </button>
             <button
-              className={filter === 'all' ? 'active' : ''}
-              onClick={() => setFilter('all')}
+              className="secondary"
+              disabled={busy || !next}
+              onClick={() => go(next)}
             >
-              Browse all
+              Next shot
             </button>
           </div>
-        </>
-      )}
+        </div>
+        <section className="nearby" aria-label="Nearby source rows">
+          <p className="nearby-title">
+            Nearby source rows · Range-flat carry and ball speed
+          </p>
+          {nearby.length === 0 ? (
+            <p className="muted">No rows in this view.</p>
+          ) : (
+            <ul>
+              {nearby.map((shot) => (
+                <li
+                  key={shot.id}
+                  aria-current={shot.id === focus?.id ? 'true' : undefined}
+                >
+                  Row {shot.rowIndex} · Shot #{shot.sourceNumber || '—'} ·{' '}
+                  {effectiveClub(shot)} ·{' '}
+                  {shot.measurements.flatCarryRange ?? '—'} m{' · '}
+                  {shot.measurements.speedRange ?? '—'} kph
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </section>
       <div className="review-controls">
         <div className="actions">
           <button
             className="secondary"
+            disabled={busy}
             onClick={() => setSelected(shots.map((s) => s.id))}
           >
-            Select all shown
+            Select all matching
           </button>
-          <button className="text-button" onClick={() => setSelected([])}>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setSelected([])}
+          >
             Clear selection
           </button>
           <span>{chosen.length} selected</span>
@@ -211,6 +352,7 @@ export function ShotReview({
               <input
                 type="number"
                 min="1"
+                disabled={busy}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
               />
@@ -220,12 +362,14 @@ export function ShotReview({
               <input
                 type="number"
                 min="1"
+                disabled={busy}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
               />
             </label>
             <button
               className="secondary"
+              disabled={busy}
               onClick={() =>
                 setSelected(
                   shots
@@ -245,7 +389,11 @@ export function ShotReview({
         <div className="form-grid">
           <label>
             Set intent
-            <select value={intent} onChange={(e) => setIntent(e.target.value)}>
+            <select
+              value={intent}
+              disabled={busy}
+              onChange={(e) => setIntent(e.target.value)}
+            >
               <option value="">Leave unchanged</option>
               <option value="full">Full</option>
               <option value="partial">Partial</option>
@@ -256,6 +404,7 @@ export function ShotReview({
             Set contact
             <select
               value={contact}
+              disabled={busy}
               onChange={(e) => setContact(e.target.value)}
             >
               <option value="">Leave unchanged</option>
@@ -266,7 +415,11 @@ export function ShotReview({
           </label>
           <label>
             Club decision
-            <select value={club} onChange={(e) => setClub(e.target.value)}>
+            <select
+              value={club}
+              disabled={busy}
+              onChange={(e) => setClub(e.target.value)}
+            >
               <option value="">Leave unchanged</option>
               <option value="confirmed">Confirm recorded</option>
               <option value="corrected">Correct club</option>
@@ -278,6 +431,7 @@ export function ShotReview({
               Corrected club
               <input
                 value={corrected}
+                disabled={busy}
                 onChange={(e) => setCorrected(e.target.value)}
               />
             </label>
@@ -286,6 +440,7 @@ export function ShotReview({
             Exclusion
             <select
               value={exclusion}
+              disabled={busy}
               onChange={(e) => setExclusion(e.target.value)}
             >
               <option value="">Leave unchanged</option>
@@ -299,6 +454,7 @@ export function ShotReview({
               <input
                 required
                 value={reason}
+                disabled={busy}
                 onChange={(e) => setReason(e.target.value)}
               />
             </label>
@@ -316,39 +472,49 @@ export function ShotReview({
             Undo selected
           </button>
         </div>
+        {pending && (
+          <p role="status" className="notice">
+            {pending === 'save' ? 'Saving review…' : 'Undoing review…'}
+          </p>
+        )}
         {error && (
           <p role="alert" className="error">
             {error}
           </p>
         )}
       </div>
-      {shots.length === 0 ? (
+      {shown.length === 0 ? (
         <p>No shots in this view.</p>
       ) : (
         <div className="shot-list">
-          {shots.map((s) => {
+          {shown.map((s) => {
             const flag = flags.get(s.id);
             const assessment = assessments.get(s.id);
             return (
-              <article className="shot" key={s.id}>
+              <article
+                className={focus?.id === s.id ? 'shot is-focused' : 'shot'}
+                key={s.id}
+              >
                 <label className="shot-title">
                   <input
                     type="checkbox"
+                    disabled={busy}
                     checked={selected.includes(s.id)}
-                    onChange={(e) =>
-                      setSelected((old) =>
-                        e.target.checked
-                          ? [...old, s.id]
-                          : old.filter((id) => id !== s.id),
-                      )
-                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelected((old) =>
+                          old.includes(s.id) ? old : [...old, s.id],
+                        );
+                        setFocusedId(s.id);
+                      } else {
+                        setSelected((old) => old.filter((id) => id !== s.id));
+                      }
+                    }}
                   />
                   <strong>
                     Row {s.rowIndex} · Shot #{s.sourceNumber || '—'}
                   </strong>
-                  <span>
-                    {data.sessions.find((x) => x.id === s.sessionId)?.date}
-                  </span>
+                  <span>{sessionFor(s.sessionId)?.date}</span>
                 </label>
                 <div className="shot-meta">
                   <span>
