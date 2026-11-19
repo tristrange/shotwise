@@ -101,7 +101,12 @@ export function compareSessions(
   };
   if (duplicate || !reference.available || !comparison.available) return result;
 
-  const groups = clubShotGroups(data);
+  const groups = clubShotGroups({
+    ...data,
+    sessions: data.sessions.filter(
+      ({ id }) => id === referenceId || id === comparisonId,
+    ),
+  });
   const carryKey = BASES[basis].carry;
   const matchesIntent = (shot: Shot) =>
     intent === 'all' || shot.review.intent === intent;

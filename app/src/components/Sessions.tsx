@@ -135,21 +135,23 @@ export function Sessions({
     }
     setBusy(false);
   }
+  if (compare) {
+    return (
+      <CompareSessions
+        data={data}
+        referenceId={compareReference}
+        comparisonId={compareComparison}
+        onSelect={selectComparePair}
+        basis={basis}
+        onBasisChange={onBasisChange}
+      />
+    );
+  }
   return (
     <>
       <div className="section-heading">
         <h1>Sessions & import</h1>
       </div>
-      {compare && (
-        <CompareSessions
-          data={data}
-          referenceId={compareReference}
-          comparisonId={compareComparison}
-          onSelect={selectComparePair}
-          basis={basis}
-          onBasisChange={onBasisChange}
-        />
-      )}
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -525,9 +527,11 @@ function SessionDetail({
         <button disabled={busy} onClick={() => void save(draft)}>
           Save session
         </button>
-        <a className="text-button" href={compareHref(session.id)}>
-          Compare with another session
-        </a>
+        {!session.archived && (
+          <a className="text-button" href={compareHref(session.id)}>
+            Compare with another session
+          </a>
+        )}
         <button
           className="secondary"
           disabled={busy}

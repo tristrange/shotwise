@@ -1,13 +1,6 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type SyntheticEvent,
-} from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   idSchema,
-  venueKey,
   type Basis,
   type Dataset,
   type Session,
@@ -89,19 +82,18 @@ function SideSummary({
 function ClubDetails({
   club,
   basisLabel,
-  onToggle,
 }: {
   club: SessionComparison['common'][number];
   basisLabel: string;
-  onToggle: (event: SyntheticEvent<HTMLDetailsElement>) => void;
 }) {
   const { reference, comparison, carryDelta, iqrDelta } = club;
   const sparse = reference.carry.n < 4 || comparison.carry.n < 4;
   return (
-    <details className="recap-club compare-club" onToggle={onToggle}>
+    <details className="recap-club compare-club" name="compare-clubs">
       <summary>
-        {club.club} · {reference.included} vs {comparison.included} included
-        shots{sparse && <span className="pill">sparse</span>}
+        <strong>{club.club}</strong> · {metres(reference.carry.median)} /{' '}
+        {metres(comparison.carry.median)} · {reference.included} /{' '}
+        {comparison.included} shots{sparse && <span className="pill">Sparse</span>}
       </summary>
       <div className="table-wrap">
         <table>
@@ -119,31 +111,31 @@ function ClubDetails({
           </thead>
           <tbody>
             <tr>
-              <td>Included shots</td>
+            <th scope="row">Included shots</th>
               <td>{reference.included}</td>
               <td>{comparison.included}</td>
               <td>—</td>
             </tr>
             <tr>
-              <td>Measured (n)</td>
+            <th scope="row">Measured</th>
               <td>{reference.carry.n}</td>
               <td>{comparison.carry.n}</td>
               <td>—</td>
             </tr>
             <tr>
-              <td>Missing</td>
+            <th scope="row">Missing</th>
               <td>{reference.carry.missing}</td>
               <td>{comparison.carry.missing}</td>
               <td>—</td>
             </tr>
             <tr>
-              <td>Median carry</td>
+            <th scope="row">Median carry</th>
               <td>{metres(reference.carry.median)}</td>
               <td>{metres(comparison.carry.median)}</td>
               <td>{signedMetres(carryDelta)}</td>
             </tr>
             <tr>
-              <td>Carry IQR</td>
+            <th scope="row">Carry IQR</th>
               <td>{metres(reference.carry.iqr)}</td>
               <td>{metres(comparison.carry.iqr)}</td>
               <td>{signedMetres(iqrDelta)}</td>
@@ -153,8 +145,7 @@ function ClubDetails({
       </div>
       {sparse && (
         <p className="notice">
-          Sparse sample: fewer than 4 measured carries on at least one side, so
-          IQR is unavailable there.
+          Carry IQR needs at least 4 measured shots per side.
         </p>
       )}
     </details>
@@ -181,7 +172,6 @@ export function CompareSessions({
 }) {
   const [intent, setIntent] = useState<CompareIntent>('all');
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const clubListRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const heading = headingRef.current;
     heading?.focus({ preventScroll: true });
@@ -203,41 +193,34 @@ export function CompareSessions({
     referenceId && comparisonId
       ? compareSessions(data, referenceId, comparisonId, basis, intent)
       : null;
-  // At most one club detail expanded at a time.
-  function onClubToggle(event: SyntheticEvent<HTMLDetailsElement>) {
-    if (!event.currentTarget.open) return;
-    for (const open of clubListRef.current?.querySelectorAll('details[open]') ??
-      []) {
-      if (open !== event.currentTarget)
-        (open as HTMLDetailsElement).open = false;
-    }
-  }
   const bothAvailable =
     comparison !== null &&
     !comparison.duplicate &&
     comparison.reference.available &&
     comparison.comparison.available;
+  const referenceVenue = comparison?.reference.session?.venue.trim();
+  const comparisonVenue = comparison?.comparison.session?.venue.trim();
   const venuesDiffer =
-    bothAvailable &&
-    comparison.reference.session !== null &&
-    comparison.comparison.session !== null &&
-    Boolean(venueKey(comparison.reference.session)) &&
-    venueKey(comparison.reference.session) !==
-      venueKey(comparison.comparison.session);
+    referenceVenue &&
+    comparisonVenue &&
+    referenceVenue.toLowerCase() !== comparisonVenue.toLowerCase();
   return (
     <section className="panel compare-panel" aria-labelledby="compare-heading">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Session comparison</span>
           <h2 id="compare-heading" tabIndex={-1} ref={headingRef}>
             Compare sessions
           </h2>
         </div>
-        <BasisButton basis={basis} onChange={onBasisChange} />
+        <div className="card-controls">
+          <a className="text-button" href="#sessions">
+            Back to logbook
+          </a>
+          <BasisButton basis={basis} onChange={onBasisChange} />
+        </div>
       </div>
       <p>
-        Pick two sessions to compare their included shots club by club. The pair
-        is stored in the link, so reload and Back keep your selection.
+        Pick two sessions to compare their included shots club by club.
       </p>
       <div className="compare-controls">
         <div className="form-grid">
@@ -277,7 +260,12 @@ export function CompareSessions({
             Shot intent
             <select
               value={intent}
-              onChange={(e) => setIntent(e.target.value as CompareIntent)}
+              onChange={(e) => {
+                const next = COMPARE_INTENTS.find(
+                  (value) => value === e.currentTarget.value,
+                );
+                if (next) setIntent(next);
+              }}
             >
               {COMPARE_INTENTS.map((value) => (
                 <option key={value} value={value}>
@@ -321,9 +309,7 @@ export function CompareSessions({
           </div>
           {venuesDiffer && (
             <p className="notice">
-              Venues differ ({comparison.reference.session?.venue || 'none'} vs{' '}
-              {comparison.comparison.session?.venue || 'none'}), so observed
-              differences are descriptive only.
+              These sessions took place at different venues.
             </p>
           )}
           {intent !== 'all' && (
@@ -338,7 +324,7 @@ export function CompareSessions({
           )}
           {comparison.referenceOnly.length > 0 && (
             <p>
-              Only in reference:{' '}
+              Only in reference{' · '}
               {comparison.referenceOnly
                 .map(({ club, included }) => `${club} (${included})`)
                 .join(', ')}
@@ -346,7 +332,7 @@ export function CompareSessions({
           )}
           {comparison.comparisonOnly.length > 0 && (
             <p>
-              Only in comparison:{' '}
+              Only in comparison{' · '}
               {comparison.comparisonOnly
                 .map(({ club, included }) => `${club} (${included})`)
                 .join(', ')}
@@ -358,20 +344,23 @@ export function CompareSessions({
               filter. Change either session selection or the intent filter.
             </p>
           ) : (
-            <div ref={clubListRef}>
+            <>
+              <p className="muted">
+                Median carry and shot counts are shown in reference / comparison
+                order.
+              </p>
               {comparison.common.map((club) => (
                 <ClubDetails
                   key={club.club}
                   club={club}
                   basisLabel={comparison.basisLabel}
-                  onToggle={onClubToggle}
                 />
               ))}
-            </div>
+            </>
           )}
           <p className="muted">
-            Observed differences are descriptive, not a verdict on either
-            session. Differences use comparison minus reference in native units.
+            Differences describe these visits. Carry spread is the width of the
+            middle half of measured shots (IQR).
           </p>
         </>
       ) : (
