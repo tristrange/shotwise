@@ -232,9 +232,10 @@ export function ClubProfiles({
           with typical contact when at least 10 are measured, otherwise the
           broader estimate; wedges need an explicit full intent. Carry spread is
           the middle half (IQR) of measured carries and includes mishits and
-          flagged shots. Missing measurements stay missing on the chosen basis —
-          profiles never fall back to another basis. The latest-session line
-          matches that session’s recap; the history below matches Progress.
+          flagged shots, even when Hide likely mishits is on. Missing measurements
+          stay missing on the chosen basis — profiles never fall back to another
+          basis. The latest-session line matches that session’s recap; the
+          history below matches Progress.
         </p>
         {profiles.length === 0 && (
           <p>

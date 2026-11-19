@@ -182,6 +182,41 @@ describe('club profiles', () => {
     });
   });
 
+  it('keeps confirmed mishits and automatically flagged shots in reliability with the filter on', () => {
+    const shots = [
+      ...series(current, repeat(20, 120), {
+        review: { intent: 'full' },
+        measurements: { flatCarryRange: 120, speedRange: 50 },
+      }),
+      ...series(current, repeat(8, 20), {
+        id: 'confirmed-mishits',
+        rowIndex: 21,
+        review: { intent: 'full', contact: 'mishit' },
+      }),
+      ...series(current, repeat(8, 20), {
+        id: 'low-flight',
+        rowIndex: 29,
+        review: { intent: 'full' },
+        measurements: { flatCarryRange: 20, speedRange: 15 },
+      }),
+    ];
+    const unfiltered = profile([current], shots, '7i');
+    const filtered = profile(
+      [current],
+      shots,
+      '7i',
+      undefined,
+      query({ hideLikelyMishits: true }),
+    );
+
+    expect(unfiltered.recent.typical.n).toBe(28);
+    expect(filtered.recent.typical.n).toBe(20);
+    expect(filtered.recent.spread).toEqual({ iqr: 100, n: 36, missing: 0 });
+    expect(filtered.recent.lowerTail).toEqual({ p10: 20, n: 36 });
+    expect(filtered.recent.contact).toMatchObject({ fullReviewed: 8, mishits: 8 });
+    expect(filtered.window.shots).toBe(36);
+  });
+
   it('limits the recent window to 60 days while history stays all-time', () => {
     const old = before(100);
     const mid = before(30);

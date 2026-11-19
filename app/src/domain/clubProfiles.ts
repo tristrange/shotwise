@@ -125,7 +125,14 @@ export function clubProfiles(
 
   return clubs.map((club) => {
     const selected = selectCohort(data.shots, data.sessions, { ...query, club });
-    const reliability = selected.filter(recapCohorts.reliability);
+    const windowShots = query.hideLikelyMishits
+      ? selectCohort(data.shots, data.sessions, {
+          ...query,
+          club,
+          hideLikelyMishits: false,
+        })
+      : selected;
+    const reliability = windowShots.filter(recapCohorts.reliability);
     const broaderStats = metricStats(
       selected.filter(recapCohorts.broader),
       key,
@@ -149,7 +156,7 @@ export function clubProfiles(
             n: broaderStats.n,
             missing: broaderStats.missing,
           };
-    const dates = selected
+    const dates = windowShots
       .map((shot) => sessionMap.get(shot.sessionId)?.date)
       .filter((date): date is string => Boolean(date))
       .sort();
@@ -199,8 +206,8 @@ export function clubProfiles(
         mode: query.mode,
         start: query.mode === 'recent' ? shiftDate(query.today, -59) : null,
         end: query.today,
-        sessions: new Set(selected.map((shot) => shot.sessionId)).size,
-        shots: selected.length,
+        sessions: new Set(windowShots.map((shot) => shot.sessionId)).size,
+        shots: windowShots.length,
         firstDate: dates[0] ?? null,
         lastDate: dates.at(-1) ?? null,
       },
