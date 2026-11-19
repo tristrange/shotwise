@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { clubGaps, type AnalysisSettings } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import { clubHref } from './ClubProfiles';
 import { PracticeInsights } from './PracticeInsights';
 import { WedgePractice } from './WedgePractice';
 
@@ -81,7 +82,9 @@ export function ClubGaps({
                     key={row.club}
                     role="listitem"
                   >
-                    <span className="gap-club">{row.club}</span>
+                    <span className="gap-club">
+                      <a href={clubHref(row.club)}>{row.club}</a>
+                    </span>
                     <div className="gap-carry">
                       <div className="gap-stats">
                         <strong>Median {row.median.toFixed(0)} m</strong>

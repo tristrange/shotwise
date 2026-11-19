@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   ClipboardCheck,
+  Club,
   Flag,
   FolderOpen,
   LogOut,
@@ -19,6 +20,7 @@ import { ShotReview } from './components/ShotReview';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
 import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
+import { ClubProfiles } from './components/ClubProfiles';
 import { ShotShapes } from './components/ShotShapes';
 import type { AnalysisSettings } from './domain/analytics';
 import { useScrollReveal } from './reveal';
@@ -37,6 +39,7 @@ type Page =
   | 'review'
   | 'gapping'
   | 'progress'
+  | 'clubs'
   | 'shape'
   | 'settings';
 const nav: { id: Page; label: string; icon: typeof Flag }[] = [
@@ -45,9 +48,18 @@ const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'review', label: 'Review', icon: ClipboardCheck },
   { id: 'gapping', label: 'Gapping', icon: Ruler },
   { id: 'progress', label: 'Progress', icon: Flag },
+  { id: 'clubs', label: 'Clubs', icon: Club },
   { id: 'shape', label: 'Shot shape', icon: ScatterChart },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
+function decodeSegment(segment: string | undefined) {
+  if (!segment) return undefined;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
 function routeFromHash() {
   const [path, query] = window.location.hash.slice(1).split('?');
   const [name, id, extra] = (path ?? '').split('/');
@@ -56,6 +68,7 @@ function routeFromHash() {
     page,
     sessionId:
       page === 'sessions' && !extra ? idSchema.safeParse(id).data : undefined,
+    club: page === 'clubs' && !extra ? decodeSegment(id) : undefined,
     evidence: query ?? '',
   };
 }
@@ -70,7 +83,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ page, sessionId, evidence }, setRoute] = useState(routeFromHash);
+  const [{ page, sessionId, club, evidence }, setRoute] = useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
@@ -263,6 +276,14 @@ export default function App() {
                 settings={analysisSettings}
                 onSettingsChange={setAnalysisSettings}
                 progressView
+              />
+            )}
+            {page === 'clubs' && (
+              <ClubProfiles
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
+                focusClub={club}
               />
             )}
             {page === 'shape' && (

@@ -13,6 +13,7 @@ import {
   type AnalysisSettings,
 } from '../domain/analytics';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import { clubHref } from './ClubProfiles';
 import { ClubProgress } from './ClubProgress';
 import { Hero } from './Hero';
 import { PracticeInsights } from './PracticeInsights';
@@ -146,7 +147,9 @@ export function Analysis({
                     key={row.name}
                     role="listitem"
                   >
-                    <span className="gap-club">{row.name}</span>
+                    <span className="gap-club">
+                      <a href={clubHref(row.name)}>{row.name}</a>
+                    </span>
                     <div className="gap-carry">
                       {row.median === null ? (
                         <div className="gap-stats">
@@ -207,7 +210,9 @@ export function Analysis({
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.name}>
-                    <td>{r.name}</td>
+                    <td>
+                      <a href={clubHref(r.name)}>{r.name}</a>
+                    </td>
                     <td>{fmt(r.median)} m</td>
                     <td>
                       {r.total}{' '}
