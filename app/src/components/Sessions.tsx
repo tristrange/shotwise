@@ -11,6 +11,11 @@ import type { Repository } from '../data/contracts';
 import { resolvePracticeEvidence } from './PracticeInsights';
 import { SessionRecap, recapEvidence, sessionHref } from './SessionRecap';
 import { ShotReview } from './ShotReview';
+import {
+  CompareSessions,
+  compareHref,
+  parseCompareQuery,
+} from './CompareSessions';
 
 type Preview = {
   id: number;
@@ -28,6 +33,7 @@ export function Sessions({
   repository,
   refresh,
   sessionId,
+  compare,
   evidenceQuery,
   basis,
   onBasisChange,
@@ -36,6 +42,7 @@ export function Sessions({
   repository: Repository;
   refresh: () => Promise<void>;
   sessionId: string | undefined;
+  compare: boolean;
   evidenceQuery: string;
   basis: Basis;
   onBasisChange: (basis: Basis) => void;
@@ -47,6 +54,15 @@ export function Sessions({
     if (!sessionId) returnLink.current?.focus();
   }, [sessionId]);
   const session = data.sessions.find((s) => s.id === sessionId);
+  const { reference: compareReference, comparison: compareComparison } = compare
+    ? parseCompareQuery(evidenceQuery)
+    : { reference: undefined, comparison: undefined };
+  function selectComparePair(
+    reference: string | undefined,
+    comparison: string | undefined,
+  ) {
+    window.location.hash = compareHref(reference, comparison);
+  }
   async function filesChosen(files: File[]) {
     setBusy(true);
     const next: Preview[] = [];
@@ -124,6 +140,16 @@ export function Sessions({
       <div className="section-heading">
         <h1>Sessions & import</h1>
       </div>
+      {compare && (
+        <CompareSessions
+          data={data}
+          referenceId={compareReference}
+          comparisonId={compareComparison}
+          onSelect={selectComparePair}
+          basis={basis}
+          onBasisChange={onBasisChange}
+        />
+      )}
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -313,6 +339,11 @@ export function Sessions({
           </div>
           <span className="pill">{data.sessions.length} total</span>
         </div>
+        <div className="actions">
+          <a className="text-button" href={compareHref()}>
+            Compare sessions
+          </a>
+        </div>
         {data.sessions.length === 0 ? (
           <p>No sessions yet. Import a CSV above to begin.</p>
         ) : (
@@ -494,6 +525,9 @@ function SessionDetail({
         <button disabled={busy} onClick={() => void save(draft)}>
           Save session
         </button>
+        <a className="text-button" href={compareHref(session.id)}>
+          Compare with another session
+        </a>
         <button
           className="secondary"
           disabled={busy}

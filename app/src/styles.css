@@ -327,6 +327,20 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .import-result p { margin-bottom: 4px; }
 .preview h3 { overflow-wrap: anywhere; }
 
+/* ---------- session comparison ---------- */
+.compare-panel h2[tabindex] { scroll-margin-top: 64px; outline: none; }
+.compare-controls .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.compare-sides p { margin: 4px 0; overflow-wrap: anywhere; }
+.compare-club { padding-top: 12px; border-top: 1px solid var(--line); }
+.compare-club summary .pill { margin-left: 8px; }
+.compare-club table caption { text-align: left; font: 400 12px/1.5 var(--mono); color: var(--mute); padding-bottom: 8px; }
+@media (max-width: 1000px) {
+  .compare-controls .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .compare-controls .form-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- review ---------- */
 .review { margin-top: 30px; }
 .review-controls { background: transparent; border: 0; border-top: 1px solid var(--ink); padding: 18px 0 0; }
