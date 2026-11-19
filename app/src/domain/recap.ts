@@ -69,7 +69,7 @@ function newestSessions<T extends { session: Session }>(
   );
 }
 
-function observe<T>(
+export function observe<T>(
   { session, shots }: SessionShots,
   key: MetricKey,
   summarize: (values: number[]) => T | null,
@@ -288,17 +288,47 @@ function filterHistory(
   };
 }
 
+/** Review cohorts shared by the recap and derived club profiles. */
+export const recapCohorts = {
+  reliability: (shot: Shot) => fullSwingCandidate(shot),
+  broader: (shot: Shot) =>
+    fullSwingCandidate(shot) && shot.review.contact !== 'mishit',
+  reviewed: (shot: Shot) =>
+    fullSwingCandidate(shot) &&
+    shot.review.intent === 'full' &&
+    shot.review.contact === 'typical',
+} satisfies Record<
+  'reliability' | 'broader' | 'reviewed',
+  (shot: Shot) => boolean
+>;
+
+/** Included shots of every non-archived session, grouped by effective club. */
+export function clubShotGroups(data: Dataset) {
+  const groups = new Map<string, Map<string, Shot[]>>();
+  for (const session of data.sessions) {
+    if (!session.archived) groups.set(session.id, new Map());
+  }
+  for (const shot of data.shots) {
+    const perClub = groups.get(shot.sessionId);
+    if (!perClub || shot.review.exclusion.kind === 'excluded') continue;
+    const club = effectiveClub(shot);
+    const list = perClub.get(club) ?? [];
+    list.push(shot);
+    perClub.set(club, list);
+  }
+  for (const perClub of groups.values()) {
+    for (const list of perClub.values()) {
+      list.sort((a, b) => a.rowIndex - b.rowIndex || a.id.localeCompare(b.id));
+    }
+  }
+  return groups;
+}
+
 function clubRecap(club: string, history: History, basis: Basis) {
   const fields = BASES[basis];
-  const reliability = filterHistory(history, fullSwingCandidate);
-  const broader = filterHistory(
-    reliability,
-    ({ review }) => review.contact !== 'mishit',
-  );
-  const reviewed = filterHistory(
-    broader,
-    ({ review }) => review.intent === 'full' && review.contact === 'typical',
-  );
+  const reliability = filterHistory(history, recapCohorts.reliability);
+  const broader = filterHistory(history, recapCohorts.broader);
+  const reviewed = filterHistory(history, recapCohorts.reviewed);
   const compareCarry = (
     cohort: History,
     summarize: (values: number[]) => number | null,
@@ -366,7 +396,7 @@ function clubRecap(club: string, history: History, basis: Basis) {
   };
 }
 
-type ClubRecap = ReturnType<typeof clubRecap>;
+export type ClubRecap = ReturnType<typeof clubRecap>;
 
 function recapHighlights(clubs: ClubRecap[]) {
   const ranked = clubs
@@ -445,30 +475,16 @@ export function sessionRecap(data: Dataset, sessionId: string, basis: Basis) {
         (b.time ?? '').localeCompare(a.time ?? '') ||
         a.id.localeCompare(b.id),
     );
-  const included = new Map(
-    [session, ...candidates.map((candidate) => candidate.session)].map(
-      (item) => [item.id, new Map<string, Shot[]>()],
-    ),
-  );
+  const groups = clubShotGroups(data);
   let recorded = 0;
   let includedCount = 0;
   for (const shot of data.shots) {
-    if (shot.sessionId === session.id) recorded++;
-    const groups = included.get(shot.sessionId);
-    if (!groups || shot.review.exclusion.kind === 'excluded') continue;
-    if (shot.sessionId === session.id) includedCount++;
-    const club = effectiveClub(shot);
-    const group = groups.get(club) ?? [];
-    group.push(shot);
-    groups.set(club, group);
-  }
-  for (const groups of included.values()) {
-    for (const shots of groups.values()) {
-      shots.sort((a, b) => a.rowIndex - b.rowIndex || a.id.localeCompare(b.id));
-    }
+    if (shot.sessionId !== session.id) continue;
+    recorded++;
+    if (shot.review.exclusion.kind === 'included') includedCount++;
   }
 
-  const current = included.get(session.id) ?? new Map<string, Shot[]>();
+  const current = groups.get(session.id) ?? new Map<string, Shot[]>();
   const clubs = [...current.keys()]
     .filter((club) => !isUnknownClub(club))
     .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b))
@@ -479,7 +495,7 @@ export function sessionRecap(data: Dataset, sessionId: string, basis: Basis) {
         unresolved: [],
       };
       for (const { session: candidate, order } of candidates) {
-        const shots = included.get(candidate.id)?.get(club);
+        const shots = groups.get(candidate.id)?.get(club);
         if (!shots) continue;
         (order < 0 ? history.earlier : history.unresolved).push({
           session: candidate,

@@ -2402,3 +2402,171 @@ test('exact undo conflicts and restores zero shots after an intervening edit', a
   // Zero shots restored: state is unchanged from the post-edit snapshot.
   expect(await account.repository.load()).toEqual(afterEdit);
 });
+
+test('shows derived read-only club profiles that agree with the recap and fit a phone', async ({
+  page,
+  account,
+}, testInfo) => {
+  const today = localToday();
+  const mid = shiftDate(today, -10);
+  const old = shiftDate(today, -100);
+  const archivedDate = shiftDate(today, -5);
+  const irons = (base: number) =>
+    Array.from({ length: 12 }, (_, i) => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': String(base + (i % 4)),
+      'Flat Carry Dist. Range (m)': String(base + 10 + (i % 4)),
+    }));
+  const importSession = async (
+    filename: string,
+    date: string,
+    rows: Record<string, string>[],
+  ) =>
+    account.repository.importCsv({
+      filename,
+      date,
+      time: null,
+      venue: 'Synthetic range',
+      notes: '',
+      confirmedFull: true,
+      allowSameDay: false,
+      preview: await parseCsv(
+        new TextEncoder().encode(csvFixture(rows)),
+      ),
+    });
+
+  await importSession('old.csv', old, irons(100));
+  await importSession('mid.csv', mid, irons(110));
+  const todayResult = await importSession('today.csv', today, [
+    ...irons(120),
+    { Club: '7i', 'Flat Carry Dist. Premium (m)': '--', 'Flat Carry Dist. Range (m)': '--' },
+    { Club: '9i', 'Flat Carry Dist. Premium (m)': '150', 'Flat Carry Dist. Range (m)': '160' },
+    ...Array.from({ length: 3 }, () => ({
+      Club: '5i',
+      'Flat Carry Dist. Premium (m)': '140',
+      'Flat Carry Dist. Range (m)': '150',
+    })),
+  ]);
+  const archivedResult = await importSession('archived.csv', archivedDate, [
+    ...Array.from({ length: 5 }, () => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '999',
+    })),
+  ]);
+
+  // Review the latest session: typical contact everywhere, and one effective
+  // club correction (recorded 9i, corrected to 7i).
+  const loaded = await account.repository.load();
+  const todaySession = loaded.sessions.find(
+    (s) => s.id === todayResult.sessionId,
+  );
+  if (!todaySession) throw new Error('Missing seeded today session');
+  await account.repository.review(
+    loaded.shots
+      .filter((s) => s.sessionId === todayResult.sessionId)
+      .map((shot) => ({
+        shotId: shot.id,
+        expectedRevision: shot.revision,
+        review: {
+          ...shot.review,
+          contact: 'typical',
+          ...(shot.recordedClub === '9i'
+            ? { club: { kind: 'corrected', club: '7i' } as const }
+            : {}),
+        },
+      })),
+  );
+  const archivedSession = loaded.sessions.find(
+    (s) => s.id === archivedResult.sessionId,
+  );
+  if (!archivedSession) throw new Error('Missing seeded archived session');
+  await account.repository.updateSession({ ...archivedSession, archived: true });
+
+  await login(page, account);
+
+  // Discoverable entry point: the Overview club rows link to the profile.
+  await page.getByRole('link', { name: '7i', exact: true }).first().click();
+  await expect(page).toHaveURL(/#clubs\/7i$/);
+  const heading = page.getByRole('heading', { name: '7i', exact: true });
+  await expect(heading).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: 'Club profiles', exact: true }),
+  ).toBeVisible();
+
+  const card = page
+    .locator('.club-profile')
+    .filter({ has: page.getByRole('heading', { name: '7i', exact: true }) });
+  await expect(card).toContainText('Premium · flat (estimate)');
+  await expect(card).toContainText('2 sessions · 26 shots');
+  await expect(card).toContainText('Typical carry 122 m');
+  await expect(card).toContainText(
+    'reviewed full swings with typical contact · 13 measured, 1 missing',
+  );
+  await expect(card).toContainText('Carry spread (IQR) 10 m');
+  await expect(card).toContainText('middle half of 25 measured carries');
+  await expect(card).toContainText('Lower carry tail (P10) 110.4 m');
+  await expect(card).toContainText('Longest carry 150 m');
+  await expect(card).toContainText('13 measured, 1 missing for 7i');
+  await expect(card).toContainText('100% of full swings contact-reviewed');
+  await expect(card).toContainText('Gap to the next longer club: 20 m');
+
+  // The latest-session line links to the same numbers as the session recap.
+  const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
+  await expect(latestLine).toContainText('typical carry 122 m from 13 measured shots');
+  await latestLine.getByRole('link', { name: 'session recap' }).click();
+  await expect(page).toHaveURL(new RegExp(`#sessions/${todayResult.sessionId}$`));
+  const recap = page.getByRole('region', { name: 'Session recap' });
+  await expect(recap).toContainText(`${today} · Synthetic range`);
+  const clubDetails = recap
+    .locator('details')
+    .filter({ hasText: '7i metric details' });
+  await clubDetails.locator('summary').click();
+  const broader = clubDetails
+    .locator('.recap-metric')
+    .filter({ hasText: 'Median carry · broader estimate' });
+  await expect(broader).toContainText('This session · 122 m · 13 measured, 1 missing');
+
+  await nav(page, 'Clubs');
+  // Sparse club is qualified, archived session stays out of history.
+  const five = page
+    .locator('.club-profile')
+    .filter({ has: page.getByRole('heading', { name: '5i', exact: true }) });
+  await expect(five).toContainText('Typical carry 140 m');
+  await expect(five).toContainText('Sample limited');
+  const history = card.getByRole('table', { name: '7i history across sessions' });
+  await expect(history.getByRole('row')).toHaveCount(4);
+  await expect(history).toContainText(old);
+  await expect(history).toContainText(mid);
+  await expect(history).toContainText(today);
+  await expect(history).not.toContainText(archivedDate);
+  expect(
+    await history
+      .getByRole('link', { name: new RegExp(`^${today}`) })
+      .getAttribute('href'),
+  ).toBe(`#sessions/${todayResult.sessionId}`);
+
+  // Basis selection changes the numbers without falling back across bases.
+  await page
+    .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
+    .click();
+  await expect(card).toContainText('Range · flat');
+  await expect(card).toContainText('Typical carry 132 m');
+
+  // All-time window includes the older session; history stays all-time.
+  await page.getByRole('button', { name: 'All-time', exact: true }).click();
+  await expect(card).toContainText('3 sessions · 38 shots');
+  await expect(history.getByRole('row')).toHaveCount(4);
+
+  // Phone-width layout: no horizontal page overflow.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: testInfo.outputPath('club-profiles.png'),
+    fullPage: true,
+  });
+});
