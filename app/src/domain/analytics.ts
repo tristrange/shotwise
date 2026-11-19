@@ -4,9 +4,11 @@ import {
   BASES,
   clubOrder,
   effectiveClub,
+  fullSwingCandidate,
   isUnknownClub,
   isWedge,
   shiftDate,
+  venueKey,
   type Basis,
   type Dataset,
   type MetricKey,
@@ -54,21 +56,22 @@ export function metricStats(shots: Shot[], key: MetricKey) {
     p90: n >= 10 ? quantile(values, 0.9) : null,
   };
 }
+function directionStats(shots: Shot[], key: MetricKey) {
+  const values = shots.flatMap((s) =>
+    s.measurements[key] === null ? [] : [s.measurements[key]],
+  );
+  return {
+    n: values.length,
+    missing: shots.length - values.length,
+    left: values.filter((v) => v < 0).length,
+    straight: values.filter((v) => v === 0).length,
+    right: values.filter((v) => v > 0).length,
+    median: quantile(values, 0.5),
+  };
+}
+
 export function summarize(shots: Shot[], basis: Basis) {
   const fields = BASES[basis];
-  const direction = (key: MetricKey) => {
-    const values = shots.flatMap((s) =>
-      s.measurements[key] === null ? [] : [s.measurements[key]],
-    );
-    return {
-      n: values.length,
-      missing: shots.length - values.length,
-      left: values.filter((v) => v < 0).length,
-      straight: values.filter((v) => v === 0).length,
-      right: values.filter((v) => v > 0).length,
-      median: quantile(values, 0.5),
-    };
-  };
   return {
     n: shots.length,
     sessions: new Set(shots.map((s) => s.sessionId)).size,
@@ -77,9 +80,9 @@ export function summarize(shots: Shot[], basis: Basis) {
     speed: metricStats(shots, fields.speed),
     launch: metricStats(shots, fields.launch),
     apex: metricStats(shots, fields.apex),
-    launchDirection: direction('launchDirection'),
-    curve: direction('curve'),
-    lateral: direction('fromCentre'),
+    launchDirection: directionStats(shots, 'launchDirection'),
+    curve: directionStats(shots, 'curve'),
+    lateral: directionStats(shots, 'fromCentre'),
   };
 }
 export function selectCohort(
@@ -438,80 +441,271 @@ export function clubGaps(
   return rows;
 }
 
+type PracticeCarry = {
+  club: string;
+  median: number;
+  iqr: number;
+  missing: number;
+  shotIds: string[];
+};
+
+export type PracticeEvidence = {
+  session: Session;
+  key: MetricKey;
+  shotIds: string[];
+} & (
+  | {
+      kind: 'gapping';
+      longer: PracticeCarry;
+      shorter: PracticeCarry;
+      gap: number;
+    }
+  | { kind: 'inconsistency'; carry: PracticeCarry }
+  | {
+      kind: 'direction';
+      club: string;
+      side: 'left' | 'right';
+      count: number;
+      missing: number;
+    }
+);
+
 export type PracticeInsight = {
   id: string;
-  kind: 'gapping' | 'inconsistency' | 'direction';
-  text: string;
-  rule: string;
+  dates: number;
   shots: number;
+  improving: boolean;
+  evidence: [PracticeEvidence, ...PracticeEvidence[]];
 };
 
 const MIN_INSIGHT_SHOTS = 10;
+const WIDE_CARRY_SHARE = 0.25;
+const ONE_SIDED_CURVE_SHARE = 0.7;
 
-/** Plain-language, rule-based pointers at clubs worth practising. */
+type PracticeObservation = {
+  evidence: PracticeEvidence;
+  severity: number;
+  supports: boolean;
+  clear: boolean;
+};
+
+function compareVisits(a: Session, b: Session) {
+  return (
+    b.date.localeCompare(a.date) ||
+    (b.time ?? '').localeCompare(a.time ?? '') ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/** Rank recurring patterns from comparable whole visits in the selected window. */
 export function practiceInsights(
   data: Dataset,
   basis: Basis,
   query: AnalysisQuery,
 ): PracticeInsight[] {
   const key = BASES[basis].carry;
-  const insights: PracticeInsight[] = [];
-  const gaps = clubGaps(data, basis, query);
+  const start = query.mode === 'recent' ? shiftDate(query.today, -59) : '';
+  const sessions = new Map(
+    data.sessions
+      .filter(
+        ({ archived, date }) =>
+          !archived && date >= start && date <= query.today,
+      )
+      .map((session) => [session.id, session]),
+  );
+  const visits = new Map<string, Map<string, Shot[]>>();
+  const carryClubs = new Set<string>();
 
-  for (let i = 1; i < gaps.length; i++) {
-    const upper = gaps[i - 1];
-    const lower = gaps[i];
-    if (!upper?.reliable || !lower?.reliable) continue;
-    const gap = upper.median - lower.median;
-    if (lower.flag === 'small' || lower.flag === 'reversed')
-      insights.push({
-        id: `gap-${upper.club}-${lower.club}`,
-        kind: 'gapping',
-        text: `Work on ${upper.club}: median carry is ${upper.median.toFixed(0)} m versus ${lower.median.toFixed(0)} m for ${lower.club}${lower.flag === 'reversed' ? ' — the longer club currently carries less.' : ` — only ${gap.toFixed(0)} m more.`}`,
-        rule:
-          lower.flag === 'reversed'
-            ? 'longer club median below the next shorter club'
-            : 'neighbouring club medians within 10 m',
-        shots: Math.min(upper.n, lower.n),
-      });
-  }
-
-  const groups = new Map<string, Shot[]>();
-  for (const shot of eligibleShots(data, basis, query)) {
-    const club = effectiveClub(shot);
-    groups.set(club, [...(groups.get(club) ?? []), shot]);
-  }
-
-  for (const [club, shots] of groups) {
-    if (shots.length < MIN_INSIGHT_SHOTS) continue;
-
-    const carry = metricStats(shots, key);
+  // Use the review filters without the rolling chart's per-club shot cap.
+  for (const shot of selectCohort(data.shots, data.sessions, {
+    ...query,
+    mode: 'all',
+  })) {
     if (
-      carry.median !== null &&
-      carry.iqr !== null &&
-      carry.iqr > carry.median * 0.25
+      !sessions.has(shot.sessionId) ||
+      !fullSwingCandidate(shot) ||
+      shot.review.contact === 'mishit'
     )
-      insights.push({
-        id: `inconsistency-${club}`,
-        kind: 'inconsistency',
-        text: `${club} carry varies a lot: the middle half spans ${carry.iqr.toFixed(0)} m around ${carry.median.toFixed(0)} m.`,
-        rule: 'carry IQR above 25% of the median',
-        shots: shots.length,
-      });
-
-    const curve = summarize(shots, basis).curve;
-    const side = curve.left >= curve.right ? 'left' : 'right';
-    const count = side === 'left' ? curve.left : curve.right;
-    if (curve.n >= MIN_INSIGHT_SHOTS && count / curve.n >= 0.7)
-      insights.push({
-        id: `direction-${club}`,
-        kind: 'direction',
-        text: `${club} shots tend to curve ${side} — ${count} of ${curve.n} measured curves bend that way.`,
-        rule: 'at least 10 measured curves, with 70% or more on one side',
-        shots: curve.n,
-      });
+      continue;
+    const club = effectiveClub(shot);
+    if (isUnknownClub(club)) continue;
+    const groups = visits.get(shot.sessionId) ?? new Map<string, Shot[]>();
+    const group = groups.get(club) ?? [];
+    group.push(shot);
+    groups.set(club, group);
+    visits.set(shot.sessionId, groups);
+    if (shot.measurements[key] !== null) carryClubs.add(club);
   }
-  return insights;
+
+  const order = [...carryClubs].sort(
+    (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
+  );
+  const patterns = new Map<
+    string,
+    { id: string; observations: PracticeObservation[] }
+  >();
+  function record(
+    evidence: PracticeEvidence,
+    severity: number,
+    supports: boolean,
+    clear = !supports,
+  ) {
+    const clubs =
+      evidence.kind === 'gapping'
+        ? [evidence.longer.club, evidence.shorter.club]
+        : [evidence.kind === 'direction' ? evidence.club : evidence.carry.club];
+    const id = JSON.stringify([evidence.kind, ...clubs]);
+    const groupKey = JSON.stringify([
+      id,
+      venueKey(evidence.session),
+      evidence.kind === 'direction' ? evidence.side : '',
+    ]);
+    const pattern = patterns.get(groupKey) ?? { id, observations: [] };
+    pattern.observations.push({ evidence, severity, supports, clear });
+    patterns.set(groupKey, pattern);
+  }
+
+  for (const [sessionId, groups] of visits) {
+    const session = sessions.get(sessionId);
+    if (!session) continue;
+    const carries = new Map<string, PracticeCarry>();
+    for (const [club, shots] of groups) {
+      shots.sort((a, b) => a.rowIndex - b.rowIndex || a.id.localeCompare(b.id));
+      const carry = metricStats(shots, key);
+      if (
+        carry.n >= MIN_INSIGHT_SHOTS &&
+        carry.median !== null &&
+        carry.iqr !== null
+      ) {
+        const shotIds = shots
+          .filter((shot) => shot.measurements[key] !== null)
+          .map(({ id }) => id);
+        const measured = {
+          club,
+          median: carry.median,
+          iqr: carry.iqr,
+          missing: carry.missing,
+          shotIds,
+        };
+        carries.set(club, measured);
+        if (carry.median > 0) {
+          const severity = carry.iqr / (carry.median * WIDE_CARRY_SHARE);
+          record(
+            { kind: 'inconsistency', session, key, shotIds, carry: measured },
+            severity,
+            severity > 1,
+          );
+        }
+      }
+      const curve = directionStats(shots, 'curve');
+      if (curve.n >= MIN_INSIGHT_SHOTS) {
+        const shotIds = shots
+          .filter((shot) => shot.measurements.curve !== null)
+          .map(({ id }) => id);
+        const clear =
+          Math.max(curve.left, curve.right) / curve.n < ONE_SIDED_CURVE_SHARE;
+        for (const side of ['left', 'right'] as const) {
+          const count = curve[side];
+          const severity = count / curve.n / ONE_SIDED_CURVE_SHARE;
+          record(
+            {
+              kind: 'direction',
+              session,
+              key: 'curve',
+              shotIds,
+              club,
+              side,
+              count,
+              missing: curve.missing,
+            },
+            severity,
+            count / curve.n >= ONE_SIDED_CURVE_SHARE,
+            clear,
+          );
+        }
+      }
+    }
+    for (let i = 1; i < order.length; i++) {
+      const upper = order[i - 1];
+      const lower = order[i];
+      const longer = upper === undefined ? undefined : carries.get(upper);
+      const shorter = lower === undefined ? undefined : carries.get(lower);
+      if (!longer || !shorter) continue;
+      const gap = longer.median - shorter.median;
+      const shotIds = [...longer.shotIds, ...shorter.shotIds];
+      record(
+        { kind: 'gapping', session, key, shotIds, longer, shorter, gap },
+        (2 * SMALL_GAP_M - gap) / SMALL_GAP_M,
+        gap <= SMALL_GAP_M,
+      );
+    }
+  }
+
+  const ranked = [...patterns.values()].flatMap(({ id, observations }) => {
+    observations.sort((a, b) =>
+      compareVisits(a.evidence.session, b.evidence.session),
+    );
+    const byDate = new Map<string, PracticeObservation[]>();
+    for (const observation of observations) {
+      const date = observation.evidence.session.date;
+      const day = byDate.get(date) ?? [];
+      day.push(observation);
+      byDate.set(date, day);
+    }
+
+    const days = [...byDate.values()];
+    // Conflicting visits on a date supply neither recurrence nor improvement.
+    const supporting = days.filter((day) =>
+      day.every(({ supports }) => supports),
+    );
+    const latestSupporting = supporting[0];
+    if (supporting.length < 2 || !latestSupporting) return [];
+    const support = supporting.flat();
+    const [first, ...rest] = support.map(({ evidence }) => evidence);
+    if (!first) return [];
+    const newer = days.slice(0, days.indexOf(latestSupporting));
+    const improving =
+      newer.length >= 2 &&
+      newer.slice(0, 2).every((day) => day.every(({ clear }) => clear));
+    const insight: PracticeInsight = {
+      id,
+      dates: supporting.length,
+      shots: support.reduce(
+        (total, item) => total + item.evidence.shotIds.length,
+        0,
+      ),
+      improving,
+      evidence: [first, ...rest],
+    };
+    return [
+      {
+        insight,
+        severity:
+          quantile(
+            support.map((item) => item.severity),
+            0.5,
+          ) ?? 0,
+        latest: first.session,
+      },
+    ];
+  });
+
+  ranked.sort(
+    (a, b) =>
+      Number(a.insight.improving) - Number(b.insight.improving) ||
+      b.insight.dates - a.insight.dates ||
+      b.insight.shots - a.insight.shots ||
+      b.severity - a.severity ||
+      b.latest.date.localeCompare(a.latest.date) ||
+      a.insight.id.localeCompare(b.insight.id) ||
+      venueKey(a.latest).localeCompare(venueKey(b.latest)),
+  );
+
+  const distinct = new Map<string, PracticeInsight>();
+  for (const { insight } of ranked) {
+    if (!distinct.has(insight.id)) distinct.set(insight.id, insight);
+  }
+  return [...distinct.values()];
 }
 
 export type ClubSuggestion = {

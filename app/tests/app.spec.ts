@@ -134,7 +134,7 @@ async function seedClubSuggestions(account: Account) {
   }
 }
 
-test('toggles automatic mishits across stats without changing reviews and recommends median gaps', async ({
+test('toggles automatic mishits across stats without changing reviews', async ({
   page,
   account,
 }, testInfo) => {
@@ -211,7 +211,7 @@ test('toggles automatic mishits across stats without changing reviews and recomm
   await nav(page, 'Gapping');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(
-    page.getByText(/Work on 5i: median carry is 111 m versus 109 m for 6i/),
+    page.getByText(/No recurring practice patterns yet/),
   ).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Club carry distances' }),
@@ -478,10 +478,14 @@ test('shares the analysis window and measurement basis across pages', async ({
   await nav(page, 'Gapping');
   const gapping = page.getByRole('list', { name: 'Club carry distances' });
   await expect(gapping).toContainText('Median 120 m');
-  await expect(page.getByText(/7i shots tend to curve right/)).toBeVisible();
+  await expect(
+    page.getByText(/No recurring practice patterns yet/),
+  ).toBeVisible();
   await window.getByRole('button', { name: 'All-time' }).click();
   await expect(gapping).toContainText('Median 70 m');
-  await expect(page.getByText(/7i shots tend to curve left/)).toBeVisible();
+  await expect(
+    page.getByText(/No recurring practice patterns yet/),
+  ).toBeVisible();
 
   await nav(page, 'Overview');
   await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
@@ -651,7 +655,9 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(rows.nth(1)).toContainText('Gap: 25 m');
   await expect(rows.nth(1)).not.toContainText('bands overlap');
   await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
-  await expect(page.getByText(/Work on 6i/)).toHaveCount(0);
+  await expect(
+    page.getByText(/No recurring practice patterns yet/),
+  ).toBeVisible();
   expect(await rows.nth(1).ariaSnapshot()).toContain('Median 123 m');
   expect(
     await page.evaluate(
@@ -1408,4 +1414,126 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
   await page.getByRole('link', { name: new RegExp(older.name) }).click();
   await expect(recap).toContainText('Sparse comparable history');
   await expect(recap).toContainText('16 recorded · 16 included shots');
+});
+
+test('caps next practice at three distinct actions and opens the measured shots for each visit', async ({
+  page,
+  account,
+}, testInfo) => {
+  const dates = [shiftDate(localToday(), -2), localToday()];
+  const saved = [];
+  for (const [index, date] of dates.entries()) {
+    const row = (club: string, carry: number, curve = '0') => ({
+      Club: club,
+      'Flat Carry Dist. Premium (m)': String(carry + index),
+      'Flat Carry Dist. Range (m)': String(carry - 10 + index),
+      Curve: curve,
+    });
+    const rows = [
+      ...Array.from({ length: 10 }, () => row('D', 220, '3L')),
+      ...Array.from({ length: 10 }, () => row('3w', 195, '4R')),
+      ...Array.from({ length: 10 }, () => row('5i', 160)),
+      ...Array.from({ length: 10 }, () => row('6i', 155)),
+      ...Array.from({ length: 12 }, (_, i) => row('7i', i % 2 ? 90 : 130)),
+      { Club: '5i', Curve: '0' },
+    ];
+    saved.push(
+      await account.repository.importCsv({
+        filename: `practice-${date}.csv`,
+        date,
+        time: '10:00',
+        venue: 'Synthetic range',
+        notes: '',
+        confirmedFull: false,
+        allowSameDay: false,
+        preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+      }),
+    );
+  }
+
+  await login(page, account);
+  const practice = page.getByRole('region', { name: 'Next practice' });
+  const actions = practice.locator('ol > li');
+  await expect(actions).toHaveCount(3);
+  const titles = await actions.getByRole('heading').allTextContents();
+  expect(new Set(titles).size).toBe(3);
+  expect(titles[0]).toBe('5i and 6i · Small median gap');
+  await expect(actions.first()).toContainText('2 dates · 40 measured shots');
+  await expect(actions.first()).toContainText(
+    'Alternate 5i and 6i at the same aim line',
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await practice.evaluate((section) =>
+    section.scrollIntoView({ block: 'start', behavior: 'instant' }),
+  );
+  await page.screenshot({ path: testInfo.outputPath('next-practice.png') });
+
+  const evidence = page.getByRole('region', { name: 'Supporting shots' });
+  const heading = evidence.getByRole('heading', { name: 'Supporting shots' });
+  await actions
+    .filter({ hasText: '3w · Repeated right curve' })
+    .getByRole('link', { name: 'View latest supporting shots' })
+    .click();
+  await expect(heading).toBeFocused();
+  await expect(evidence).toContainText('Recorded curve · 10 measured shots');
+  await expect(evidence.getByText('3w → 3w', { exact: true })).toHaveCount(10);
+  await page.goBack();
+
+  await practice.getByRole('link', { name: 'See all in Gapping' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Club gapping' }),
+  ).toBeFocused();
+  const gapping = page.getByRole('region', { name: 'Practice insights' });
+  await expect(gapping.locator('ol > li')).toHaveCount(4);
+  await page.getByTitle('Change measurement basis').click();
+  const gap = gapping.locator('ol > li').first();
+  await expect(gap).toContainText(
+    '5i median 151 m (10 measured, 1 missing), 6i median 146 m (10 measured)',
+  );
+  const latest = gap.getByRole('link', {
+    name: 'View latest supporting shots',
+  });
+  await expect(latest).toHaveAttribute(
+    'href',
+    new RegExp(`#sessions/${saved[1]?.sessionId}\\?`),
+  );
+  await latest.click();
+
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await expect(evidence).toContainText('Range · flat · 20 measured shots');
+  await expect(evidence.getByRole('checkbox')).toHaveCount(20);
+  await expect(
+    evidence.getByText('Flat Carry Dist. Range (m) 151', { exact: true }),
+  ).toHaveCount(10);
+  await expect(evidence.getByText('6i → 6i', { exact: true })).toHaveCount(10);
+
+  await page.goBack();
+  await expect(gap).toContainText('5i median 151 m');
+  await gap.getByText('Other supporting visits').click();
+  const older = gap.getByRole('link', {
+    name: 'View supporting shots',
+    exact: true,
+  });
+  await expect(older).toHaveAttribute(
+    'href',
+    new RegExp(`#sessions/${saved[0]?.sessionId}\\?`),
+  );
+  await older.click();
+  await page.reload();
+  await expect(heading).toBeFocused();
+  await expect(evidence).toContainText('Range · flat · 20 measured shots');
+  await expect(
+    evidence.getByText('Flat Carry Dist. Range (m) 150', { exact: true }),
+  ).toHaveCount(10);
+  await evidence.getByRole('link', { name: 'View full session recap' }).click();
+  await expect(
+    page.getByRole('region', { name: 'Session recap' }),
+  ).toContainText(dates[0] ?? 'missing date');
 });

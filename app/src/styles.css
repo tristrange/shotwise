@@ -269,11 +269,14 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .gap-value.big { color: var(--ochre); font-weight: 600; }
 
 /* ---------- insights / suggestions ---------- */
-.insight-list { display: grid; }
-.insight { border-left: 0; padding: 15px 0 15px 18px; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); }
-.insight:first-child { border-top: 1px solid var(--ink); }
+.practice-insights { margin-top: 36px; overflow-wrap: anywhere; }
+.practice-insights, #gapping { scroll-margin-top: 64px; }
+.insight-list { display: grid; padding-inline-start: 24px; }
+.insight { padding: 15px 0; border-top: 1px solid var(--line); }
+.insight:last-child { border-bottom: 1px solid var(--line); }
 .insight p { margin-bottom: 4px; color: var(--ink); font: 400 15px/1.5 'Lora', serif; }
-.insight span { font: 400 11px/1.4 var(--mono); color: var(--mute); }
+.insight .insight-context { font: 400 12px/1.5 var(--mono); color: var(--mute); }
+.insight details li { margin-block: 8px; }
 .suggestion-list { display: grid; }
 .suggestion-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) 160px auto; align-items: center; gap: 18px; padding: 15px 0; border-bottom: 1px solid var(--line); }
 .suggestion-meta { display: grid; gap: 4px; }

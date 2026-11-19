@@ -3,9 +3,10 @@ import {
   BASES,
   clubOrder,
   effectiveClub,
+  fullSwingCandidate,
   isUnknownClub,
-  isWedge,
   shiftDate,
+  venueKey,
   type Basis,
   type Dataset,
   type MetricKey,
@@ -50,7 +51,6 @@ type Finding =
   | { kind: 'higher' | 'lower' | 'mixed' };
 
 const median = (values: number[]) => quantile(values, 0.5);
-const venueKey = ({ venue }: Session) => venue.trim().toLowerCase();
 
 function newestSessions<T extends { session: Session }>(
   rows: T[],
@@ -290,12 +290,7 @@ function filterHistory(
 
 function clubRecap(club: string, history: History, basis: Basis) {
   const fields = BASES[basis];
-  const wedge = isWedge(club);
-  const reliability = filterHistory(
-    history,
-    ({ review }) =>
-      review.intent === 'full' || (review.intent === 'unknown' && !wedge),
-  );
+  const reliability = filterHistory(history, fullSwingCandidate);
   const broader = filterHistory(
     reliability,
     ({ review }) => review.contact !== 'mishit',
