@@ -639,7 +639,7 @@ test('shows readable carry bands without recommending practice from overlap alon
             Club: '7i',
             'Flat Carry Dist. Premium (m)': String(carry),
           })),
-          { Club: 'SW', 'Flat Carry Dist. Premium (m)': '60' },
+          { Club: '9i', 'Flat Carry Dist. Premium (m)': '60' },
         ]),
       ),
     ),
@@ -1536,4 +1536,177 @@ test('caps next practice at three distinct actions and opens the measured shots 
   await expect(
     page.getByRole('region', { name: 'Session recap' }),
   ).toContainText(dates[0] ?? 'missing date');
+});
+
+test('shows exact wedge target groups and keeps unknown swings out of full-swing gapping', async ({
+  page,
+  account,
+}, testInfo) => {
+  const date = localToday();
+  const row = (
+    club: string,
+    target: string,
+    premium: string,
+    range: string,
+  ) => ({
+    Club: club,
+    'Target (m)': target,
+    'Flat Carry Dist. Premium (m)': premium,
+    'Flat Carry Dist. Range (m)': range,
+  });
+  await account.repository.importCsv({
+    filename: 'wedge-practice.csv',
+    date,
+    time: '10:00',
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture([
+          {
+            ...row('SW', '30', '28', '24'),
+            'Prox to Hole (m)': '3',
+            'Launch Direction': '2L',
+            'Ball Speed (kph) Premium': '70',
+          },
+          {
+            ...row('SW', '30', '30', '26'),
+            'Prox to Hole (m)': '0',
+            'Launch Direction': '0',
+          },
+          {
+            ...row('SW', '30', '34', '30'),
+            'Prox to Hole (m)': '5',
+            'Launch Direction': '2R',
+          },
+          { ...row('7i', '30', '32', '28'), 'Launch Direction': '8R' },
+          row('SW', '30', '--', '--'),
+          row('SW', '30.04', '31', '--'),
+          row('SW', '0', '50', '48'),
+          row('SW', '--', '65', '64'),
+          row('SW', '--', '45', '44'),
+          row('7i', '--', '150', '145'),
+        ]),
+      ),
+    ),
+  });
+  const original = await account.repository.load();
+  await account.repository.review(
+    original.shots.flatMap((shot) => {
+      if (![2, 4, 8, 9].includes(shot.rowIndex)) return [];
+      const review = { ...shot.review };
+      if (shot.rowIndex === 4) review.club = { kind: 'corrected', club: 'SW' };
+      if (shot.rowIndex === 8) review.intent = 'full';
+      if (shot.rowIndex === 2 || shot.rowIndex === 9) review.intent = 'partial';
+      return [{ shotId: shot.id, expectedRevision: shot.revision, review }];
+    }),
+  );
+
+  await login(page, account);
+  await nav(page, 'Gapping');
+  const section = page.getByRole('region', { name: 'Wedge practice' });
+  const target = section.getByRole('article', {
+    name: 'SW · 30 m target',
+    exact: true,
+  });
+  const sparse = section.getByRole('article', {
+    name: 'SW · 30.04 m target',
+    exact: true,
+  });
+  const benchmark = page
+    .getByRole('list', { name: 'Club carry distances' })
+    .getByRole('listitem')
+    .filter({ hasText: 'SW' });
+
+  await expect(section).toContainText(
+    '6 of 9 wedge shots have a recorded target',
+  );
+  await expect(section).toContainText('2 missing target · 1 recorded as 0 m');
+  await expect(target).toContainText(
+    '5 shots · 1 session · 0 full, 1 partial, 4 unknown intent',
+  );
+  await expect(target).toContainText(
+    'Median carry 31 m · 4 of 5 measured · Middle half spans 3 m',
+  );
+  await expect(target).toContainText(
+    'Median ball speed 70 kph · 1 of 5 measured',
+  );
+  await expect(target).toContainText(
+    'Launch direction · 1 left, 1 centred, 1 right · 3 of 3 measured',
+  );
+  await expect(sparse).toContainText('Carry spread needs 4 measured shots');
+  for (const intent of ['Full', 'Partial', 'Unknown']) {
+    await expect(
+      section.getByRole('article', {
+        name: `SW · ${intent} intent`,
+        exact: true,
+      }),
+    ).toContainText('1 shot');
+  }
+  await expect(benchmark).toContainText('Median 65 m');
+
+  await page.getByTitle('Change measurement basis').click();
+  await expect(section).toContainText('Range · flat');
+  await expect(target).toContainText('Median carry 27 m');
+  await expect(sparse).toContainText(
+    'Median carry unavailable · 0 of 1 measured',
+  );
+  await target.getByText('View 5 shot rows', { exact: true }).click();
+  const evidence = target.getByRole('table', {
+    name: 'SW · 30 m target shots',
+  });
+  await expect(evidence.getByRole('row')).toHaveCount(6);
+  await expect(evidence.locator('tbody td:nth-child(4)')).toHaveText(
+    Array(5).fill('30 m'),
+  );
+  await expect(evidence.getByRole('row').nth(1)).toContainText('24 m');
+  await expect(evidence.getByRole('row').nth(2)).toContainText('Partial');
+  await expect(evidence.getByRole('row').nth(4)).toContainText('28 m');
+  await expect(evidence.getByRole('row').nth(5)).toContainText('Missing');
+  const shotRows = target.getByRole('region', {
+    name: 'SW · 30 m target shot rows',
+  });
+  await expect
+    .poll(() =>
+      shotRows.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await section.evaluate((element) =>
+    element.scrollIntoView({ block: 'start', behavior: 'instant' }),
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('wedge-practice.png'),
+    animations: 'disabled',
+  });
+  await shotRows.screenshot({
+    path: testInfo.outputPath('wedge-shot-rows.png'),
+  });
+
+  await evidence
+    .getByRole('link', { name: date + ' · 10:00' })
+    .first()
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Session details' }),
+  ).toBeFocused();
+  await page.getByLabel('From source row').fill('1');
+  await page.getByLabel('To source row').fill('1');
+  await page.getByRole('button', { name: 'Select range' }).click();
+  await page.getByRole('combobox', { name: 'Set intent' }).selectOption('full');
+  await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(
+    page.getByText('full · uncertain · included', { exact: true }),
+  ).toHaveCount(2);
+  await page.goBack();
+  await expect(benchmark).toContainText('Median 44 m');
+  await expect(target).toContainText('1 full, 1 partial, 3 unknown intent');
 });
