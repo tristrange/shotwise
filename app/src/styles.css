@@ -267,6 +267,12 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .gap-n { text-align: right; color: var(--mute); font: 400 12px/1.4 var(--mono); }
 .gap-value { text-align: right; font: 400 12px/1.4 var(--mono); color: var(--ink2); }
 .gap-value.big { color: var(--ochre); font-weight: 600; }
+.wedge-practice { scroll-margin-top: 64px; }
+.wedge-group { padding: 12px 0 16px; border-top: 1px solid var(--line); }
+.wedge-group h4 { margin: 0 0 6px; }
+.wedge-group p { margin-bottom: 6px; }
+.wedge-group + h3 { margin-top: 18px; }
+.wedge-metrics { padding-inline-start: 20px; line-height: 1.55; }
 
 /* ---------- insights / suggestions ---------- */
 .practice-insights { margin-top: 36px; overflow-wrap: anywhere; }
@@ -391,6 +397,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
   .gap-head { display: none; }
   .gap-row { grid-template-columns: 48px minmax(0,1fr) 56px; gap: 8px 12px; }
   .gap-value { grid-column: 2 / 4; text-align: left; }
+  .wedge-group th, .wedge-group td { white-space: normal; padding-inline: 6px; }
   .raw { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .auth-card { padding: 24px 0 0; }
   .auth-card .brand { margin-bottom: 32px; }

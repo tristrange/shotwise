@@ -3,6 +3,7 @@ import { clubGaps, type AnalysisSettings } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { PracticeInsights } from './PracticeInsights';
+import { WedgePractice } from './WedgePractice';
 
 export function ClubGaps({
   data,
@@ -51,11 +52,11 @@ export function ClubGaps({
           </div>
         </div>
         <p>
-          Unreviewed shots count unless you filter by review. Partial and mishit
-          shots never do. The dot is median carry; the bar is the middle 80%.
-          Grey rows have fewer than ten shots. A negative gap means this club
-          carried farther than the one above. Gap recommendations use
-          medians from comparable visits on multiple dates.
+          Unreviewed non-wedge shots can count. Wedges need explicit full
+          intent. Partial and mishit shots are excluded. The dot is median carry
+          and the bar is the middle 80%. Grey rows have fewer than ten shots. A
+          negative gap means this club carried farther than the one above. Gap
+          recommendations use medians from comparable visits on multiple dates.
         </p>
         {rows.length === 0 ? (
           <p>
@@ -125,6 +126,7 @@ export function ClubGaps({
           </div>
         )}
       </section>
+      <WedgePractice data={data} basis={basis} query={query} />
       <PracticeInsights data={data} settings={settings} />
     </>
   );

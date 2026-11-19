@@ -56,7 +56,7 @@ export function metricStats(shots: Shot[], key: MetricKey) {
     p90: n >= 10 ? quantile(values, 0.9) : null,
   };
 }
-function directionStats(shots: Shot[], key: MetricKey) {
+export function directionStats(shots: Shot[], key: MetricKey) {
   const values = shots.flatMap((s) =>
     s.measurements[key] === null ? [] : [s.measurements[key]],
   );
@@ -373,7 +373,7 @@ function eligibleShots(
   const key = BASES[basis].carry;
   return selectCohort(data.shots, data.sessions, query).filter(
     (shot) =>
-      shot.review.intent !== 'partial' &&
+      fullSwingCandidate(shot) &&
       shot.review.contact !== 'mishit' &&
       shot.measurements[key] !== null &&
       !isUnknownClub(effectiveClub(shot)),
