@@ -1,100 +1,70 @@
 # Shotwise roadmap
 
-## Session and practice intelligence
+## Comparisons, equipment, and ball-flight analysis
 
-Shotwise should help the golfer understand current performance, see what has changed, and choose a focus for the next practice session. Keep historical data available and use recent, comparable evidence for current assessments. Show the measurements and sample sizes behind each finding.
+The previous phase delivered session recaps, practice recommendations, wedge distance control, focused shot review, safer bulk corrections, and derived Club Profiles. The next phase builds on those features in this order.
 
-## Starting point
+1. Compare two practice sessions in **Sessions & import**.
+2. Manage the bag in **Clubs** and record equipment use in **Session Details**.
+3. Explore measured relationships alongside **Shot shape**.
 
-- Sessions handles CSV previews, same-day imports, editable session metadata, and a log. The import response already returns the saved session ID. Progress reports carry and spread per club and session. The unused `mostImprovedClub` helper accepts three current shots and can compare them against stale or ambiguously ordered same-day history. The recap needs its own comparison rules. [Sessions](../app/src/components/Sessions.tsx) · [Progress](../app/src/domain/progress.ts)
-- Shared analytics provides quantiles, metric summaries, and a Recent cohort. Overview, Gapping, Progress, and Shot Shape share the basis and optional unusual-shot filter. Gapping also drops known partials and mishits. Recent caps shots per club before applying review filters and can include part of a session. Whole-session comparisons need separate selection with visible cohort counts. [Shared analytics](../app/src/domain/analytics.ts)
-- Gapping already surfaces median gaps, wide carry spread, and one-sided curve. Its rules can fire on evidence from a single visit. The next version adds recurrence, prioritisation, a practice task, and access to the supporting shots. [Gapping](../app/src/components/ClubGaps.tsx)
-- Shot review already explains flags, displays raw cells, supports batch changes and undo, and selects source-row ranges within a session. The missing-club suggestions compare carry with candidate clubs and require confirmation. The bulk form currently stores selected IDs and reads the latest revisions at save time. A safer workflow needs a preview with pinned revisions. [Shot review](../app/src/components/ShotReview.tsx)
-- The shot model stores target distance and proximity where available, and keeps intent, contact, club decisions, and exclusion independent. Dedicated wedge analysis and editable club profiles are future work. A synthetic targeted 30 m sand-wedge shot reproduced an unusual-shot flag because the rule includes uncertain wedge intent. [Shot model](../app/src/domain/model.ts)
+Keep the existing top-level navigation. Compute comparisons and explorer results from the loaded snapshot with pure domain functions. Equipment adds persistent records for physical clubs and their assignments. Original imports, recorded club labels, source row order, and measurements remain immutable.
 
-React uses a versioned Supabase snapshot and pure TypeScript analytics. Reuse the existing domain functions and repository. Keep calculations out of presentation, preserve original CSV bytes and shot order, and use effective club labels for analysis. Derived analytics can ship using the existing tables and backup format. Preserve owner isolation, transactional writes, revision conflicts, and backup integrity. [Database guarantees](database.md)
+## Session comparisons
 
-## Product order and design
+Add **Compare sessions** to the logbook and **Compare with another session** to Session Details. Identify each visit by UUID and show its date, time when known, venue, and filename in the selector. Save the pair in the hash so reload and Back preserve the selection. Label the reference and comparison explicitly, and offer a swap action.
 
-1. **Session recap.** Highest immediate value and the clearest portfolio demonstration of trustworthy comparisons. Use the existing Session Details view. Offer **View recap** beside each successful import, including a link to the saved session for duplicates, and make historical recaps accessible from the log. The golfer chooses when to open a recap.
-2. **Practice insights.** Surface two or three focused actions on Overview once the recap can link to evidence. Reuse the existing Gapping rules and views. Start with a small rule set that can be maintained and explained.
-3. **Wedge distance control.** High value for practice, with its scope governed by target coverage and what the CSV target represents. Bring the uncertain-intent wedge safeguard into the recap foundation.
-4. **Review workflow.** Bring shot evidence links forward with the recap. Follow with focused review navigation and a separate improvement to bulk correction, where safeguards matter because the workflow changes saved decisions.
-5. **Club profiles.** Derive the first profiles from trusted recent benchmarks and existing Progress data. Consider saved bag and equipment metadata once the profile proves useful.
+Start with a compact list of all common effective club labels and expand one club at a time. Show which clubs appear on only one side and give the user a way to change either selection when nothing overlaps. Stack controls and metric details on narrow screens.
 
-The recap starts with date, venue if known, recorded and included shot counts, and clubs used. Show up to three noteworthy findings, with room for positive changes and areas to investigate. Club details explain the basis, measurements, sample sizes, baseline dates, and which shots contributed. Link to the supporting shots. Keep metadata and review below the recap. On Overview, place the latest recap and next practice action near the top. Keep the existing typography, colours, chart styling, and navigation. Keep primary actions visible during entry animations, provide text alternatives for charts, and make the measurement basis easy to select on a phone.
+- Use the complete eligible population of each selected visit. Apply the same intent and basis to both sides, honour club corrections and exclusions, and keep the pair independent of Recent. Same-day sessions can be compared by ID even when their order is unclear.
+- Show recorded and included counts, observed median carry, and carry interquartile range (IQR). Keep manually reviewed mishits in the observed distribution. Show typical carry separately. Use reviewed full swings with typical contact when each side has at least 10 measured carries in that cohort. Otherwise use the same labelled broader recap cohort for both sides, where available. The full-swing benchmark is unavailable in a partial-only view.
+- Show median ball speed, launch angle, and apex. Report left, straight, and right shares for recorded start direction, curve, and lateral offset. Give each metric its own measured count. Use the confirmed mishit count over reviewed full swings and show the share of full swings reviewed. Show counts when review coverage is thin. Keep automatic unusual-shot flags separate from contact review.
+- Report signed changes in native units as comparison minus reference. Show percentage change for carry and speed when the reference is positive and coverage supports it. Use percentage points for direction shares. Mark sparse samples and show missing counts on the selected basis. Leave IQR unavailable below four measured shots. Identify differences in venue, shot mix, and measurement coverage. Treat observed changes as descriptive. The recap's historical finding rules depend on multiple prior visits.
+- Reuse shot grouping, recap cohorts, metric and direction summaries, review coverage, and the existing basis definitions. Consider a shared-axis carry plot after reviewing the compact detail view. [Session recap](../app/src/domain/recap.ts) · [Shared analytics](../app/src/domain/analytics.ts) · [Session views](../app/src/components/Sessions.tsx)
 
-## Comparison rules
+## Personal bag and equipment
 
-### Baseline selection
+Add **Manage bag** to Clubs. Give each physical club a stable ID, an Inrange label, a display name or model, optional manufacturer and loft, and an in-bag or retired status. Allow optional dates when known. Two clubs may share a label and overlap in ownership. Show current equipment and assignment history beside the existing profile, performance, and gapping.
 
-Use the three most recent comparable sessions per effective club and metric, within a 60-day window ending on the selected session date. The immediately previous session can be shown as labelled context when the baseline is thin. A rolling shot window stays useful for browsing recent performance, where its shot cap may split a visit. Longer history remains available in Progress. These choices keep early beginner sessions from dominating current comparisons.
+Use **Assign equipment** in Session Details to preview the exact shots for a club label. One confirmation can apply to the group. For a mid-session swap, select a source-row range and preview that subset. Store the confirmed shot IDs with the physical club ID. Show known, mixed, and unknown coverage in the history. Club Profiles and Compare still summarize by effective club label and show physical-club context where available.
 
-- Exclude the selected session, later sessions, archived sessions, and manually excluded shots. A same-day candidate qualifies only when both session times are known and its time is strictly earlier. If the cutoff splits a group whose order is unresolved, keep that group together and show the actual number of sessions.
-- Compute medians and carry IQR within each qualifying session. Use the median of those session summaries as the baseline so a long visit has the same weight as a short visit. Show the actual dates, measured counts, and missing counts per metric.
-- Use the same selected measurement basis on both sides. The recap inherits the player’s basis and names it beside the comparison. Missing measurements stay missing. Direction metrics stay as recorded. Confirm the physical carry reference separately for wedge target error. [Measurement basis](../app/src/domain/model.ts)
+- Old visits and backdated imports start with unknown equipment. Replacement, retirement, and date edits preserve prior assignments. Dates can help suggest a club in a later version. Confirm the proposed shots before saving any assignment.
+- When a later club correction conflicts with an assignment, show **Needs review** and retain the previous assignment for repair. Undoing the correction can restore compatibility. A shot corrected into another group needs its own confirmation to adopt that group's equipment. Keep assignment changes separate from contact, intent, exclusion, and club review.
+- Add owner-scoped equipment and shot assignment tables with owner-qualified foreign keys. Reuse select-only row-level security, authenticated RPCs, per-owner locking, and one dataset version bump per write. Use revision checks for metadata and reject stale assignment previews atomically. Keep retired equipment available for historical references.
+- Page equipment within the version-checked snapshot. Restore v1 backups with empty equipment collections and use v2 for complete equipment backups. Include equipment in the empty-account check. Preserve IDs, CSV provenance checks, and assignments awaiting review in the same transaction. Stage the reviewed hosted migration before the Pages client requires it. Refresh open legacy tabs before taking an equipment-inclusive backup. [Club profiles](../app/src/domain/clubProfiles.ts) · [Database guarantees](database.md) · [Snapshot loader](../app/src/data/snapshot.ts) · [Backup parser](../app/src/domain/backup.ts)
 
-### Potential, reliability, and evidence
+## Ball-flight explorer
 
-- **Potential.** Use explicitly full shots with reviewed typical contact when there is enough evidence. Also show a clearly labelled broader estimate that includes unreviewed non-wedge shots and excludes known partials and manually marked mishits. Full-swing wedge comparisons require explicit full intent. Where unknown intent is included, show its coverage and offer a reviewed-only view when there is enough evidence for it.
-- **Reliability.** Include known mishits and automatically flagged shots in the eligible population. Show the width of the middle half of carries and the lower carry tail when there are at least 20 measured shots. Report confirmed mishits over contact-reviewed full swings and show what share of full swings was reviewed. An empty reviewed denominator means the rate is unavailable.
-- **Carry highlights.** Start with at least 10 measured current shots and 20 prior measurements across at least two dates, with at least five measurements in each qualifying prior session. Require the difference to reach both 5 m and 5% of the baseline, and the current median to fall outside the prior session medians’ range.
-- **Spread highlights.** Start with at least 12 current and 24 prior measurements, retaining the same five-per-session and two-date guards. Require a change of at least 3 m and 20% of the baseline IQR, with the current IQR outside the range of prior IQRs. A tighter middle and worse lower tail are mixed evidence.
-- **Flight details.** Show median ball speed, launch angle, and apex, and separate left, straight, and right shares for start direction, curve, and lateral offset. Use per-metric denominators. Keep these changes descriptive unless there is a practice goal against which to judge them.
-- **When to withhold a finding.** Show observed values and sample sizes even if the comparison is unavailable. Withhold strong copy for sparse history, unresolved chronology, or substantial differences in recorded setup, shot mix, or measurement availability. The thresholds are provisional product rules. Use evidence counts and dates in the interface instead of confidence percentages.
+Add **Shape** and **Explorer** views to the existing Shot shape destination. Keep existing Shape links valid. Open Explorer with one effective club and ball speed versus carry. Offer carry, total distance, ball speed, launch angle, and apex for both axes. Keep the same axes when changing clubs so the user can inspect another club in the same way.
 
-### Review flags and practice rules
+Reuse the shared cohort and measurement basis. Offer Recent, All-time, or one named session, with an intent filter and All contact or Reviewed typical. A named session uses its complete eligible population. Build the plot in a pure domain function and emit a point only when both selected measurements exist. Preserve zero values and report plotted shots, omitted shots, and missing counts by axis.
 
-The unusual-shot rule uses short range-flat carry and low range ball speed. The club-label rule looks for unusually long and fast explicitly full shots. Both provide reasons to review. Keep flag status out of the recap’s core calculations, distinguish it from the golfer’s contact decisions, and preserve manual overrides. A missed tablet switch can be easier for the golfer to spot in context. The existing evaluation establishes coverage and threshold sensitivity. Require independent intent and contact labels before using export trials to judge classifier accuracy or adding new signals such as apex or launch. [Unusual-shot rule](../app/src/domain/unusualShots.ts) · [Existing evaluation](assisted-iron-review.md)
+Use the shot UUID for selection. Show the session, source shot number or row, measured values, and a link to review. Follow Shape's plot, selected-shot detail, and table patterns. Provide tap selection and a keyboard-operable table that gives access to every shot, including points that overlap. Name units and the selected basis on the chart.
 
-Promote practice patterns that recur on at least two dates. Start with recurring carry inconsistency, one-sided curve, and repeatedly small or reversed median gaps on comparable dates for both clubs. Carry-band overlap describes the data on its own. Rank by recurrence, coverage, size of the effect, and recency. Reduce priority when repeated newer evidence shows improvement. Each result identifies the club, measurements, evidence strength, and one concrete practice task. For example, alternate the 5i and 6i at the same aim line to see if a recurring small gap holds under comparable conditions. Derive insights on demand from the loaded snapshot and memoize if profiling demonstrates a need. Draw conclusions about observed ball flight and distance.
+Start with descriptive exploration. Defer correlation, trend lines, and automatic interpretation. If correlation is added later, use paired values for one club and a clear intent cohort, check the sample size and variation, and show which sessions contributed. Use per-session spread in Progress for a later view of launch consistency over time. [Shot Shape](../app/src/components/ShotShapes.tsx) · [Measurement bases](../app/src/domain/model.ts)
 
-## Reviewable milestones
+## Reviewable pull requests
 
-### 1. Comparison foundation
+| PR | Acceptance |
+| --- | --- |
+| 1. Compare two sessions | Open Compare from the logbook and a visit. Verify same-day IDs, reload, Back, and phone layout. Cover one-sided and no-common-club cases, corrected labels, exclusions, full and partial intent, missing or sparse data, all bases, and independence from Recent. |
+| 2. Add comparison details | Verify the shared typical-carry cohort, flight and directional measurements, reviewed mishit coverage, and neutral deltas. Exercise sparse review, zero references, and basis changes. |
+| 3. Add equipment persistence | Verify owner isolation, foreign keys, stale writes and atomic rollback, snapshot paging, v1 and v2 restore, and original CSV provenance against local Supabase. |
+| 4. Manage the bag in Clubs | Register, edit, and retire a club. Allow the same label on two clubs and overlapping ownership. Preserve a draft after a conflict and verify reload and backup round-trips. |
+| 5. Assign equipment in Sessions | Confirm, revise, or clear a group or range. Cover replacement, historical imports, unknown and mixed use, and corrections and undo. Verify equipment context in Clubs and Compare. |
+| 6. Explore ball-flight measurements | Verify axis mapping, missing X and Y, sparse data, corrected clubs, exclusions, intent and contact filters, basis changes, and exact shot mapping. Cover touch, keyboard, overlapping points, and review links. |
 
-- Add pure recap calculations in `app/src/domain/`. Reuse quantiles, effective club labels, the basis mapping, and manual review state. Give recap comparisons an explicit earlier-session rule. In `unusualShots.ts`, require explicit full intent for wedge shots to be assessed or used as evidence.
-- **Database** — no migration.
-- **Acceptance** — deterministic unit tests cover small samples, missing measurements, no matching history, unordered input, same-day time ties, later-session invariance, manual club correction, exclusions, archived sessions, deliberate partials, extreme mishits, rapid improvement, and every basis. A 30 m targeted wedge remains available for practice analysis.
+## Decisions to confirm
 
-### 2. Session recap and post-import links
+| Decision | Recommended default |
+| --- | --- |
+| Default comparison scope | Show all common clubs and all included shots, with intent filters and typical carry separate. A focused club default saves a step for users who usually compare the same club. |
+| Archived visits | Start with unarchived visits to match Recap and Progress. Add an explicit archive selector if archived visits need to be comparable. |
+| Equipment confirmation | Confirm a group once per session and use a row range for a swap. Revisit suggestions if repeated assignments take too much time. |
+| Explorer time scope | Offer Recent, All-time, or one session. Bring forward a custom date range if comparing groups of visits around a lesson or equipment change is a priority. |
 
-- Extend `Sessions.tsx` and hash navigation in `App.tsx`. Use saved session IDs and share one recap view between imports and the logbook. Add the summary, carry and spread findings, collapsed metric details, and links to matching shot evidence. Distinguish an empty dataset, sparse baseline, and no noteworthy changes.
-- **Database** — no migration. Use existing import and refresh calls.
-- **Acceptance** — desktop Chromium and phone-sized WebKit tests cover new, multiple, duplicate, and historical imports, same-day session identity, refresh and Back, and a recap recalculating after a review edit. Verify basis selection, meaningful focus when opening details or evidence, readable sample counts, and responsive layout without horizontal page overflow.
-
-### 3. Next-practice recommendations
-
-- Extend the Gapping rules in `analytics.ts` to return structured evidence and supporting shot IDs. Reuse the recap’s cohort logic where it matches the rule. Surface the capped, ranked recommendations on Overview and link to the existing detail views.
-- **Database** — no migration. Compute from the current snapshot.
-- **Acceptance** — unit tests verify recurrence, one-off suppression, comparable-date gapping, stable ranking, reduced priority for an improving pattern, and no promoted recommendation from overlap alone. Browser tests verify the cap of three distinct actions and that evidence links open the relevant shots.
-
-### 4. Wedge target practice
-
-- Inspect aggregate target coverage and confirm the units and carry reference in representative Inrange exports. Use exact recorded targets first. Show counts and typical carry, carry spread, optional launch, speed and apex, and recorded directional evidence where the aim line is known. If the carry reference is verified, add signed carry error, median absolute error, and short/long counts. If it remains unclear, show target and carry side by side. Use existing full, partial, and unknown intent tags for untargeted shots. Add a target-versus-carry chart only if it answers a question the summaries leave open.
-- **Database** — no migration. Any later manual target entry should have separate provenance from the recorded CSV.
-- **Acceptance** — synthetic fixtures cover missing and zero targets, sparse target groups, corrected wedge labels, known partials, and mixed intent. Inspect exact measured shot groups in a browser. A targeted 30 m sand wedge is outside full-swing benchmarks unless explicitly marked full. Show coverage before adding target-specific practice recommendations.
-
-### 5a. Focused review
-
-- Extend `ShotReview.tsx` with next/previous navigation, neighbouring source rows, and filters for open flags, manually reviewed shots, and all shots. Reuse current explanations, save, and undo. Keep contact and club-label decisions separate.
-- **Database** — no migration.
-- **Acceptance** — browser tests cover reviewing consecutive flags, staying in context as a flag clears, session boundaries, keyboard navigation, and visible busy and failure states.
-
-### 5b. Safer consecutive correction
-
-- Preview the exact session, source rows, old effective labels, proposed label, and any skipped decisions. Skip confirmed or corrected club choices by default. Apply only the club change after explicit confirmation. Pin the previewed shot IDs and revisions and use the atomic batch repository call. Offer immediate undo for that batch with the expected post-save revisions.
-- **Database** — no migration for immediate undo. Durable batch history and undo across intervening edits would require a separate persistence design.
-- **Acceptance** — verify that a ten-row correction preserves original labels, measurements, and unrelated review fields. A stale row rejects the batch atomically. Exact-batch undo restores the earlier decisions or surfaces a newer edit.
-
-### 6. Derived club profiles
-
-- Build read-only profiles from the recap, Progress, and Gapping calculations. Show recent typical carry and spread, sample sizes, and historical trends. Qualify any personal best by session and coverage. Defer loft, equipment model, current bag, and notes to a separate persistence decision.
-- **Database** — no migration for derived profiles. Saved metadata would require owner-scoped storage and versioned backup and restore.
-- **Acceptance** — profile statistics agree with the recap given the same inputs, and historical performance remains accessible. A later persistence PR must verify owner isolation and backward-compatible restore.
+Defer a dedicated equipment comparison and additional equipment fields such as shaft details and notes until their use is clear.
 
 ## Verification
 
-Run the project checks appropriate to each PR. Analytics work needs deterministic unit tests, typecheck, lint, and the GitHub Pages build. Run focused browser tests on desktop Chromium and phone-sized WebKit for changed user flows, including touch targets, narrow layout, keyboard navigation, loading, and error recovery. Run local database tests for changes to persistence. Use synthetic fixtures in Git and report only aggregate results from private exports.
-
-The review baseline passed 83 unit tests, typecheck, lint, a GitHub Pages build, and six focused browser cases. The build produced a 629 kB JavaScript entry bundle, about 180 kB gzip. Treat this as a baseline. If first load feels slow on a phone or the recap materially increases startup work, profile JavaScript and the initial data fetch before changing the loading strategy.
+Use deterministic synthetic fixtures. For application PRs, run the unit suite, typecheck, lint, and the Pages build from `app/`. Run local database tests for persistence changes and Chromium and phone-sized WebKit tests for changed flows. Check keyboard focus, readable counts, and narrow layouts. [Repository verification](../AGENTS.md#verification)
