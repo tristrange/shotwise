@@ -324,10 +324,22 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .review { margin-top: 30px; }
 .review-controls { background: transparent; border: 0; border-top: 1px solid var(--ink); padding: 18px 0 0; }
 .review-controls .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.tabs { display: flex; gap: 4px; margin: 18px 0; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 18px 0; border-bottom: 1px solid var(--line); }
 .tabs button { background: transparent; color: var(--mute); border-radius: 0; padding: 9px 14px; border-bottom: 2px solid transparent; }
 .tabs button.active { background: transparent; color: var(--ink); border-bottom-color: var(--ink); }
+.focused-review { border: 1px solid var(--line); background: var(--panel); padding: 16px 18px; margin: 18px 0; }
+.focused-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
+.focused-label { margin: 0; font: 400 13px/1.5 var(--mono); color: var(--ink2); overflow-wrap: anywhere; }
+.focused-label strong { color: var(--ink); }
+.focused-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.nearby { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.nearby-title { margin: 0 0 6px; font: 600 11px/1.4 'Instrument Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+.nearby ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.nearby li { font: 400 12px/1.6 var(--mono); color: var(--ink2); }
+.nearby li[aria-current] { color: var(--ink); font-weight: 600; }
+.nearby .muted { margin-top: 0; }
 .shot { border-bottom: 1px solid var(--line); padding: 22px 0; }
+.shot.is-focused { border-left: 3px solid var(--ochre); padding-left: 14px; }
 .shot-title { flex-direction: row; align-items: center; color: var(--ink); }
 .shot-title span { margin-left: auto; font-weight: 400; }
 .shot-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 16px 0; color: var(--ink2); font: 400 12px/1.5 var(--mono); }
@@ -403,6 +415,8 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
   .auth-card .brand { margin-bottom: 32px; }
   .shot-title { flex-wrap: wrap; }
   .shot-title span { margin-left: 0; }
+  .focused-review { padding: 14px; }
+  .shot.is-focused { padding-left: 10px; }
 }
 
 /* Scroll-entry motion is applied with the Web Animations API in reveal.ts.

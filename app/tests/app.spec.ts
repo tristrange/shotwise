@@ -134,6 +134,59 @@ async function seedClubSuggestions(account: Account) {
   }
 }
 
+async function seedFocusedReviews(account: Account) {
+  const normal = (i: number) => ({
+    'Flat Carry Dist. Range (m)': String(100 + (i % 5)),
+    'Ball Speed (kph)': String(140 + (i % 5)),
+  });
+  const weak = () => ({
+    'Flat Carry Dist. Range (m)': '40',
+    'Ball Speed (kph)': '90',
+  });
+  const main = await account.repository.importCsv({
+    filename: 'focused-irons.csv',
+    date: localToday(),
+    time: '10:00',
+    venue: 'Main range',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture([
+          ...Array.from({ length: 20 }, (_, i) => normal(i)),
+          weak(),
+          weak(),
+          normal(0),
+        ]),
+      ),
+    ),
+  });
+  // Reuses source numbers 1–5 so navigation must stay inside the focused session.
+  await account.repository.importCsv({
+    filename: 'other-session.csv',
+    date: shiftDate(localToday(), -1),
+    time: '10:00',
+    venue: 'Other range',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture(
+          Array.from({ length: 5 }, () => ({
+            Club: '3w',
+            'Flat Carry Dist. Range (m)': '190',
+            'Flat Carry Dist. Premium (m)': '200',
+            'Ball Speed (kph)': '200',
+          })),
+        ),
+      ),
+    ),
+  });
+  return main;
+}
+
 test('toggles automatic mishits across stats without changing reviews', async ({
   page,
   account,
@@ -701,6 +754,10 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
   const before = await account.repository.load();
   await login(page, account);
   await nav(page, 'Review');
+  const focused = page.getByRole('region', {
+    name: 'Focused shot',
+    exact: true,
+  });
   await expect(
     page.getByText('Likely mishit · experimental', { exact: false }),
   ).toBeVisible();
@@ -724,8 +781,11 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
     .getByRole('combobox', { name: /^Set contact/ })
     .selectOption('typical');
   await page.getByRole('button', { name: 'Save review', exact: true }).click();
-  await expect(target).toHaveCount(0);
-  await page.getByRole('button', { name: 'Browse all', exact: true }).click();
+  await expect(focused.locator('.focused-label')).toContainText('Row 21 · Shot #21');
+  await expect(target).toContainText('unknown · typical · included');
+  await expect(target).not.toContainText('Likely mishit · experimental');
+  await page.getByRole('button', { name: 'All shots', exact: true }).click();
+  await expect(target).toBeVisible();
   await expect(target).toContainText('unknown · typical · included');
   await expect(target).toContainText('7i → 7i');
   await expect(
@@ -740,12 +800,279 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
     .getByRole('button', { name: 'Undo selected', exact: true })
     .click();
   await expect(target).toContainText('unknown · uncertain · included');
-  await page.getByRole('button', { name: 'Flagged only', exact: true }).click();
+  await page.getByRole('button', { name: 'Open flags', exact: true }).click();
   await expect(target).toContainText('Likely mishit · experimental');
   const restored = await account.repository.load();
   expect(restored.shots.map((shot) => ({ ...shot, revision: 0 }))).toEqual(
     before.shots.map((shot) => ({ ...shot, revision: 0 })),
   );
+});
+
+test('reviews consecutive flags in one focused session without wrapping', async ({
+  page,
+  account,
+}) => {
+  const main = await seedFocusedReviews(account);
+  await login(page, account);
+  await nav(page, 'Review');
+
+  const focused = page.getByRole('region', {
+    name: 'Focused shot',
+    exact: true,
+  });
+  const nearby = focused.getByRole('region', {
+    name: 'Nearby source rows',
+    exact: true,
+  });
+  const current = focused.locator('.focused-label');
+  const next = focused.getByRole('button', { name: 'Next shot', exact: true });
+  const previous = focused.getByRole('button', {
+    name: 'Previous shot',
+    exact: true,
+  });
+  const contact = page.getByRole('combobox', { name: /^Set contact/ });
+  const clubDecision = page.getByRole('combobox', {
+    name: 'Club decision',
+    exact: true,
+  });
+  const save = page.getByRole('button', { name: 'Save review', exact: true });
+  const today = localToday();
+  const row = (n: number) =>
+    page
+      .locator('.shot')
+      .filter({ hasText: `Row ${n} · Shot #${n}` })
+      .filter({ hasText: today });
+
+  // Two consecutive flagged rows, with a non-flagged neighbour in the same session.
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toBeVisible();
+  await row(21).getByRole('checkbox').check();
+  await expect(current).toContainText('Row 21 · Shot #21');
+  await expect(nearby).toContainText('Row 20 · Shot #20');
+  await expect(nearby).toContainText('Row 22 · Shot #22');
+  await expect(nearby).not.toContainText('3w');
+
+  // Enter and Space work on the native navigation buttons.
+  await contact.selectOption('mishit');
+  await next.focus();
+  await page.keyboard.press('Enter');
+  await expect(current).toContainText('Row 22 · Shot #22');
+  await expect(contact).toHaveValue('');
+  await previous.focus();
+  await page.keyboard.press('Space');
+  await expect(current).toContainText('Row 21 · Shot #21');
+
+  // Review the first flag, then advance directly to the second.
+  await contact.selectOption('typical');
+  await save.click();
+  await expect(current).toContainText('Row 21 · Shot #21');
+  await expect(row(21)).toContainText('unknown · typical · included');
+  await expect(row(21)).toContainText('7i → 7i');
+  await next.click();
+  await expect(current).toContainText('Row 22 · Shot #22');
+  await expect(row(21)).toHaveCount(0);
+  await expect(row(22).getByRole('checkbox')).toBeChecked();
+  await expect(contact).toHaveValue('');
+  await clubDecision.selectOption('confirmed');
+  await save.click();
+  await expect(current).toContainText('Row 22 · Shot #22');
+  await expect(row(22)).toContainText('unknown · uncertain · included');
+
+  await expect
+    .poll(async () => {
+      const data = await account.repository.load();
+      const shots = data.shots.filter(
+        (shot) => shot.sessionId === main.sessionId,
+      );
+      const a = shots.find((shot) => shot.rowIndex === 21);
+      const b = shots.find((shot) => shot.rowIndex === 22);
+      return {
+        a: a && {
+          contact: a.review.contact,
+          club: a.review.club.kind,
+          intent: a.review.intent,
+        },
+        b: b && {
+          contact: b.review.contact,
+          club: b.review.club.kind,
+          intent: b.review.intent,
+        },
+      };
+    })
+    .toEqual({
+      a: { contact: 'typical', club: 'unreviewed', intent: 'unknown' },
+      b: { contact: 'uncertain', club: 'confirmed', intent: 'unknown' },
+    });
+
+  // Navigation stops at this session's edges; overlapping numbers elsewhere are ignored.
+  await page.getByRole('button', { name: 'All shots', exact: true }).click();
+  await row(22).getByRole('checkbox').check();
+  await next.click();
+  await expect(current).toContainText('Row 23 · Shot #23');
+  await expect(next).toBeDisabled();
+  await row(1).getByRole('checkbox').check();
+  await expect(current).toContainText('focused-irons.csv');
+  await expect(previous).toBeDisabled();
+  await expect(nearby).toContainText('Row 1 · Shot #1');
+  await expect(nearby).not.toContainText('3w');
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
+test('filters open flags, manually reviewed shots and all shots by active events', async ({
+  page,
+  account,
+}) => {
+  const main = await seedFocusedReviews(account);
+  await login(page, account);
+  await nav(page, 'Review');
+
+  const openFlags = page.getByRole('button', {
+    name: 'Open flags',
+    exact: true,
+  });
+  const reviewed = page.getByRole('button', {
+    name: 'Manually reviewed',
+    exact: true,
+  });
+  const all = page.getByRole('button', { name: 'All shots', exact: true });
+  const today = localToday();
+  const row = (n: number) =>
+    page
+      .locator('.shot')
+      .filter({ hasText: `Row ${n} · Shot #${n}` })
+      .filter({ hasText: today });
+
+  await expect(openFlags).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toBeVisible();
+  await expect(row(20)).toHaveCount(0);
+  await reviewed.click();
+  await expect(page.getByText('No shots in this view.')).toBeVisible();
+  await all.click();
+  await expect(row(20)).toBeVisible();
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toBeVisible();
+
+  // A club confirmation and an open contact flag can coexist.
+  await row(21).getByRole('checkbox').check();
+  await page
+    .getByRole('combobox', { name: 'Club decision', exact: true })
+    .selectOption('confirmed');
+  await page.getByRole('button', { name: 'Save review', exact: true }).click();
+  await expect(row(21)).toContainText('7i → 7i');
+  await openFlags.click();
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toBeVisible();
+  await reviewed.click();
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toHaveCount(0);
+
+  // Undo deactivates the event, so the shot leaves the reviewed filter.
+  await row(21).getByRole('checkbox').check();
+  await page
+    .getByRole('button', { name: 'Undo selected', exact: true })
+    .click();
+  await all.click();
+  await expect(row(21)).toContainText('unknown · uncertain · included');
+  await expect
+    .poll(async () => {
+      const data = await account.repository.load();
+      const id = data.shots.find(
+        (shot) => shot.sessionId === main.sessionId && shot.rowIndex === 21,
+      )?.id;
+      return data.events.filter((event) => event.shotId === id && !event.undone)
+        .length;
+    })
+    .toBe(0);
+  await openFlags.click();
+  await expect(row(21)).toBeVisible();
+  await expect(row(22)).toBeVisible();
+  await reviewed.click();
+  await expect(page.getByText('No shots in this view.')).toBeVisible();
+});
+
+test('keeps the focused draft through busy, failure and retry states', async ({
+  page,
+  account,
+}) => {
+  await seedFocusedReviews(account);
+  await login(page, account);
+  await nav(page, 'Review');
+
+  const focused = page.getByRole('region', {
+    name: 'Focused shot',
+    exact: true,
+  });
+  const contact = page.getByRole('combobox', { name: /^Set contact/ });
+  const undo = page.getByRole('button', { name: 'Undo selected', exact: true });
+  const save = page.getByRole('button', { name: 'Save review', exact: true });
+  const status = page.getByRole('status').filter({ hasText: 'Saving review' });
+  const current = focused.locator('.focused-label');
+  const today = localToday();
+  const row = (n: number) =>
+    page
+      .locator('.shot')
+      .filter({ hasText: `Row ${n} · Shot #${n}` })
+      .filter({ hasText: today });
+
+  await row(21).getByRole('checkbox').check();
+  await contact.selectOption('typical');
+  let release = () => {};
+  let entered = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const request = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  await page.route('**/rest/v1/rpc/apply_reviews', async (route) => {
+    entered();
+    await gate;
+    await route.continue();
+  });
+  await save.click();
+  await request;
+  try {
+    await expect(status).toBeVisible();
+    await expect(save).toBeDisabled();
+    await expect(undo).toBeDisabled();
+    await expect(contact).toBeDisabled();
+    await expect(
+      focused.getByRole('button', { name: 'Next shot' }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'All shots' }),
+    ).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(status).toHaveCount(0);
+  await expect(current).toContainText('Row 21 · Shot #21');
+  await page.getByRole('button', { name: 'All shots', exact: true }).click();
+  await expect(row(21)).toContainText('unknown · typical · included');
+
+  // A failed save keeps the draft and the focused target; retry then succeeds.
+  await page.unroute('**/rest/v1/rpc/apply_reviews');
+  await row(22).getByRole('checkbox').check();
+  await contact.selectOption('typical');
+  await page.route('**/rest/v1/rpc/apply_reviews', (route) => route.abort());
+  await save.click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(contact).toHaveValue('typical');
+  await expect(current).toContainText('Row 22 · Shot #22');
+  await page.unroute('**/rest/v1/rpc/apply_reviews');
+  await save.click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(row(22)).toContainText('unknown · typical · included');
+
+  await row(22).getByRole('checkbox').check();
+  await undo.click();
+  await expect(row(22)).toContainText('unknown · uncertain · included');
+  await expect(current).toContainText('Row 22 · Shot #22');
 });
 
 test('imports, reviews, corrects, undoes and syncs without losing originals', async ({
@@ -1406,6 +1733,9 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
   await evidence.getByLabel('Exclusion reason').fill('Synthetic review');
   await evidence.getByRole('button', { name: 'Save review' }).click();
   await expect(evidence.getByRole('checkbox')).toHaveCount(9);
+  await expect(
+    evidence.getByRole('region', { name: 'Nearby source rows' }),
+  ).toContainText('Row 3 · Shot #3');
   await expect(recap).toContainText('13 recorded · 10 included shots');
   await expect(recap).not.toContainText('Median carry 25 m longer');
   await expect(recap).not.toContainText('Carry spread 4.5 m tighter');
