@@ -36,8 +36,6 @@ export function ShotShapes({
   const sessionNames = new Map(
     data.sessions.map((s) => [s.id, `${s.date} · ${s.venue || s.filename}`]),
   );
-  const inspected = shots.find((s) => s.id === selected);
-  const carry = inspected?.measurements[BASES[basis].carry];
   return (
     <>
       <div className="section-heading">
@@ -78,41 +76,14 @@ export function ShotShapes({
           applies to carry values below. Select a point or use its shot table to
           inspect the measurements.
         </p>
-        <div
-          className="shape-detail notice"
-          role="region"
-          aria-label="Selected shot measurements"
-          aria-live="polite"
-        >
-          {inspected ? (
-            <>
-              <strong>
-                {effectiveClub(inspected)} · Row {inspected.rowIndex} ·{' '}
-                {sessionNames.get(inspected.sessionId)}
-              </strong>
-              <p>
-                Launch: {direction(inspected.measurements.launchDirection, '°')}{' '}
-                · Curve: {direction(inspected.measurements.curve, ' m')} · From
-                Centre: {direction(inspected.measurements.fromCentre, ' m')}
-              </p>
-              <p>
-                Carry:{' '}
-                {carry === null || carry === undefined
-                  ? 'Missing'
-                  : `${carry.toFixed(1)} m`}{' '}
-                · {BASES[basis].label}
-              </p>
-            </>
-          ) : (
-            <p>Select a shot to see its recorded measurements.</p>
-          )}
-        </div>
         {!clubs.length && (
           <p>No shots match this view. Try All-time or import a session.</p>
         )}
         {clubs.map((club) => {
           const group = shots.filter((s) => effectiveClub(s) === club);
           const paired = points.filter((p) => effectiveClub(p.shot) === club);
+          const inspected = group.find((s) => s.id === selected);
+          const carry = inspected?.measurements[BASES[basis].carry];
           const xLimit = Math.max(
             1,
             Math.ceil(
@@ -219,6 +190,37 @@ export function ShotShapes({
                   club.
                 </p>
               )}
+              <div
+                className="shape-detail notice"
+                role="region"
+                aria-label={`Selected shot measurements for ${club}`}
+                aria-live="polite"
+              >
+                {inspected ? (
+                  <>
+                    <strong>
+                      {effectiveClub(inspected)} · Row {inspected.rowIndex} ·{' '}
+                      {sessionNames.get(inspected.sessionId)}
+                    </strong>
+                    <p>
+                      Launch:{' '}
+                      {direction(inspected.measurements.launchDirection, '°')}{' '}
+                      · Curve: {direction(inspected.measurements.curve, ' m')} ·
+                      From Centre:{' '}
+                      {direction(inspected.measurements.fromCentre, ' m')}
+                    </p>
+                    <p>
+                      Carry:{' '}
+                      {carry === null || carry === undefined
+                        ? 'Missing'
+                        : `${carry.toFixed(1)} m`}{' '}
+                      · {BASES[basis].label}
+                    </p>
+                  </>
+                ) : (
+                  <p>Select a shot to see its recorded measurements.</p>
+                )}
+              </div>
               <details>
                 <summary>Shot measurements ({group.length})</summary>
                 <div className="table-wrap">

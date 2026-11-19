@@ -1394,6 +1394,14 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
           },
           { 'Launch Direction': '--', Curve: '2L', 'From Centre (m)': '8L' },
           { 'Launch Direction': '2R', Curve: '--' },
+          {
+            Club: 'SW',
+            'Launch Direction': '4R',
+            Curve: '6L',
+            'From Centre (m)': '9L',
+            'Flat Carry Dist. Premium (m)': '88',
+          },
+          { Club: 'SW', 'Launch Direction': '--', Curve: '1R' },
         ]),
       ),
     ),
@@ -1404,22 +1412,64 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
     name: '7i recorded shot shapes',
     exact: true,
   });
+  const swPlot = page.getByRole('group', {
+    name: 'SW recorded shot shapes',
+    exact: true,
+  });
+  const detail7i = page.getByRole('region', {
+    name: 'Selected shot measurements for 7i',
+    exact: true,
+  });
+  const detailSw = page.getByRole('region', {
+    name: 'Selected shot measurements for SW',
+    exact: true,
+  });
+  const prompt = 'Select a shot to see its recorded measurements.';
+  await expect(detail7i).toContainText(prompt);
+  await expect(detailSw).toContainText(prompt);
   await expect(plot.getByRole('button')).toHaveCount(2);
+  await expect(swPlot.getByRole('button')).toHaveCount(1);
   await expect(
     page.getByText(
       '2 of 4 shots have both measurements; 2 are absent from the plot.',
       { exact: true },
     ),
   ).toBeVisible();
-  await plot.getByRole('button', { name: /Plot 7i row 1/ }).click();
-  const detail = page.getByRole('region', {
-    name: 'Selected shot measurements',
+  await expect(
+    page.getByText(
+      '1 of 2 shots have both measurements; 1 are absent from the plot.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const point7i = plot.getByRole('button', { name: /Plot 7i row 1/ });
+  await point7i.click();
+  await expect(point7i).toHaveAttribute('aria-pressed', 'true');
+  await expect(detail7i).toContainText('5.0° left');
+  await expect(detail7i).toContainText('3.0 m right');
+  await expect(detail7i).toContainText('12.0 m right');
+  await expect(detail7i).toContainText('105.0 m');
+  await expect(detailSw).toContainText(prompt);
+  const pointSw = swPlot.getByRole('button', { name: /Plot SW row 5/ });
+  await pointSw.click();
+  await expect(pointSw).toHaveAttribute('aria-pressed', 'true');
+  await expect(point7i).toHaveAttribute('aria-pressed', 'false');
+  await expect(detailSw).toContainText('SW · Row 5');
+  await expect(detailSw).toContainText('4.0° right');
+  await expect(detailSw).toContainText('6.0 m left');
+  await expect(detailSw).toContainText('9.0 m left');
+  await expect(detailSw).toContainText('88.0 m');
+  await expect(detail7i).toContainText(prompt);
+  await page.getByText('Shot measurements (2)', { exact: true }).click();
+  const swTable = page.getByRole('table', {
+    name: 'SW shot measurements',
     exact: true,
   });
-  await expect(detail).toContainText('5.0° left');
-  await expect(detail).toContainText('3.0 m right');
-  await expect(detail).toContainText('12.0 m right');
-  await expect(detail).toContainText('105.0 m');
+  await swTable
+    .getByRole('button', { name: 'Inspect row 6', exact: true })
+    .click();
+  await expect(detailSw).toContainText('SW · Row 6');
+  await expect(detailSw).toContainText('Launch: Missing');
+  await expect(detail7i).toContainText(prompt);
   await page.getByText('Shot measurements (4)', { exact: true }).click();
   const table = page.getByRole('table', {
     name: '7i shot measurements',
@@ -1431,8 +1481,9 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   });
   await inspectZero.focus();
   await page.keyboard.press('Enter');
-  await expect(detail).toContainText('0.0° straight');
-  await expect(detail).toContainText('0.0 m straight');
+  await expect(detail7i).toContainText('0.0° straight');
+  await expect(detail7i).toContainText('0.0 m straight');
+  await expect(detailSw).toContainText(prompt);
   await expect(
     table
       .getByRole('row')
@@ -1454,7 +1505,7 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   await page
     .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
     .click();
-  await expect(detail).toContainText('Carry: Missing');
+  await expect(detail7i).toContainText('Carry: Missing');
   await expect(plot.getByRole('button')).toHaveCount(2);
   await nav(page, 'Overview');
   await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
