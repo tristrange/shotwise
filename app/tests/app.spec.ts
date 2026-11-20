@@ -3514,12 +3514,8 @@ async function openExplorer(page: Page) {
   await expect(
     page.getByRole('heading', { name: 'Shot shape', exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: 'Explorer', exact: true })
-    .or(page.getByRole('tab', { name: 'Explorer', exact: true }))
-    .or(page.getByRole('link', { name: 'Explorer', exact: true }))
-    .click();
-  return page.getByRole('region', { name: /Explorer|ball-flight/i }).first();
+  await page.getByRole('button', { name: 'Explorer', exact: true }).click();
+  return page.getByRole('region', { name: 'Ball-flight explorer', exact: true });
 }
 
 test('Explorer keeps axis choices across clubs and honours scope, basis and paired counts', async ({
@@ -3541,10 +3537,7 @@ test('Explorer keeps axis choices across clubs and honours scope, basis and pair
   const points = explorer.getByRole('button', { name: /^Plot / });
 
   await expect(
-    page
-      .getByRole('button', { name: 'Shape', exact: true })
-      .or(page.getByRole('tab', { name: 'Shape', exact: true }))
-      .or(page.getByRole('link', { name: 'Shape', exact: true })),
+    page.getByRole('button', { name: 'Shape', exact: true }),
   ).toBeVisible();
 
   await expect(xAxis.locator('option:checked')).toContainText('Ball speed');
@@ -3648,4 +3641,7 @@ test('Explorer keyboard table targets an exact overlapping shot and opens its re
   await expect(review).toHaveAttribute('href', new RegExp(overlapping.id));
   await review.click();
   await expect(page).toHaveURL(new RegExp(overlapping.id));
+  const supportingShots = page.getByRole('region', { name: 'Supporting shots' });
+  await expect(supportingShots).toContainText(`Row ${overlapping.rowIndex}`);
+  await expect(supportingShots).toContainText('1 measured shots');
 });

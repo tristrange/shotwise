@@ -11,7 +11,6 @@ import {
   effectiveClub,
   localToday,
   type Dataset,
-  type Session,
 } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
 import { BasisButton } from './AnalysisControls';
@@ -26,15 +25,6 @@ const INTENT_OPTIONS: { value: ExplorerQuery['intent']; label: string }[] = [
   { value: 'unknown', label: 'Unknown intent' },
 ];
 
-/** Selector labels identify a visit exactly without embedding other filenames. */
-function sessionSelectLabel(session: Session) {
-  const parts = [session.date];
-  if (session.time) parts.push(session.time.slice(0, 5));
-  if (session.venue) parts.push(session.venue);
-  parts.push(`id ${session.id.slice(0, 8)}`);
-  return parts.join(' · ');
-}
-
 function valueText(value: number, unit: string) {
   return unit === '°' ? `${value.toFixed(1)}°` : `${value.toFixed(1)} ${unit}`;
 }
@@ -45,10 +35,13 @@ function missingText(value: number | null, unit: string) {
 
 /** Plot domain from 0 (or the lowest value) up to a rounded maximum. */
 function domainOf(values: number[]): [number, number] {
-  const lo = Math.floor(Math.min(0, ...values));
-  let hi = Math.ceil(Math.max(0, ...values));
-  if (hi <= lo) hi = lo + 1;
-  return [lo, hi];
+  let lo = 0;
+  let hi = 0;
+  for (const value of values) {
+    lo = Math.min(lo, value);
+    hi = Math.max(hi, value);
+  }
+  return [Math.floor(lo), hi === lo ? 1 : Math.ceil(hi)];
 }
 
 function ticksOf([lo, hi]: [number, number]): ScatterTick[] {
@@ -109,7 +102,7 @@ export function BallFlightExplorer({
   };
   const plot = activeClub ? explorerPlot(data, query) : undefined;
   const sessionNames = new Map(
-    data.sessions.map((s) => [s.id, `${s.date} · ${s.venue || s.filename}`]),
+    data.sessions.map((session) => [session.id, sessionOptionLabel(session)]),
   );
   const xInfo = plot ? plot.xAxis : explorerAxis(xAxis, settings.basis);
   const yInfo = plot ? plot.yAxis : explorerAxis(yAxis, settings.basis);
@@ -142,7 +135,6 @@ export function BallFlightExplorer({
       <section className="panel" aria-label="Ball-flight explorer">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Ball-flight explorer</span>
             <h2>
               {xInfo.label} vs {yInfo.label}
               {plot ? ` · ${plot.club}` : ''}
@@ -262,7 +254,7 @@ export function BallFlightExplorer({
                   <option value="">Choose a session</option>
                   {sessionOptions.map((session) => (
                     <option key={session.id} value={session.id}>
-                      {sessionSelectLabel(session)}
+                      {sessionOptionLabel(session)}
                     </option>
                   ))}
                 </select>
@@ -398,7 +390,8 @@ export function BallFlightExplorer({
                           <td>
                             <button
                               className="text-button"
-                              aria-label={`Inspect row ${shot.rowIndex}`}
+                              aria-label={`Inspect row ${shot.rowIndex} · ${sessionNames.get(shot.sessionId) ?? ''}`}
+                              aria-pressed={selected === shot.id}
                               onClick={() => setSelected(shot.id)}
                             >
                               {shot.rowIndex} / {shot.sourceNumber || '—'}
