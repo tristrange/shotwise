@@ -24,6 +24,7 @@ const INTENT_OPTIONS: { value: ExplorerQuery['intent']; label: string }[] = [
   { value: 'partial', label: 'Partial swings' },
   { value: 'unknown', label: 'Unknown intent' },
 ];
+const SHOTS_PER_PAGE = 50;
 
 function valueText(value: number, unit: string) {
   return unit === '°' ? `${value.toFixed(1)}°` : `${value.toFixed(1)} ${unit}`;
@@ -73,6 +74,7 @@ export function BallFlightExplorer({
   const [sessionId, setSessionId] = useState('');
   const [intent, setIntent] = useState<ExplorerQuery['intent']>('all');
   const [contact, setContact] = useState<'all' | 'typical'>('all');
+  const [shotPage, setShotPage] = useState(0);
 
   const today = localToday();
   const clubs = explorerClubs(data, today);
@@ -101,6 +103,11 @@ export function BallFlightExplorer({
     today,
   };
   const plot = activeClub ? explorerPlot(data, query) : undefined;
+  const shotCount = plot?.shots.length ?? 0;
+  const lastPage = Math.max(0, Math.ceil(shotCount / SHOTS_PER_PAGE) - 1);
+  const page = Math.min(shotPage, lastPage);
+  const first = page * SHOTS_PER_PAGE;
+  const last = Math.min(first + SHOTS_PER_PAGE, shotCount);
   const sessionNames = new Map(
     data.sessions.map((session) => [session.id, sessionOptionLabel(session)]),
   );
@@ -157,13 +164,6 @@ export function BallFlightExplorer({
             />
           </div>
         </div>
-        <p>
-          Paired measurements for one effective club on the{' '}
-          {plot?.basisLabel ?? ''} basis. A point is plotted only when both
-          selected measurements exist; zero is a recorded value, not missing.
-          X: {xLabel} · Y: {yLabel}. This view describes recorded measurements
-          only — it does not estimate relationships, trends, or swing mechanics.
-        </p>
         {!clubs.length && (
           <p>No shots match this view. Import a session to begin.</p>
         )}
@@ -174,7 +174,10 @@ export function BallFlightExplorer({
                 Effective club
                 <select
                   value={activeClub}
-                  onChange={(e) => setClub(e.target.value)}
+                  onChange={(e) => {
+                    setClub(e.target.value);
+                    setShotPage(0);
+                  }}
                 >
                   {clubs.map((name) => (
                     <option key={name} value={name}>
@@ -222,7 +225,10 @@ export function BallFlightExplorer({
                     className={scope === 'recent' ? 'active' : ''}
                     aria-pressed={scope === 'recent'}
                     title="Latest 50 shots for this club from the last 60 days"
-                    onClick={() => setScope('recent')}
+                    onClick={() => {
+                      setScope('recent');
+                      setShotPage(0);
+                    }}
                   >
                     Recent
                   </button>
@@ -230,7 +236,10 @@ export function BallFlightExplorer({
                     className={scope === 'all' ? 'active' : ''}
                     aria-pressed={scope === 'all'}
                     title="Every non-archived session"
-                    onClick={() => setScope('all')}
+                    onClick={() => {
+                      setScope('all');
+                      setShotPage(0);
+                    }}
                   >
                     All-time
                   </button>
@@ -238,7 +247,10 @@ export function BallFlightExplorer({
                     className={scope === 'session' ? 'active' : ''}
                     aria-pressed={scope === 'session'}
                     title="One exact named visit, using its complete eligible population"
-                    onClick={() => setScope('session')}
+                    onClick={() => {
+                      setScope('session');
+                      setShotPage(0);
+                    }}
                   >
                     Session
                   </button>
@@ -249,7 +261,10 @@ export function BallFlightExplorer({
                 <select
                   value={sessionId}
                   disabled={scope !== 'session'}
-                  onChange={(e) => setSessionId(e.target.value)}
+                  onChange={(e) => {
+                    setSessionId(e.target.value);
+                    setShotPage(0);
+                  }}
                 >
                   <option value="">Choose a session</option>
                   {sessionOptions.map((session) => (
@@ -263,9 +278,10 @@ export function BallFlightExplorer({
                 Shot intent
                 <select
                   value={intent}
-                  onChange={(e) =>
-                    setIntent(e.target.value as ExplorerQuery['intent'])
-                  }
+                  onChange={(e) => {
+                    setIntent(e.target.value as ExplorerQuery['intent']);
+                    setShotPage(0);
+                  }}
                 >
                   {INTENT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -278,9 +294,10 @@ export function BallFlightExplorer({
                 Contact
                 <select
                   value={contact}
-                  onChange={(e) =>
-                    setContact(e.target.value as 'all' | 'typical')
-                  }
+                  onChange={(e) => {
+                    setContact(e.target.value as 'all' | 'typical');
+                    setShotPage(0);
+                  }}
                 >
                   <option value="all">All contact</option>
                   <option value="typical">Reviewed typical</option>
@@ -316,19 +333,25 @@ export function BallFlightExplorer({
               </p>
             )}
             {plot && plot.shots.length > 0 && plotPoints.length > 0 && (
-              <ScatterPlot
-                label={`${plot.club} explorer plot · ${xLabel} vs ${yLabel}`}
-                caption={`Basis: ${plot.basisLabel}`}
-                xLabel={xLabel}
-                yLabel={yLabel}
-                xTicks={ticksOf(xDomain)}
-                yTicks={ticksOf(yDomain)}
-                xDomain={xDomain}
-                yDomain={yDomain}
-                points={plotPoints}
-                selectedId={selected}
-                onSelect={setSelected}
-              />
+              <>
+                <p>
+                  Select a point or use the Left and Right arrow keys on the
+                  chart.
+                </p>
+                <ScatterPlot
+                  label={`${plot.club} explorer plot · ${xLabel} vs ${yLabel}`}
+                  caption={`Basis ${plot.basisLabel}`}
+                  xLabel={xLabel}
+                  yLabel={yLabel}
+                  xTicks={ticksOf(xDomain)}
+                  yTicks={ticksOf(yDomain)}
+                  xDomain={xDomain}
+                  yDomain={yDomain}
+                  points={plotPoints}
+                  selectedId={selected}
+                  onSelect={setSelected}
+                />
+              </>
             )}
             {plot && plot.shots.length > 0 && plotPoints.length === 0 && (
               <p>
@@ -369,6 +392,27 @@ export function BallFlightExplorer({
             {plot && plot.shots.length > 0 && (
               <>
                 <h3>All eligible shots ({plot.shots.length})</h3>
+                {lastPage > 0 && (
+                  <div className="actions">
+                    <button
+                      className="secondary"
+                      disabled={page === 0}
+                      onClick={() => setShotPage(page - 1)}
+                    >
+                      Previous shot page
+                    </button>
+                    <span role="status">
+                      Shots {first + 1}–{last} of {shotCount}
+                    </span>
+                    <button
+                      className="secondary"
+                      disabled={page === lastPage}
+                      onClick={() => setShotPage(page + 1)}
+                    >
+                      Next shot page
+                    </button>
+                  </div>
+                )}
                 <div className="table-wrap">
                   <table aria-label={`${plot.club} explorer shots`}>
                     <thead>
@@ -384,7 +428,7 @@ export function BallFlightExplorer({
                       </tr>
                     </thead>
                     <tbody>
-                      {plot.shots.map((shot) => (
+                      {plot.shots.slice(first, last).map((shot) => (
                         <tr key={shot.id}>
                           <td>{sessionNames.get(shot.sessionId)}</td>
                           <td>

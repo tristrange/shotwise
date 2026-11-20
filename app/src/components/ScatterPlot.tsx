@@ -45,6 +45,9 @@ export function ScatterPlot({
   const [yMin, yMax] = yDomain;
   const px = (x: number) => 60 + ((x - xMin) / (xMax - xMin)) * 300;
   const py = (y: number) => 250 - ((y - yMin) / (yMax - yMin)) * 220;
+  const tabStop = points.some((point) => point.id === selectedId)
+    ? selectedId
+    : points[0]?.id;
   return (
     <svg
       className="shape-plot"
@@ -91,7 +94,7 @@ export function ScatterPlot({
       <text transform="translate(16 140) rotate(-90)" textAnchor="middle">
         {yLabel}
       </text>
-      {points.map((point) => (
+      {points.map((point, index) => (
         <circle
           className="shape-point"
           key={point.id}
@@ -99,7 +102,7 @@ export function ScatterPlot({
           cy={py(point.y)}
           r={selectedId === point.id ? 7 : 5}
           role="button"
-          tabIndex={0}
+          tabIndex={point.id === tabStop ? 0 : -1}
           aria-label={point.label}
           aria-pressed={selectedId === point.id}
           onClick={() => onSelect(point.id)}
@@ -107,6 +110,17 @@ export function ScatterPlot({
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
               onSelect(point.id);
+            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+              event.preventDefault();
+              const back = event.key === 'ArrowLeft';
+              const next = points[index + (back ? -1 : 1)];
+              const element = back
+                ? event.currentTarget.previousElementSibling
+                : event.currentTarget.nextElementSibling;
+              if (next && element instanceof SVGElement) {
+                element.focus();
+                onSelect(next.id);
+              }
             }
           }}
         >

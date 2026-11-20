@@ -3652,3 +3652,43 @@ test('Explorer keyboard table targets an exact overlapping shot and opens its re
   await expect(supportingShots).toContainText('Row 5');
   await expect(supportingShots).not.toContainText('measured shots');
 });
+
+test('Explorer keeps large plots on one tab stop and pages the full shot table', async ({
+  page,
+  account,
+}) => {
+  const visit = await importExplorerVisit(
+    account,
+    'explorer-long.csv',
+    localToday(),
+    Array.from({ length: 51 }, (_, index) =>
+      explorerRow('7i', '130', '120', String(100 + index), '90'),
+    ),
+  );
+  await login(page, account);
+  const explorer = await openExplorer(page);
+  await explorer.getByRole('button', { name: 'Session', exact: true }).click();
+  await explorer
+    .getByRole('combobox', { name: 'Session', exact: true })
+    .selectOption(visit.sessionId);
+  const points = explorer.getByRole('button', { name: /^Plot / });
+  await expect(points).toHaveCount(51);
+  const tabStop = explorer.locator('circle[tabindex="0"]');
+  await expect(tabStop).toHaveCount(1);
+  await tabStop.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tabStop).toBeFocused();
+  await expect(tabStop).toHaveAccessibleName(/^Plot 7i row 2\b/);
+
+  const table = explorer.getByRole('table', { name: '7i explorer shots' });
+  const inspect = table.getByRole('button', { name: /^Inspect row / });
+  await expect(inspect).toHaveCount(50);
+  await explorer.getByRole('button', { name: 'Next shot page' }).click();
+  await expect(inspect).toHaveCount(1);
+  await inspect.click();
+  await expect(
+    explorer.getByRole('region', { name: /^Selected shot/ }),
+  ).toContainText('Row 51');
+  await explorer.getByRole('button', { name: 'Previous shot page' }).click();
+  await expect(inspect).toHaveCount(50);
+});
