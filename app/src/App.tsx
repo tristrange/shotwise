@@ -5,7 +5,9 @@ import {
   Club,
   Flag,
   FolderOpen,
+  Home,
   LogOut,
+  MoreHorizontal,
   Ruler,
   ScatterChart,
   Settings,
@@ -54,6 +56,38 @@ const nav: { id: Page; label: string; icon: typeof Flag }[] = [
   { id: 'shape', label: 'Shot shape', icon: ScatterChart },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
+type Tab = 'home' | 'analyse' | 'sessions' | 'review' | 'more';
+/** Five primary mobile tabs; nested analysis screens live in the sub-nav. */
+const tabs: { id: Tab; label: string; icon: typeof Flag; page: Page }[] = [
+  { id: 'home', label: 'Home', icon: Home, page: 'overview' },
+  { id: 'analyse', label: 'Analyse', icon: BarChart3, page: 'clubs' },
+  { id: 'sessions', label: 'Sessions', icon: FolderOpen, page: 'sessions' },
+  { id: 'review', label: 'Review', icon: ClipboardCheck, page: 'review' },
+  { id: 'more', label: 'More', icon: MoreHorizontal, page: 'settings' },
+];
+const analyseNav: { label: string; hash: string; page: Page }[] = [
+  { label: 'Clubs', hash: 'clubs', page: 'clubs' },
+  { label: 'Gapping', hash: 'gapping', page: 'gapping' },
+  { label: 'Progress', hash: 'progress', page: 'progress' },
+  { label: 'Shot shape', hash: 'shape', page: 'shape' },
+];
+function tabForPage(page: Page): Tab {
+  switch (page) {
+    case 'overview':
+      return 'home';
+    case 'clubs':
+    case 'gapping':
+    case 'progress':
+    case 'shape':
+      return 'analyse';
+    case 'sessions':
+      return 'sessions';
+    case 'review':
+      return 'review';
+    case 'settings':
+      return 'more';
+  }
+}
 function decodeSegment(segment: string | undefined) {
   if (!segment) return undefined;
   try {
@@ -88,6 +122,7 @@ function routeFromHash() {
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const manageBagHeading = useRef<HTMLHeadingElement>(null);
+  const pendingBagFocus = useRef(false);
   const [analysisSettings, setAnalysisSettings] = useState(
     initialAnalysisSettings,
   );
@@ -164,6 +199,13 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+  useEffect(() => {
+    if (page === 'settings' && pendingBagFocus.current) {
+      pendingBagFocus.current = false;
+      manageBagHeading.current?.focus();
+      manageBagHeading.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [page]);
   if (backend.kind === 'unconfigured')
     return (
       <div className="auth-shell">
@@ -238,17 +280,35 @@ export default function App() {
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </div>
         </header>
-        <nav className="mobile-nav" aria-label="Mobile navigation">
-          {nav.map(({ id, label, icon: Icon }) => (
+        {tabForPage(page) === 'analyse' && (
+          <nav className="sub-nav" aria-label="Analysis sections">
+            {analyseNav.map(({ label, hash, page: target }) => (
+              <button
+                key={hash}
+                aria-current={page === target ? 'page' : undefined}
+                onClick={() => {
+                  window.location.hash = hash;
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
+        <nav className="bottom-nav" aria-label="Primary navigation">
+          {tabs.map(({ id, label, icon: Icon, page: target }) => (
             <button
               key={id}
-              aria-current={page === id ? 'page' : undefined}
+              aria-current={tabForPage(page) === id ? 'page' : undefined}
               onClick={() => {
-                window.location.hash = id;
+                // Re-tapping Analyse keeps the current analysis screen (and
+                // any deep link such as #clubs/7i) instead of resetting it.
+                if (id === 'analyse' && tabForPage(page) === 'analyse') return;
+                window.location.hash = target;
               }}
             >
-              <Icon size={18} />
-              <span>{id === 'sessions' ? 'Sessions' : label}</span>
+              <Icon size={20} />
+              <span>{label}</span>
             </button>
           ))}
         </nav>
@@ -293,24 +353,16 @@ export default function App() {
               />
             )}
             {page === 'clubs' && (
-              <>
-                <ClubProfiles
-                  data={data}
-                  settings={analysisSettings}
-                  onSettingsChange={setAnalysisSettings}
-                  focusClub={club}
-                  onManageBag={() => {
-                    manageBagHeading.current?.focus();
-                    manageBagHeading.current?.scrollIntoView({ block: 'start' });
-                  }}
-                />
-                <ManageBag
-                  data={data}
-                  repository={repository}
-                  refresh={refresh}
-                  headingRef={manageBagHeading}
-                />
-              </>
+              <ClubProfiles
+                data={data}
+                settings={analysisSettings}
+                onSettingsChange={setAnalysisSettings}
+                focusClub={club}
+                onManageBag={() => {
+                  pendingBagFocus.current = true;
+                  window.location.hash = 'settings';
+                }}
+              />
             )}
             {page === 'shape' &&
               (shapeView === 'explorer' ? (
@@ -360,7 +412,20 @@ export default function App() {
                 />
               </section>
             )}
-            {page === 'settings' && <Backup data={data} refresh={refresh} />}
+            {page === 'settings' && (
+              <>
+                <div className="section-heading">
+                  <h1>Settings</h1>
+                </div>
+                <ManageBag
+                  data={data}
+                  repository={repository}
+                  refresh={refresh}
+                  headingRef={manageBagHeading}
+                />
+                <Backup data={data} refresh={refresh} />
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -495,9 +560,6 @@ function Backup({
     data.equipmentAssignments.length === 0;
   return (
     <>
-      <div className="section-heading">
-        <h1>Settings</h1>
-      </div>
       <section className="panel">
         <h2>Backups</h2>
         <p>
