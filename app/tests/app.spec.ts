@@ -2717,9 +2717,23 @@ test('compares two same-day visits from both entry points with stable, swappable
   // Entry point 2: the session-detail link preselects that visit as Reference.
   await nav(page, sessionsNav);
   await page.getByRole('link', { name: /compare-morning\.csv/ }).click();
+  await page.evaluate((sessionHash) => {
+    document.addEventListener('focusin', ({ target }) => {
+      if (target instanceof HTMLAnchorElement && target.hash === sessionHash) {
+        document.documentElement.dataset.logbookRowRefocused = 'true';
+      }
+    });
+  }, `#sessions/${morning.sessionId}`);
   await page.getByRole('link', { name: 'Compare with another session' }).click();
   await expect(page).toHaveURL(
     new RegExp(`#sessions/compare\\?reference=${morning.sessionId}`),
   );
+  await expect(
+    page.getByRole('heading', { name: 'Compare sessions' }),
+  ).toBeFocused();
   await expect(reference).toHaveValue(morning.sessionId);
+  await expect(page.locator('html')).not.toHaveAttribute(
+    'data-logbook-row-refocused',
+    'true',
+  );
 });

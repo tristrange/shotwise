@@ -51,8 +51,8 @@ export function Sessions({
   const [busy, setBusy] = useState(false);
   const returnLink = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
-    if (!sessionId) returnLink.current?.focus();
-  }, [sessionId]);
+    if (!compare && !sessionId) returnLink.current?.focus();
+  }, [compare, sessionId]);
   const session = data.sessions.find((s) => s.id === sessionId);
   const { reference: compareReference, comparison: compareComparison } = compare
     ? parseCompareQuery(evidenceQuery)
