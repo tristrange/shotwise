@@ -6,6 +6,7 @@ import {
   type AnalysisQuery,
   type ClubGap,
 } from './analytics';
+import { equipmentForShots, type LabelEquipmentSummary } from './equipment';
 import {
   BASES,
   clubOrder,
@@ -69,6 +70,7 @@ export type ClubProfile = {
   basis: Basis;
   basisLabel: string;
   window: ProfileWindow;
+  equipment: LabelEquipmentSummary;
   recent: ProfileRecent;
   /** The newest session for this club, with the exact recap club entry. */
   latest: { session: Session; recap: ClubRecap } | null;
@@ -211,6 +213,7 @@ export function clubProfiles(
         firstDate: dates[0] ?? null,
         lastDate: dates.at(-1) ?? null,
       },
+      equipment: equipmentForShots(data, windowShots),
       recent: {
         typical,
         spread: {

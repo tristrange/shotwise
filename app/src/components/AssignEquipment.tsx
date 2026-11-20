@@ -15,19 +15,12 @@ type Draft = {
   clubLabel: string;
   firstRow: string;
   lastRow: string;
-  /** Empty string means the Clear assignment option. */
   equipmentId: string;
 };
 
 type Preview = AssignmentPreview & {
   equipmentId: string | null;
   equipmentName: string | null;
-};
-
-const COVERAGE_LABEL: Record<'known' | 'mixed' | 'unknown', string> = {
-  known: 'known',
-  mixed: 'mixed',
-  unknown: 'unknown',
 };
 
 function equipmentName(data: Dataset, id: string | null): string | null {
@@ -84,6 +77,11 @@ export function AssignEquipment({
   );
   const busy = pending;
   const locked = busy || preview !== null;
+  const canPreview = Boolean(
+    group &&
+    (draft.equipmentId === 'clear' ||
+      bagClubs.some((club) => club.id === draft.equipmentId)),
+  );
 
   useEffect(() => {
     if (preview) previewHeading.current?.focus();
@@ -95,22 +93,17 @@ export function AssignEquipment({
     setDraft((old) => ({ ...old, ...changes }));
   }
   function changeLabel(clubLabel: string) {
-    const matches = data.equipment.filter(
-      (club) => club.inrangeLabel.trim() === clubLabel.trim(),
-    );
-    const sorted = sortEquipment(matches);
-    const preferred =
-      sorted.find((club) => club.status === 'in-bag') ?? sorted[0];
     setDraft((old) => ({
       ...old,
       clubLabel,
-      equipmentId: preferred?.id ?? '',
+      equipmentId: '',
     }));
     setPreview(null);
     setError('');
     setStatus('');
   }
-  function parseRange(): { firstRow: number | null; lastRow: number | null } | { error: string } {
+  function parseRange():
+    { firstRow: number | null; lastRow: number | null } | { error: string } {
     const parse = (value: string): number | null | undefined => {
       const trimmed = value.trim();
       if (!trimmed) return null;
@@ -123,12 +116,13 @@ export function AssignEquipment({
       return { error: 'Source rows must be whole numbers of 1 or more.' };
     if (firstRow !== null && lastRow !== null && firstRow > lastRow)
       return {
-        error: 'First source row must be the same as or before Last source row.',
+        error:
+          'First source row must be the same as or before Last source row.',
       };
     return { firstRow, lastRow };
   }
   function startPreview() {
-    if (locked || !group) return;
+    if (locked || !group || !canPreview) return;
     const range = parseRange();
     if ('error' in range) {
       setError(range.error);
@@ -137,10 +131,12 @@ export function AssignEquipment({
     setError('');
     setStatus('');
     const built = assignmentPreview(data, session.id, group.club, range);
+    const equipmentId =
+      draft.equipmentId === 'clear' ? null : draft.equipmentId;
     setPreview({
       ...built,
-      equipmentId: draft.equipmentId || null,
-      equipmentName: equipmentName(data, draft.equipmentId || null),
+      equipmentId,
+      equipmentName: equipmentName(data, equipmentId),
     });
   }
   function revise() {
@@ -153,9 +149,6 @@ export function AssignEquipment({
     setPending(true);
     setError('');
     setStatus('');
-    const action = preview.equipmentId
-      ? `Assign ${preview.equipmentName ?? 'the selected club'} to`
-      : 'Clear the assignment for';
     try {
       await repository.assignEquipment({
         expectedVersion: preview.expectedVersion,
@@ -164,11 +157,11 @@ export function AssignEquipment({
         equipmentId: preview.equipmentId,
         shotIds: preview.rows.map((row) => row.shotId),
       });
+      await refresh();
       setStatus(
-        `${action} ${preview.rows.length} shot${preview.rows.length === 1 ? '' : 's'} with label ${preview.clubLabel} in ${sessionIdentity(session)}.`,
+        `${preview.equipmentId ? `Assigned ${preview.equipmentName} to` : 'Cleared equipment for'} ${preview.rows.length} shot${preview.rows.length === 1 ? '' : 's'} with label ${preview.clubLabel}.`,
       );
       setPreview(null);
-      await refresh();
     } catch (e) {
       const message =
         e instanceof Error
@@ -177,6 +170,7 @@ export function AssignEquipment({
       if (isEquipmentConflict(e)) {
         // The pinned version and list are stale: require a fresh preview, but
         // keep the draft so nothing entered is lost.
+        await refresh();
         setPreview(null);
         setError(
           `${message} The dataset changed, so this preview is stale — choose Preview assignment again before confirming.`,
@@ -188,7 +182,8 @@ export function AssignEquipment({
     setPending(false);
   }
 
-  const needsReviewRows = group?.rows.filter((r) => r.status === 'needs-review') ?? [];
+  const needsReviewRows =
+    group?.rows.filter((r) => r.status === 'needs-review') ?? [];
   const rangeText = preview
     ? preview.firstRow !== null || preview.lastRow !== null
       ? `source rows ${preview.firstRow ?? 1}–${preview.lastRow ?? 'end'}`
@@ -229,7 +224,7 @@ export function AssignEquipment({
             {groups.map((g) => (
               <option key={g.club} value={g.club}>
                 {g.club} · {g.total} shot{g.total === 1 ? '' : 's'} ·{' '}
-                {COVERAGE_LABEL[g.coverage]}
+                {g.coverage}
                 {g.needsReview > 0 ? ` · ${g.needsReview} need review` : ''}
               </option>
             ))}
@@ -264,7 +259,8 @@ export function AssignEquipment({
             disabled={locked || !group}
             onChange={(e) => patch({ equipmentId: e.target.value })}
           >
-            <option value="">Clear assignment</option>
+            <option value="">Choose equipment</option>
+            <option value="clear">Clear assignment</option>
             {bagClubs.map((club: Equipment) => (
               <option key={club.id} value={club.id}>
                 {club.name} ({club.status === 'retired' ? 'retired' : 'in bag'})
@@ -278,7 +274,7 @@ export function AssignEquipment({
           {group.club}: {group.total} shot{group.total === 1 ? '' : 's'} · rows{' '}
           {group.rows[0]?.rowIndex}–{group.rows.at(-1)?.rowIndex} ·{' '}
           {group.assigned} assigned ({group.current} current) ·{' '}
-          {group.unassigned} unassigned · coverage {COVERAGE_LABEL[group.coverage]}
+          {group.unassigned} unassigned · coverage {group.coverage}
         </p>
       )}
       {group && bagClubs.length === 0 && (
@@ -299,8 +295,9 @@ export function AssignEquipment({
           <ul>
             {needsReviewRows.map((row) => (
               <li key={row.shotId}>
-                Row {row.rowIndex} · Shot #{row.sourceNumber || '—'} · assigned{' '}
-                {row.assignment?.clubLabel} → confirmed{' '}
+                Row {row.rowIndex} · Shot #{row.sourceNumber || '—'} ·{' '}
+                {equipmentName(data, row.assignment?.equipmentId ?? null)} (
+                {row.assignment?.clubLabel}) · Effective label{' '}
                 <strong>{row.effectiveClub}</strong>
               </li>
             ))}
@@ -310,7 +307,7 @@ export function AssignEquipment({
       <div className="actions">
         <button
           ref={previewButton}
-          disabled={locked || !group}
+          disabled={locked || !canPreview}
           onClick={startPreview}
         >
           Preview assignment
@@ -332,10 +329,7 @@ export function AssignEquipment({
         </p>
       )}
       {preview && (
-        <section
-          className="assignment-preview"
-          aria-label="Assignment preview"
-        >
+        <section className="assignment-preview" aria-label="Assignment preview">
           <h4 ref={previewHeading} tabIndex={-1}>
             Assignment preview
           </h4>
@@ -344,7 +338,6 @@ export function AssignEquipment({
           </p>
           <p>
             Club label <strong>{preview.clubLabel}</strong> · {rangeText} ·
-            dataset version {preview.expectedVersion} pinned ·{' '}
             {preview.equipmentId
               ? `will assign ${preview.equipmentName ?? 'the selected club'}`
               : 'will clear the assignment'}{' '}
@@ -352,8 +345,7 @@ export function AssignEquipment({
           </p>
           <p className="muted">
             {preview.current} current · {preview.needsReview} need review ·{' '}
-            {preview.unassigned} unassigned in this selection. Confirming saves
-            exactly the rows and shot IDs listed below.
+            {preview.unassigned} unassigned in this selection.
           </p>
           {preview.rows.length === 0 ? (
             <p className="notice">
@@ -366,7 +358,6 @@ export function AssignEquipment({
                   <tr>
                     <th>Source row</th>
                     <th>Shot #</th>
-                    <th>Shot ID</th>
                     <th>Recorded</th>
                     <th>Effective</th>
                     <th>Current equipment</th>
@@ -378,9 +369,6 @@ export function AssignEquipment({
                     <tr key={row.shotId}>
                       <td>{row.rowIndex}</td>
                       <td>{row.sourceNumber || '—'}</td>
-                      <td>
-                        <code className="shot-id">{row.shotId}</code>
-                      </td>
                       <td>{row.recordedClub}</td>
                       <td>{row.effectiveClub}</td>
                       <td>

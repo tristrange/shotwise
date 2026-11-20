@@ -18,7 +18,7 @@ import {
   type SessionComparison,
   type Shares,
 } from '../domain/compare';
-import { labelEquipment, type LabelEquipmentSummary } from '../domain/equipment';
+import type { LabelEquipmentSummary } from '../domain/equipment';
 import { BasisButton } from './AnalysisControls';
 
 /** Hash route for the comparison view; reload and Back keep the pair. */
@@ -191,10 +191,11 @@ function DirectionRows({
   );
 }
 
-function equipmentText(summary: LabelEquipmentSummary | null) {
-  if (!summary) return '—';
+function equipmentText(summary: LabelEquipmentSummary) {
   const names = summary.equipment
-    .map((item) => `${item.name}${item.status === 'retired' ? ' (retired)' : ''}`)
+    .map(
+      (item) => `${item.name}${item.status === 'retired' ? ' (retired)' : ''}`,
+    )
     .join(', ');
   return `${summary.assigned}/${summary.shots} assigned · ${summary.coverage}${
     summary.needsReview > 0 ? ` · Needs review: ${summary.needsReview}` : ''
@@ -204,13 +205,9 @@ function equipmentText(summary: LabelEquipmentSummary | null) {
 function ClubDetails({
   club,
   basisLabel,
-  referenceEquipment,
-  comparisonEquipment,
 }: {
   club: SessionComparison['common'][number];
   basisLabel: string;
-  referenceEquipment: LabelEquipmentSummary | null;
-  comparisonEquipment: LabelEquipmentSummary | null;
 }) {
   const {
     reference,
@@ -256,8 +253,8 @@ function ClubDetails({
             </tr>
             <tr>
               <th scope="row">Assigned equipment</th>
-              <td>{equipmentText(referenceEquipment)}</td>
-              <td>{equipmentText(comparisonEquipment)}</td>
+              <td>{equipmentText(reference.equipment)}</td>
+              <td>{equipmentText(comparison.equipment)}</td>
               <td>—</td>
             </tr>
             <tr>
@@ -502,20 +499,6 @@ export function CompareSessions({
     referenceId && comparisonId
       ? compareSessions(data, referenceId, comparisonId, basis, intent)
       : null;
-  const equipmentBySide = useMemo(() => {
-    const map = new Map<string, LabelEquipmentSummary>();
-    if (comparison) {
-      for (const side of [comparison.reference, comparison.comparison]) {
-        if (!side.session) continue;
-        for (const club of comparison.common)
-          map.set(
-            `${side.session.id} ${club.club}`,
-            labelEquipment(data, club.club, side.session.id),
-          );
-      }
-    }
-    return map;
-  }, [comparison, data]);
   const bothAvailable =
     comparison !== null &&
     !comparison.duplicate &&
@@ -680,20 +663,6 @@ export function CompareSessions({
                   key={club.club}
                   club={club}
                   basisLabel={comparison.basisLabel}
-                  referenceEquipment={
-                    comparison.reference.session
-                      ? (equipmentBySide.get(
-                          `${comparison.reference.session.id} ${club.club}`,
-                        ) ?? null)
-                      : null
-                  }
-                  comparisonEquipment={
-                    comparison.comparison.session
-                      ? (equipmentBySide.get(
-                          `${comparison.comparison.session.id} ${club.club}`,
-                        ) ?? null)
-                      : null
-                  }
                 />
               ))}
             </>

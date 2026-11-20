@@ -228,13 +228,15 @@ function toRow(
 /** Equipment coverage of a shot set: known, mixed, or unknown. */
 export type EquipmentCoverage = 'known' | 'mixed' | 'unknown';
 
-export function coverageOf(counts: {
+function coverageOf(counts: {
   total: number;
   current: number;
   needsReview: number;
+  physicalClubs: number;
 }): EquipmentCoverage {
   if (counts.current + counts.needsReview === 0) return 'unknown';
-  if (counts.total > 0 && counts.current === counts.total) return 'known';
+  if (counts.current === counts.total && counts.physicalClubs === 1)
+    return 'known';
   return 'mixed';
 }
 
@@ -275,9 +277,13 @@ export function sessionEquipmentGroups(
   }
   return [...byClub.entries()]
     .map(([club, rows]) => {
-      rows.sort((a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId));
+      rows.sort(
+        (a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId),
+      );
       const current = rows.filter((r) => r.status === 'current').length;
-      const needsReview = rows.filter((r) => r.status === 'needs-review').length;
+      const needsReview = rows.filter(
+        (r) => r.status === 'needs-review',
+      ).length;
       return {
         club,
         rows,
@@ -286,10 +292,22 @@ export function sessionEquipmentGroups(
         current,
         needsReview,
         unassigned: rows.length - current - needsReview,
-        coverage: coverageOf({ total: rows.length, current, needsReview }),
+        coverage: coverageOf({
+          total: rows.length,
+          current,
+          needsReview,
+          physicalClubs: new Set(
+            rows.flatMap((row) =>
+              row.assignment ? [row.assignment.equipmentId] : [],
+            ),
+          ).size,
+        }),
       };
     })
-    .sort((a, b) => clubOrder(a.club) - clubOrder(b.club) || a.club.localeCompare(b.club));
+    .sort(
+      (a, b) =>
+        clubOrder(a.club) - clubOrder(b.club) || a.club.localeCompare(b.club),
+    );
 }
 
 /** Group counts by coverage plus the total needs-review shots. */
@@ -353,7 +371,9 @@ export function assignmentPreview(
         (lastRow === null || shot.rowIndex <= lastRow),
     )
     .map((shot) => toRow(shot, assignmentByShot))
-    .sort((a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId));
+    .sort(
+      (a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId),
+    );
   const current = rows.filter((r) => r.status === 'current').length;
   const needsReview = rows.filter((r) => r.status === 'needs-review').length;
   return {
@@ -381,7 +401,6 @@ export type LabelEquipmentClub = {
 };
 
 export type LabelEquipmentSummary = {
-  club: string;
   /** Shots with this effective label in the relevant cohort. */
   shots: number;
   assigned: number;
@@ -393,60 +412,52 @@ export type LabelEquipmentSummary = {
   equipment: LabelEquipmentClub[];
 };
 
-/**
- * Equipment context for one effective label across the loaded snapshot. With a
- * sessionId the cohort is exactly that session (used by Compare sides); without
- * one it spans non-archived sessions (used by Club Profiles). Assignments are
- * counted on every shot of the label, independent of exclusion and intent.
- */
-export function labelEquipment(
+/** Equipment context for the same shots included in a displayed analysis. */
+export function equipmentForShots(
   data: Dataset,
-  clubLabel: string,
-  sessionId?: string,
+  shots: Shot[],
 ): LabelEquipmentSummary {
-  const label = clubLabel.trim();
-  const archived = new Set(
-    data.sessions.filter((s) => s.archived).map((s) => s.id),
-  );
   const assignmentByShot = new Map(
     data.equipmentAssignments.map((a) => [a.shotId, a]),
   );
   const equipmentById = new Map(data.equipment.map((e) => [e.id, e]));
-  const rows = data.shots.filter((shot) => {
-    if (effectiveClub(shot).trim() !== label) return false;
-    return sessionId ? shot.sessionId === sessionId : !archived.has(shot.sessionId);
-  });
   const clubs = new Map<string, LabelEquipmentClub>();
   let current = 0;
   let needsReview = 0;
-  for (const shot of rows) {
+  for (const shot of shots) {
     const assignment = assignmentByShot.get(shot.id);
     if (!assignment) continue;
-    if (assignmentStatus(shot, assignment) === 'current') current++;
-    else needsReview++;
     const club = equipmentById.get(assignment.equipmentId);
+    if (!club) continue;
+    const isCurrent = assignmentStatus(shot, assignment) === 'current';
+    if (isCurrent) current++;
+    else needsReview++;
     const entry = clubs.get(assignment.equipmentId) ?? {
       id: assignment.equipmentId,
-      name: club?.name ?? 'Unknown club',
-      status: club?.status ?? 'retired',
+      name: club.name,
+      status: club.status,
       shots: 0,
       current: 0,
       needsReview: 0,
     };
     entry.shots++;
-    if (assignmentStatus(shot, assignment) === 'current') entry.current++;
+    if (isCurrent) entry.current++;
     else entry.needsReview++;
     clubs.set(assignment.equipmentId, entry);
   }
   const assigned = current + needsReview;
   return {
-    club: label,
-    shots: rows.length,
+    shots: shots.length,
     assigned,
     current,
     needsReview,
-    unassigned: rows.length - assigned,
-    coverage: coverageOf({ total: rows.length, current, needsReview }),
+    unassigned: shots.length - assigned,
+    coverage: coverageOf({
+      total: shots.length,
+      current,
+      needsReview,
+      physicalClubs: clubs.size,
+    }),
     equipment: [...clubs.values()].sort(
       (a, b) =>
         (a.status === 'in-bag' ? 0 : 1) - (b.status === 'in-bag' ? 0 : 1) ||

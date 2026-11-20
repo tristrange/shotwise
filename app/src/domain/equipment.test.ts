@@ -9,7 +9,7 @@ import {
   emptyDraft,
   equipmentHistory,
   isEquipmentConflict,
-  labelEquipment,
+  equipmentForShots,
   sessionEquipmentGroups,
   sortEquipment,
 } from './equipment';
@@ -65,7 +65,12 @@ describe('equipment drafts', () => {
     ).toThrow('Inrange label');
     expect(() =>
       draftToSaveInput(
-        { ...emptyDraft(), inrangeLabel: '7i', name: 'Lab 7i', acquiredOn: '2026-02-30' },
+        {
+          ...emptyDraft(),
+          inrangeLabel: '7i',
+          name: 'Lab 7i',
+          acquiredOn: '2026-02-30',
+        },
         '11111111-1111-4111-8111-111111111111',
         null,
       ),
@@ -110,16 +115,29 @@ describe('equipment conflicts', () => {
 
 describe('bag ordering', () => {
   it('puts in-bag clubs first and allows two clubs sharing one label', () => {
-    const driver = makeEquipment({ inrangeLabel: 'D', name: 'Driver', status: 'in-bag' });
-    const sevenA = makeEquipment({ inrangeLabel: '7i', name: 'Lab 7i A', status: 'in-bag' });
-    const sevenB = makeEquipment({ inrangeLabel: '7i', name: 'Lab 7i B', status: 'retired' });
-    const wedge = makeEquipment({ inrangeLabel: 'PW', name: 'Wedge', status: 'retired' });
-    expect(sortEquipment([wedge, sevenB, driver, sevenA]).map((c) => c.name)).toEqual([
-      'Driver',
-      'Lab 7i A',
-      'Lab 7i B',
-      'Wedge',
-    ]);
+    const driver = makeEquipment({
+      inrangeLabel: 'D',
+      name: 'Driver',
+      status: 'in-bag',
+    });
+    const sevenA = makeEquipment({
+      inrangeLabel: '7i',
+      name: 'Lab 7i A',
+      status: 'in-bag',
+    });
+    const sevenB = makeEquipment({
+      inrangeLabel: '7i',
+      name: 'Lab 7i B',
+      status: 'retired',
+    });
+    const wedge = makeEquipment({
+      inrangeLabel: 'PW',
+      name: 'Wedge',
+      status: 'retired',
+    });
+    expect(
+      sortEquipment([wedge, sevenB, driver, sevenA]).map((c) => c.name),
+    ).toEqual(['Driver', 'Lab 7i A', 'Lab 7i B', 'Wedge']);
   });
 });
 
@@ -130,10 +148,22 @@ describe('per-club assignment history', () => {
     club: ReturnType<typeof makeEquipment>;
   } {
     const club = makeEquipment({ id: CLUB_ID, inrangeLabel: '7i' });
-    const older = makeSession({ id: 's-old', date: '2026-01-10', time: '09:00' });
+    const older = makeSession({
+      id: 's-old',
+      date: '2026-01-10',
+      time: '09:00',
+    });
     const newer = makeSession({ id: 's-new', date: '2026-02-10', time: null });
-    const oldShot = makeShot({ id: 'shot-old', sessionId: older.id, recordedClub: '7i' });
-    const newShotA = makeShot({ id: 'shot-a', sessionId: newer.id, recordedClub: '7i' });
+    const oldShot = makeShot({
+      id: 'shot-old',
+      sessionId: older.id,
+      recordedClub: '7i',
+    });
+    const newShotA = makeShot({
+      id: 'shot-a',
+      sessionId: newer.id,
+      recordedClub: '7i',
+    });
     const newShotB = makeShot({
       id: 'shot-b',
       sessionId: newer.id,
@@ -141,7 +171,11 @@ describe('per-club assignment history', () => {
       review: { club: { kind: 'corrected', club: 'PW' } },
     });
     const otherClub = makeEquipment({ inrangeLabel: 'PW' });
-    const otherShot = makeShot({ id: 'shot-other', sessionId: newer.id, recordedClub: 'PW' });
+    const otherShot = makeShot({
+      id: 'shot-other',
+      sessionId: newer.id,
+      recordedClub: 'PW',
+    });
     return {
       club,
       data: {
@@ -209,7 +243,9 @@ describe('assignment status', () => {
         { shotId: 'shot-corrected', equipmentId: club.id, clubLabel: '7i' },
       ],
     };
-    expect(assignmentStatus(plain, data.equipmentAssignments[0])).toBe('current');
+    expect(assignmentStatus(plain, data.equipmentAssignments[0])).toBe(
+      'current',
+    );
     expect(assignmentStatus(corrected, data.equipmentAssignments[1])).toBe(
       'needs-review',
     );
@@ -218,12 +254,27 @@ describe('assignment status', () => {
 });
 
 describe('session equipment groups', () => {
-  function sessionDataset(): { data: Dataset; session: ReturnType<typeof makeSession> } {
+  function sessionDataset(): {
+    data: Dataset;
+    session: ReturnType<typeof makeSession>;
+  } {
     const session = makeSession({ id: 's-1' });
     const other = makeSession({ id: 's-2', archived: true });
     const shots = [
-      makeShot({ id: 'shot-1', sessionId: session.id, rowIndex: 2, sourceNumber: '2', recordedClub: '7i' }),
-      makeShot({ id: 'shot-2', sessionId: session.id, rowIndex: 1, sourceNumber: '1', recordedClub: '7i' }),
+      makeShot({
+        id: 'shot-1',
+        sessionId: session.id,
+        rowIndex: 2,
+        sourceNumber: '2',
+        recordedClub: '7i',
+      }),
+      makeShot({
+        id: 'shot-2',
+        sessionId: session.id,
+        rowIndex: 1,
+        sourceNumber: '1',
+        recordedClub: '7i',
+      }),
       makeShot({
         id: 'shot-3',
         sessionId: session.id,
@@ -236,9 +287,27 @@ describe('session equipment groups', () => {
           intent: 'partial',
         },
       }),
-      makeShot({ id: 'shot-4', sessionId: session.id, rowIndex: 4, sourceNumber: '4', recordedClub: 'SW' }),
-      makeShot({ id: 'shot-5', sessionId: session.id, rowIndex: 5, sourceNumber: '5', recordedClub: '?' }),
-      makeShot({ id: 'shot-6', sessionId: other.id, rowIndex: 1, sourceNumber: '1', recordedClub: '7i' }),
+      makeShot({
+        id: 'shot-4',
+        sessionId: session.id,
+        rowIndex: 4,
+        sourceNumber: '4',
+        recordedClub: 'SW',
+      }),
+      makeShot({
+        id: 'shot-5',
+        sessionId: session.id,
+        rowIndex: 5,
+        sourceNumber: '5',
+        recordedClub: '?',
+      }),
+      makeShot({
+        id: 'shot-6',
+        sessionId: other.id,
+        rowIndex: 1,
+        sourceNumber: '1',
+        recordedClub: '7i',
+      }),
     ];
     const club = makeEquipment({ id: 'eq-7i', inrangeLabel: '7i' });
     const data: Dataset = {
@@ -316,15 +385,47 @@ describe('session equipment groups', () => {
 });
 
 describe('assignment preview', () => {
-  function previewDataset(): { data: Dataset; session: ReturnType<typeof makeSession> } {
+  function previewDataset(): {
+    data: Dataset;
+    session: ReturnType<typeof makeSession>;
+  } {
     const session = makeSession({ id: 's-1' });
     const club = makeEquipment({ id: 'eq-7i', inrangeLabel: '7i' });
-    const retired = makeEquipment({ id: 'eq-7i-old', inrangeLabel: '7i', name: 'Old 7i', status: 'retired' });
+    const retired = makeEquipment({
+      id: 'eq-7i-old',
+      inrangeLabel: '7i',
+      name: 'Old 7i',
+      status: 'retired',
+    });
     const shots = [
-      makeShot({ id: 'shot-1', sessionId: session.id, rowIndex: 1, sourceNumber: '1', recordedClub: '7i' }),
-      makeShot({ id: 'shot-2', sessionId: session.id, rowIndex: 2, sourceNumber: '2', recordedClub: '7i' }),
-      makeShot({ id: 'shot-3', sessionId: session.id, rowIndex: 3, sourceNumber: '3', recordedClub: '7i' }),
-      makeShot({ id: 'shot-4', sessionId: session.id, rowIndex: 4, sourceNumber: '4', recordedClub: '7i' }),
+      makeShot({
+        id: 'shot-1',
+        sessionId: session.id,
+        rowIndex: 1,
+        sourceNumber: '1',
+        recordedClub: '7i',
+      }),
+      makeShot({
+        id: 'shot-2',
+        sessionId: session.id,
+        rowIndex: 2,
+        sourceNumber: '2',
+        recordedClub: '7i',
+      }),
+      makeShot({
+        id: 'shot-3',
+        sessionId: session.id,
+        rowIndex: 3,
+        sourceNumber: '3',
+        recordedClub: '7i',
+      }),
+      makeShot({
+        id: 'shot-4',
+        sessionId: session.id,
+        rowIndex: 4,
+        sourceNumber: '4',
+        recordedClub: '7i',
+      }),
       makeShot({
         id: 'shot-5',
         sessionId: session.id,
@@ -333,7 +434,13 @@ describe('assignment preview', () => {
         recordedClub: '7i',
         review: { club: { kind: 'corrected', club: 'PW' } },
       }),
-      makeShot({ id: 'shot-6', sessionId: session.id, rowIndex: 6, sourceNumber: '6', recordedClub: 'SW' }),
+      makeShot({
+        id: 'shot-6',
+        sessionId: session.id,
+        rowIndex: 6,
+        sourceNumber: '6',
+        recordedClub: 'SW',
+      }),
     ];
     const data: Dataset = {
       ...emptyDataset,
@@ -420,11 +527,20 @@ describe('assignment preview', () => {
 });
 
 describe('label equipment summaries', () => {
-  it('counts assignments per effective label across non-archived sessions and lists clubs sharing a label', () => {
+  it('counts assignments on the supplied cohort and distinguishes mixed physical clubs', () => {
     const live = makeSession({ id: 's-live' });
     const archived = makeSession({ id: 's-old', archived: true });
-    const clubA = makeEquipment({ id: 'eq-a', inrangeLabel: '7i', name: 'Primary 7i' });
-    const clubB = makeEquipment({ id: 'eq-b', inrangeLabel: '7i', name: 'Backup 7i', status: 'retired' });
+    const clubA = makeEquipment({
+      id: 'eq-a',
+      inrangeLabel: '7i',
+      name: 'Primary 7i',
+    });
+    const clubB = makeEquipment({
+      id: 'eq-b',
+      inrangeLabel: '7i',
+      name: 'Backup 7i',
+      status: 'retired',
+    });
     const data: Dataset = {
       ...emptyDataset,
       sessions: [live, archived],
@@ -441,25 +557,39 @@ describe('label equipment summaries', () => {
         { shotId: 'shot-4', equipmentId: clubA.id, clubLabel: '7i' },
       ],
     };
-    const all = labelEquipment(data, '7i');
+    const all = equipmentForShots(
+      data,
+      data.shots.filter(
+        (shot) => shot.sessionId === live.id && shot.recordedClub === '7i',
+      ),
+    );
     expect(all.shots).toBe(2);
     expect(all).toMatchObject({
       assigned: 2,
       current: 2,
       needsReview: 0,
       unassigned: 0,
-      coverage: 'known',
+      coverage: 'mixed',
     });
     expect(all.equipment.map((e) => [e.name, e.status, e.shots])).toEqual([
       ['Primary 7i', 'in-bag', 1],
       ['Backup 7i', 'retired', 1],
     ]);
-    // A session-scoped cohort (Compare side) ignores other sessions.
-    const scoped = labelEquipment(data, '7i', live.id);
-    expect(scoped.shots).toBe(2);
-    const archivedScoped = labelEquipment(data, '7i', archived.id);
-    expect(archivedScoped).toMatchObject({ shots: 1, assigned: 1, coverage: 'known' });
-    expect(labelEquipment(data, 'SW')).toMatchObject({
+    const archivedScoped = equipmentForShots(
+      data,
+      data.shots.filter((shot) => shot.sessionId === archived.id),
+    );
+    expect(archivedScoped).toMatchObject({
+      shots: 1,
+      assigned: 1,
+      coverage: 'known',
+    });
+    expect(
+      equipmentForShots(
+        data,
+        data.shots.filter((shot) => shot.recordedClub === 'SW'),
+      ),
+    ).toMatchObject({
       shots: 1,
       assigned: 0,
       coverage: 'unknown',

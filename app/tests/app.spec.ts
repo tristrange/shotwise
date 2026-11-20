@@ -3197,7 +3197,7 @@ async function openEquipmentVisit(
   return page.getByRole('region', { name: 'Assign equipment', exact: true });
 }
 
-async function confirmEquipment(
+async function previewEquipment(
   region: Locator,
   equipmentId: string | null,
   range?: { first: number; last: number },
@@ -3219,9 +3219,6 @@ async function confirmEquipment(
   await region
     .getByRole('button', { name: 'Preview assignment', exact: true })
     .click();
-  await region
-    .getByRole('button', { name: 'Confirm assignment', exact: true })
-    .click();
 }
 
 test('assigns, replaces and clears exact equipment groups and source-row ranges', async ({
@@ -3237,6 +3234,21 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   );
   const primary = await registerEquipment(account, 'Primary 7i');
   const backup = await registerEquipment(account, 'Backup 7i');
+  const seeded = await account.repository.load();
+  const excluded = seeded.shots.find(
+    (shot) => shot.sessionId === recent.sessionId && shot.rowIndex === 8,
+  );
+  if (!excluded) throw new Error('Missing seeded shot');
+  await account.repository.review([
+    {
+      shotId: excluded.id,
+      expectedRevision: excluded.revision,
+      review: {
+        ...excluded.review,
+        exclusion: { kind: 'excluded', reason: 'Fixture' },
+      },
+    },
+  ]);
   const before = await account.repository.load();
   const group = equipmentShotIds(before, recent.sessionId);
   const swap = equipmentShotIds(before, recent.sessionId, 3, 5);
@@ -3255,19 +3267,47 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
       .map((item) => item.shotId)
       .sort();
 
-  await confirmEquipment(region, primary.id);
+  const confirm = region.getByRole('button', {
+    name: 'Confirm assignment',
+    exact: true,
+  });
+  await previewEquipment(region, primary.id);
+  const visit = before.sessions.find(
+    (session) => session.id === recent.sessionId,
+  );
+  if (!visit) throw new Error('Missing seeded visit');
+  await account.repository.updateSession({
+    ...visit,
+    notes: 'Saved elsewhere',
+  });
+  await confirm.click();
+  await expect(region.getByRole('alert')).toContainText('preview is stale');
+  expect(await assignedTo(primary.id)).toEqual([]);
+
+  await region
+    .getByRole('button', { name: 'Preview assignment', exact: true })
+    .click();
+  await confirm.click();
   await expect.poll(() => assignedTo(primary.id)).toEqual(group);
-  await confirmEquipment(region, backup.id);
+  await previewEquipment(region, backup.id);
+  await confirm.click();
   await expect.poll(() => assignedTo(backup.id)).toEqual(group);
   await expect.poll(() => assignedTo(primary.id)).toEqual([]);
 
   const range = { first: 3, last: 5 };
-  await confirmEquipment(region, primary.id, range);
+  await previewEquipment(region, primary.id, range);
+  const preview = region.getByRole('table', {
+    name: 'Exact shots in this assignment preview',
+  });
+  await expect(preview.locator('tbody tr')).toHaveCount(2);
+  await expect(preview.locator('tbody td:first-child')).toHaveText(['3', '5']);
+  await confirm.click();
   await expect.poll(() => assignedTo(primary.id)).toEqual(swap);
   const remainder = group.filter((id) => !swap.includes(id));
   await expect.poll(() => assignedTo(backup.id)).toEqual(remainder);
 
-  await confirmEquipment(region, null, range);
+  await previewEquipment(region, null, range);
+  await confirm.click();
   await expect.poll(() => assignedTo(primary.id)).toEqual([]);
   const after = await account.repository.load();
   expect(after.equipmentAssignments.map((item) => item.shotId).sort()).toEqual(
@@ -3287,13 +3327,19 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
     .selectOption(old.sessionId);
   const compare = page.getByRole('region', { name: 'Compare sessions' });
   await compare.locator('summary').filter({ hasText: /^7i\b/ }).click();
-  await expect(compare).toContainText('Backup 7i');
-  await expect(compare).toContainText(/unknown/i);
+  const equipmentRow = compare.getByRole('row', {
+    name: /^Assigned equipment/,
+  });
+  await expect(equipmentRow).toContainText('4/6 assigned · mixed · Backup 7i');
+  await expect(equipmentRow).toContainText('0/7 assigned · unknown');
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     ),
   ).toBeLessThanOrEqual(1);
+  await nav(page, 'Clubs');
+  const profile = page.getByRole('region', { name: '7i', exact: true });
+  await expect(profile).toContainText('4 of 6 shots assigned · mixed');
 });
 
 test('retains the prior equipment when a club correction needs review and restores compatibility on undo', async ({
@@ -3325,7 +3371,19 @@ test('retains the prior equipment when a club correction needs review and restor
   const corrected = await account.repository.load();
   expect(corrected.equipmentAssignments).toEqual([assignment]);
 
-  await openEquipmentVisit(page, account, testInfo, visit.sessionId);
+  const region = await openEquipmentVisit(
+    page,
+    account,
+    testInfo,
+    visit.sessionId,
+  );
+  await region
+    .getByRole('combobox', { name: 'Club label', exact: true })
+    .selectOption('9i');
+  await expect(region.getByText('Needs review', { exact: true })).toBeVisible();
+  await expect(
+    region.getByText('Historical 7i (7i)', { exact: false }),
+  ).toBeVisible();
   await openBag(page);
   const history = page.getByRole('table', {
     name: 'Assignment history for Historical 7i',
