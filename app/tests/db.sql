@@ -42,7 +42,15 @@ do $$ begin begin perform public.restore_backup((select dataset from saved)); ra
 -- Roadmap row 3: equipment persistence. Owner A keeps its imported dataset; owner C
 -- is a second seeded account; owners D/E/F are empty restore targets. All writes are
 -- rolled back with the surrounding transaction.
-create function pg_temp.must_fail(p_sql text) returns void language plpgsql as $$ begin begin execute p_sql; exception when others then return; end; raise exception 'expected rejection: %',p_sql; end $$;
+create function pg_temp.must_fail(p_sql text, expected_message text default null) returns void language plpgsql as $$
+begin
+ begin execute p_sql;
+ exception when others then
+  if expected_message is not null and sqlerrm<>expected_message then raise; end if;
+  return;
+ end;
+ raise exception 'expected rejection: %',p_sql;
+end $$;
 create function pg_temp.shot_at(row_index integer) returns jsonb language sql as $$
  select shot from jsonb_array_elements(public.dataset_page('shots',0,100)) shot
  where (shot->>'rowIndex')::integer = row_index
@@ -69,6 +77,8 @@ do $$ declare v0 bigint:=public.dataset_version(); e jsonb; begin
  if e->'manufacturer' is distinct from 'null'::jsonb or e->'loft' is distinct from 'null'::jsonb or e->'acquiredOn' is distinct from 'null'::jsonb or e->'retiredOn' is distinct from 'null'::jsonb then raise exception 'nullable optionals'; end if;
  if e->>'revision' !~ '^[0-9]+$' then raise exception 'equipment revision'; end if;
  if (select count(*) from jsonb_array_elements(public.dataset_page('equipment',0,100)) value where value->>'inrangeLabel'='7i')<2 then raise exception 'same label twice rejected'; end if;
+ perform pg_temp.must_fail(format('select public.save_equipment(%L::jsonb)',jsonb_set(e,'{revision}','null')), 'Equipment conflict');
+ if public.dataset_version()<>v0+2 then raise exception 'rejected duplicate equipment bumped version'; end if;
 end $$;
 
 -- Metadata update, retirement, stale-revision rejection without mutation or bump.
@@ -98,6 +108,11 @@ do $$ declare v0 bigint; sid text; shot text; eid text; begin
  perform public.assign_equipment(jsonb_build_object('expectedVersion',v0,'sessionId',sid,'clubLabel','7i','equipmentId',null,'shotIds',jsonb_build_array(shot)));
  if public.dataset_version()<>v0+1 then raise exception 'assignment clear version'; end if;
  if exists(select 1 from jsonb_array_elements(public.dataset_page('equipmentAssignments',0,100)) value where value->>'shotId'=shot) then raise exception 'clear left assignment'; end if;
+ v0:=public.dataset_version();
+ perform pg_temp.must_fail(format('select public.assign_equipment(%L::jsonb)',jsonb_build_object(
+   'expectedVersion',v0,'sessionId',sid,'clubLabel','PW','equipmentId',eid,'shotIds',jsonb_build_array(pg_temp.shot_at(2)->>'id')
+ )), 'Equipment label conflict');
+ if public.dataset_version()<>v0 then raise exception 'rejected equipment label bumped version'; end if;
 end $$;
 
 -- Stale preview rejected; a batch containing a foreign shot fails atomically.

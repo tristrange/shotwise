@@ -150,7 +150,10 @@ describe('portable private backups', () => {
 });
 
 describe('equipment backups', () => {
-  async function baseDataset(): Promise<{ dataset: Dataset; shot: Dataset['shots'][number] }> {
+  async function baseDataset(): Promise<{
+    dataset: Dataset;
+    shot: Dataset['shots'][number];
+  }> {
     const session = makeSession();
     const preview = await parseCsv(new TextEncoder().encode(csvFixture([{}])));
     const source = preview.shots[0];
@@ -207,6 +210,14 @@ describe('equipment backups', () => {
     expect(restored.equipmentAssignments).toEqual([]);
     expect(restored.shots).toHaveLength(1);
     expect(restored.sessions).toHaveLength(1);
+    await expect(
+      parseBackup(
+        JSON.stringify({
+          ...legacy,
+          dataset: { ...dataset, equipment: [makeEquipment()] },
+        }),
+      ),
+    ).rejects.toThrow('Unsupported backup version');
   });
   it('rejects v2 datasets without equipment arrays and invalid equipment references', async () => {
     const { dataset, shot } = await baseDataset();

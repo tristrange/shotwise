@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-  datasetSchema,
-  parsedShotSchema,
-  type Dataset,
-} from './model';
+import { datasetSchema, parsedShotSchema, type Dataset } from './model';
 import { fromBase64, PARSER_VERSION, parseCsv } from './csv';
 
 export function serializeBackup(dataset: Dataset): string {
@@ -43,10 +39,9 @@ export async function parseBackup(text: string): Promise<Dataset> {
       .object({
         format: z.literal('shotwise'),
         version: z.literal(1),
-        dataset: datasetSchema.omit({
-          equipment: true,
-          equipmentAssignments: true,
-        }),
+        dataset: datasetSchema
+          .omit({ equipment: true, equipmentAssignments: true })
+          .strict(),
       })
       .safeParse(value);
     if (!legacy.success)
@@ -88,7 +83,9 @@ export async function parseBackup(text: string): Promise<Dataset> {
       (a) => !shots.has(a.shotId) || !equipment.has(a.equipmentId),
     )
   )
-    throw new Error('Backup has broken session, review, or equipment references.');
+    throw new Error(
+      'Backup has broken session, review, or equipment references.',
+    );
   for (const original of data.imports) {
     if (original.parserVersion !== PARSER_VERSION)
       throw new Error('This backup uses an unsupported parser version.');
