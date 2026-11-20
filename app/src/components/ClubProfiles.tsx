@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import type { AnalysisSettings } from '../domain/analytics';
+import { labelEquipment, type LabelEquipmentSummary } from '../domain/equipment';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
@@ -36,9 +37,13 @@ function gapNote(gap: ClubProfile['gap']) {
 function ProfileCard({
   profile,
   focus,
+  equipment,
+  bagCount,
 }: {
   profile: ClubProfile;
   focus: boolean;
+  equipment: LabelEquipmentSummary | null;
+  bagCount: number;
 }) {
   const { club, window: range, recent, latest, history, gap, best, basisLabel } =
     profile;
@@ -71,6 +76,30 @@ function ProfileCard({
         {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
         {rangeText}
       </p>
+      {equipment && bagCount > 0 && (
+        <p className="context">
+          Equipment · {equipment.assigned} of {equipment.shots} shots assigned ·{' '}
+          {equipment.coverage}
+          {equipment.needsReview > 0 && (
+            <>
+              {' '}
+              · <span className="pill">Needs review: {equipment.needsReview}</span>
+            </>
+          )}
+          {equipment.equipment.length > 0 && (
+            <>
+              {' '}
+              ·{' '}
+              {equipment.equipment
+                .map(
+                  (item) =>
+                    `${item.name}${item.status === 'retired' ? ' (retired)' : ''}`,
+                )
+                .join(', ')}
+            </>
+          )}
+        </p>
+      )}
       <ul className="profile-stats">
         <li>
           <strong>
@@ -195,6 +224,12 @@ export function ClubProfiles({
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
   const profiles = clubProfiles(data, basis, query);
+  const equipmentByClub = useMemo(() => {
+    const map = new Map<string, LabelEquipmentSummary>();
+    for (const profile of profiles)
+      map.set(profile.club, labelEquipment(data, profile.club));
+    return map;
+  }, [data, profiles]);
   return (
     <>
       <div className="section-heading">
@@ -249,6 +284,8 @@ export function ClubProfiles({
             key={profile.club}
             profile={profile}
             focus={focusClub === profile.club}
+            equipment={equipmentByClub.get(profile.club) ?? null}
+            bagCount={data.equipment.length}
           />
         ))}
       </section>

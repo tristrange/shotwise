@@ -1,4 +1,10 @@
-import { test as base, expect, type Page, type TestInfo } from '@playwright/test';
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 import { localStack } from './local';
@@ -3123,4 +3129,225 @@ test('persists a seeded historical equipment assignment and exposes its visit', 
     'href',
     `#sessions/${session.id}`,
   );
+});
+
+function sessionsNav(testInfo: TestInfo) {
+  return testInfo.project.name === 'phone-webkit'
+    ? 'Sessions'
+    : 'Sessions & import';
+}
+
+async function seedEquipmentVisit(
+  account: Account,
+  filename: string,
+  date = localToday(),
+  carry = 120,
+) {
+  const preview = await parseCsv(
+    new TextEncoder().encode(
+      csvFixture(
+        Array.from({ length: 8 }, (_, index) => ({
+          Club: index === 3 ? 'PW' : '7i',
+          'Flat Carry Dist. Premium (m)': String(carry + index),
+        })),
+      ),
+    ),
+  );
+  return account.repository.importCsv({
+    filename,
+    date,
+    time: '10:00',
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview,
+  });
+}
+
+function equipmentShotIds(data: Dataset, sessionId: string, from = 1, to = 8) {
+  return data.shots
+    .filter(
+      (shot) =>
+        shot.sessionId === sessionId &&
+        effectiveClub(shot) === '7i' &&
+        shot.rowIndex >= from &&
+        shot.rowIndex <= to,
+    )
+    .map((shot) => shot.id)
+    .sort();
+}
+
+async function registerEquipment(account: Account, name: string) {
+  return account.repository.saveEquipment({
+    ...makeEquipment({ name }),
+    revision: null,
+  });
+}
+
+async function openEquipmentVisit(
+  page: Page,
+  account: Account,
+  testInfo: TestInfo,
+  sessionId: string,
+) {
+  await login(page, account);
+  await nav(page, sessionsNav(testInfo));
+  await page.locator('a[href="#sessions/' + sessionId + '"]').click();
+  return page.getByRole('region', { name: 'Assign equipment', exact: true });
+}
+
+async function confirmEquipment(
+  region: Locator,
+  equipmentId: string | null,
+  range?: { first: number; last: number },
+) {
+  await region
+    .getByRole('combobox', { name: 'Club label', exact: true })
+    .selectOption('7i');
+  const club = region.getByRole('combobox', {
+    name: 'Physical club',
+    exact: true,
+  });
+  await club.selectOption(equipmentId ?? { label: 'Clear assignment' });
+  await region
+    .getByLabel('First source row', { exact: true })
+    .fill(range ? String(range.first) : '');
+  await region
+    .getByLabel('Last source row', { exact: true })
+    .fill(range ? String(range.last) : '');
+  await region
+    .getByRole('button', { name: 'Preview assignment', exact: true })
+    .click();
+  await region
+    .getByRole('button', { name: 'Confirm assignment', exact: true })
+    .click();
+}
+
+test('assigns, replaces and clears exact equipment groups and source-row ranges', async ({
+  page,
+  account,
+}, testInfo) => {
+  const recent = await seedEquipmentVisit(account, 'equipment-session.csv');
+  const old = await seedEquipmentVisit(
+    account,
+    'backdated-7i.csv',
+    shiftDate(localToday(), -120),
+    110,
+  );
+  const primary = await registerEquipment(account, 'Primary 7i');
+  const backup = await registerEquipment(account, 'Backup 7i');
+  const before = await account.repository.load();
+  const group = equipmentShotIds(before, recent.sessionId);
+  const swap = equipmentShotIds(before, recent.sessionId, 3, 5);
+  expect(group).toHaveLength(7);
+  expect(swap).toHaveLength(2);
+
+  const region = await openEquipmentVisit(
+    page,
+    account,
+    testInfo,
+    recent.sessionId,
+  );
+  const assignedTo = async (clubId: string) =>
+    (await account.repository.load()).equipmentAssignments
+      .filter((item) => item.equipmentId === clubId)
+      .map((item) => item.shotId)
+      .sort();
+
+  await confirmEquipment(region, primary.id);
+  await expect.poll(() => assignedTo(primary.id)).toEqual(group);
+  await confirmEquipment(region, backup.id);
+  await expect.poll(() => assignedTo(backup.id)).toEqual(group);
+  await expect.poll(() => assignedTo(primary.id)).toEqual([]);
+
+  const range = { first: 3, last: 5 };
+  await confirmEquipment(region, primary.id, range);
+  await expect.poll(() => assignedTo(primary.id)).toEqual(swap);
+  const remainder = group.filter((id) => !swap.includes(id));
+  await expect.poll(() => assignedTo(backup.id)).toEqual(remainder);
+
+  await confirmEquipment(region, null, range);
+  await expect.poll(() => assignedTo(primary.id)).toEqual([]);
+  const after = await account.repository.load();
+  expect(after.equipmentAssignments.map((item) => item.shotId).sort()).toEqual(
+    remainder,
+  );
+  expect(
+    after.equipmentAssignments.every((item) => item.clubLabel === '7i'),
+  ).toBe(true);
+  expect(after.shots).toEqual(before.shots);
+  expect(after.imports).toEqual(before.imports);
+
+  await page
+    .getByRole('link', { name: 'Compare with another session' })
+    .click();
+  await page
+    .getByRole('combobox', { name: 'Comparison session' })
+    .selectOption(old.sessionId);
+  const compare = page.getByRole('region', { name: 'Compare sessions' });
+  await compare.locator('summary').filter({ hasText: /^7i\b/ }).click();
+  await expect(compare).toContainText('Backup 7i');
+  await expect(compare).toContainText(/unknown/i);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+});
+
+test('retains the prior equipment when a club correction needs review and restores compatibility on undo', async ({
+  page,
+  account,
+}, testInfo) => {
+  const visit = await seedEquipmentVisit(account, 'equipment-review.csv');
+  const club = await registerEquipment(account, 'Historical 7i');
+  const before = await account.repository.load();
+  const shot = before.shots.find(
+    (item) => item.sessionId === visit.sessionId && item.rowIndex === 1,
+  );
+  if (!shot) throw new Error('Missing seeded shot');
+  const assignment = { shotId: shot.id, equipmentId: club.id, clubLabel: '7i' };
+  await account.repository.assignEquipment({
+    expectedVersion: before.version,
+    sessionId: visit.sessionId,
+    clubLabel: '7i',
+    equipmentId: club.id,
+    shotIds: [shot.id],
+  });
+  await account.repository.review([
+    {
+      shotId: shot.id,
+      expectedRevision: shot.revision,
+      review: { ...shot.review, club: { kind: 'corrected', club: '9i' } },
+    },
+  ]);
+  const corrected = await account.repository.load();
+  expect(corrected.equipmentAssignments).toEqual([assignment]);
+
+  await openEquipmentVisit(page, account, testInfo, visit.sessionId);
+  await openBag(page);
+  const history = page.getByRole('table', {
+    name: 'Assignment history for Historical 7i',
+  });
+  const reviewCount = history
+    .getByRole('row')
+    .filter({
+      has: page.getByRole('link', { name: /10:00/ }),
+    })
+    .getByRole('cell')
+    .last();
+  await expect(reviewCount).toHaveText('1');
+
+  const latest = corrected.shots.find((item) => item.id === shot.id);
+  if (!latest) throw new Error('Missing corrected shot');
+  await account.repository.undo([
+    { shotId: latest.id, expectedRevision: latest.revision },
+  ]);
+  expect((await account.repository.load()).equipmentAssignments).toEqual([
+    assignment,
+  ]);
+  await page.reload();
+  await openBag(page);
+  await expect(reviewCount).toHaveText('—');
 });
