@@ -3643,5 +3643,12 @@ test('Explorer keyboard table targets an exact overlapping shot and opens its re
   await expect(page).toHaveURL(new RegExp(overlapping.id));
   const supportingShots = page.getByRole('region', { name: 'Supporting shots' });
   await expect(supportingShots).toContainText(`Row ${overlapping.rowIndex}`);
-  await expect(supportingShots).toContainText('1 measured shots');
+  await expect(supportingShots.locator('.shot-list .shot')).toHaveCount(1);
+
+  await page.goBack();
+  await table.getByRole('button', { name: /^Inspect row 5\b/ }).click();
+  await expect(detail).toContainText('Carry: Missing');
+  await review.click();
+  await expect(supportingShots).toContainText('Row 5');
+  await expect(supportingShots).not.toContainText('measured shots');
 });

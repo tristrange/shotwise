@@ -446,6 +446,7 @@ function SessionDetail({
         sessionId: session.id,
         shotIds: [focusShot.id],
         key: BASES[basis].carry,
+        singleShot: true,
         context: `Shot review · Row ${focusShot.rowIndex} · Shot #${focusShot.sourceNumber || '—'} · ${BASES[basis].label}`,
       }
     : undefined;

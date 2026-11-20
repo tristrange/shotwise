@@ -35,6 +35,7 @@ export function ShotReview({
     shotIds: string[];
     key: MetricKey;
     context: string;
+    singleShot?: boolean;
   };
 }) {
   const assessments = useMemo(
@@ -371,7 +372,8 @@ export function ShotReview({
           <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
           {evidence && (
             <p>
-              {evidence.context} · {scoped.length} measured shots
+              {evidence.context}
+              {!evidence.singleShot && ` · ${scoped.length} measured shots`}
             </p>
           )}
         </div>
