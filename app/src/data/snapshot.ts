@@ -1,6 +1,12 @@
 import { datasetSchema, type Dataset } from '../domain/model';
 
-type Table = 'sessions' | 'shots' | 'imports' | 'events';
+type Table =
+  | 'sessions'
+  | 'shots'
+  | 'imports'
+  | 'events'
+  | 'equipment'
+  | 'equipmentAssignments';
 export async function loadConsistent(source: {
   version(): Promise<number>;
   page(table: Table, offset: number, limit: number): Promise<unknown[]>;
@@ -17,15 +23,26 @@ export async function loadConsistent(source: {
         if (page.length < pageSize) return rows;
       }
     };
-    const [sessions, shots, imports, events] = await Promise.all([
-      read('sessions'),
-      read('shots'),
-      read('imports'),
-      read('events'),
-    ]);
+    const [sessions, shots, imports, events, equipment, equipmentAssignments] =
+      await Promise.all([
+        read('sessions'),
+        read('shots'),
+        read('imports'),
+        read('events'),
+        read('equipment'),
+        read('equipmentAssignments'),
+      ]);
     const after = await source.version();
     if (version === after)
-      return datasetSchema.parse({ version, sessions, shots, imports, events });
+      return datasetSchema.parse({
+        version,
+        sessions,
+        shots,
+        imports,
+        events,
+        equipment,
+        equipmentAssignments,
+      });
   }
   throw new Error(
     'History changed while loading. Refresh once the other device has finished saving.',

@@ -462,7 +462,9 @@ function Backup({
     data.sessions.length === 0 &&
     data.shots.length === 0 &&
     data.imports.length === 0 &&
-    data.events.length === 0;
+    data.events.length === 0 &&
+    data.equipment.length === 0 &&
+    data.equipmentAssignments.length === 0;
   return (
     <>
       <div className="section-heading">
@@ -472,15 +474,19 @@ function Backup({
         <h2>Backups</h2>
         <p>
           Download a private JSON backup containing your original imports,
-          sessions and reviews. Keep this file somewhere safe; it contains your
-          personal data.
+          sessions, reviews, and equipment. Keep this file somewhere safe; it
+          contains your personal data.
         </p>
         <button onClick={download}>Download backup</button>
+        <p className="muted">
+          Refresh any other open Shotwise tabs before downloading so the backup
+          includes the latest equipment and assignments.
+        </p>
         <hr />
         <h3>Restore a backup</h3>
         <p>
           Restore is available only when your dataset is empty. It will not
-          overwrite existing sessions.
+          overwrite existing data.
         </p>
         <label className="file-button">
           Choose backup

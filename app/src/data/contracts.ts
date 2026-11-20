@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import type { CsvPreview } from '../domain/csv';
-import type { Dataset, Review, Session } from '../domain/model';
+import type {
+  Dataset,
+  Equipment,
+  EquipmentAssignmentPreview,
+  EquipmentSaveInput,
+  Review,
+  Session,
+} from '../domain/model';
 
 export type ImportInput = {
   filename: string;
@@ -27,6 +34,8 @@ export interface Repository {
   review(changes: ReviewChange[]): Promise<void>;
   undo(shots: RevisionInput[]): Promise<void>;
   updateSession(session: Session): Promise<void>;
+  saveEquipment(input: EquipmentSaveInput): Promise<Equipment>;
+  assignEquipment(input: EquipmentAssignmentPreview): Promise<void>;
   restore(dataset: Dataset): Promise<void>;
 }
 export type Backend =

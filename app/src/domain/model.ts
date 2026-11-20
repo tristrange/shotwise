@@ -132,12 +132,55 @@ export const eventSchema = z.object({
   undone: z.boolean().optional(),
 });
 export type ReviewEvent = z.infer<typeof eventSchema>;
+export const equipmentStatusSchema = z.enum(['in-bag', 'retired']);
+export type EquipmentStatus = z.infer<typeof equipmentStatusSchema>;
+export const equipmentSchema = z.object({
+  id: idSchema,
+  inrangeLabel: z.string().trim().min(1).max(30),
+  name: z.string().trim().min(1).max(200),
+  manufacturer: z.string().trim().max(200).nullable(),
+  loft: z.string().trim().max(30).nullable(),
+  status: equipmentStatusSchema,
+  acquiredOn: dateSchema.nullable(),
+  retiredOn: dateSchema.nullable(),
+  revision: z.number().int().nonnegative().max(2_147_483_647),
+});
+export type Equipment = z.infer<typeof equipmentSchema>;
+/** revision is null to create and the expected integer revision to update. */
+export const equipmentSaveInputSchema = equipmentSchema.extend({
+  revision: equipmentSchema.shape.revision.nullable(),
+});
+export type EquipmentSaveInput = z.infer<typeof equipmentSaveInputSchema>;
+export const equipmentAssignmentSchema = z.object({
+  shotId: idSchema,
+  equipmentId: idSchema,
+  clubLabel: z.string().trim().min(1).max(30),
+});
+export type EquipmentAssignment = z.infer<typeof equipmentAssignmentSchema>;
+export const equipmentAssignmentPreviewSchema = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+  sessionId: idSchema,
+  clubLabel: z.string().trim().min(1).max(30),
+  equipmentId: idSchema.nullable(),
+  shotIds: z
+    .array(idSchema)
+    .min(1)
+    .max(20000)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'Shot IDs must be unique',
+    }),
+});
+export type EquipmentAssignmentPreview = z.infer<
+  typeof equipmentAssignmentPreviewSchema
+>;
 export const datasetSchema = z.object({
   version: z.number().int().nonnegative(),
   sessions: z.array(sessionSchema),
   shots: z.array(shotSchema),
   imports: z.array(importSchema),
   events: z.array(eventSchema),
+  equipment: z.array(equipmentSchema),
+  equipmentAssignments: z.array(equipmentAssignmentSchema),
 });
 export type Dataset = z.infer<typeof datasetSchema>;
 export const emptyDataset: Dataset = {
@@ -146,6 +189,8 @@ export const emptyDataset: Dataset = {
   shots: [],
   imports: [],
   events: [],
+  equipment: [],
+  equipmentAssignments: [],
 };
 export const basisSchema = z.enum([
   'premium-flat',
