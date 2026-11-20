@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseCsv, suggestDate, type CsvPreview } from '../domain/csv';
 import {
+  BASES,
   dateSchema,
+  idSchema,
   type Basis,
   type Dataset,
   type Session,
@@ -431,9 +433,27 @@ function SessionDetail({
   );
   const params = new URLSearchParams(evidenceQuery);
   const practice = params.has('practice');
-  const evidence = practice
-    ? resolvePracticeEvidence(data, session.id, params)
-    : recap && recapEvidence(recap, evidenceQuery);
+  // A "Review shot" link targets one exact shot UUID within its visit; the
+  // shot must belong to this session before it is shown as evidence.
+  const shotParam = idSchema.safeParse(params.get('shot')).data;
+  const focusShot = shotParam
+    ? data.shots.find(
+        (shot) => shot.id === shotParam && shot.sessionId === session.id,
+      )
+    : undefined;
+  const shotEvidence = focusShot
+    ? {
+        sessionId: session.id,
+        shotIds: [focusShot.id],
+        key: BASES[basis].carry,
+        context: `Shot review · Row ${focusShot.rowIndex} · Shot #${focusShot.sourceNumber || '—'} · ${BASES[basis].label}`,
+      }
+    : undefined;
+  const evidence =
+    shotEvidence ??
+    (practice
+      ? resolvePracticeEvidence(data, session.id, params)
+      : recap && recapEvidence(recap, evidenceQuery));
   const headingId = sessionHref(session.id).slice(1);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const evidenceHeading = useRef<HTMLHeadingElement>(null);
