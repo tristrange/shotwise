@@ -7,7 +7,11 @@ import {
   makeSession,
   makeShot,
 } from '../domain/fixtures';
-import { effectiveClub, type Dataset } from '../domain/model';
+import {
+  effectiveClub,
+  equipmentAssignmentPreviewSchema,
+  type Dataset,
+} from '../domain/model';
 import { parseCsv } from '../domain/csv';
 
 describe('complete snapshot loading', () => {
@@ -68,6 +72,19 @@ describe('equipment snapshot paging', () => {
     expect(result.equipmentAssignments).toEqual([assignment]);
     expect(reads).toBe(4);
   });
+});
+
+it('rejects case variants of the same shot in one equipment preview', () => {
+  const shot = 'a0000000-0000-4000-8000-000000000001';
+  expect(
+    equipmentAssignmentPreviewSchema.safeParse({
+      expectedVersion: 0,
+      sessionId: crypto.randomUUID(),
+      clubLabel: '7i',
+      equipmentId: null,
+      shotIds: [shot, shot.toUpperCase()],
+    }).success,
+  ).toBe(false);
 });
 
 describe('portable private backups', () => {

@@ -166,9 +166,10 @@ export const equipmentAssignmentPreviewSchema = z.object({
     .array(idSchema)
     .min(1)
     .max(20000)
-    .refine((ids) => new Set(ids).size === ids.length, {
-      message: 'Shot IDs must be unique',
-    }),
+    .refine(
+      (ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length,
+      { message: 'Shot IDs must be unique' },
+    ),
 });
 export type EquipmentAssignmentPreview = z.infer<
   typeof equipmentAssignmentPreviewSchema

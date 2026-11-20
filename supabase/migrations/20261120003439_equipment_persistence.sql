@@ -18,6 +18,7 @@ create function private.save_equipment(p_equipment jsonb) returns jsonb language
  elsif (p_equipment->>'revision') ~ '^[0-9]+$' and private.valid_equipment(p_equipment) then
   select * into existing from public.equipment where owner_id=u and id=(p_equipment->>'id')::uuid for update;
   if not found or existing.data->>'revision'<>p_equipment->>'revision' then raise exception 'Equipment conflict'; end if;
+  if (p_equipment->>'revision')::integer=2147483647 then raise exception 'Equipment revision limit reached'; end if;
   saved:=p_equipment || jsonb_build_object('id',existing.id,'revision',(p_equipment->>'revision')::integer+1);
   update public.equipment set data=saved where owner_id=u and id=existing.id;
  else raise exception 'Invalid equipment'; end if;

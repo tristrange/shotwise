@@ -235,6 +235,21 @@ do $$ declare v0 bigint; begin
  perform pg_temp.assert_true(public.dataset_page('equipment',0,100)<>'[]'::jsonb,'equipment-only account lost equipment');
 end $$;
 
+-- A restored club at the revision limit reports the limit without writing.
+select set_config('request.jwt.claim.sub','77777777-7777-4777-8777-777777777777',true);
+do $$ declare club jsonb; v0 bigint; begin
+ perform public.restore_backup((select jsonb_set(v2,'{equipment,0,revision}','2147483647') from eq_backup));
+ club:=public.dataset_page('equipment',0,1)->0;
+ v0:=public.dataset_version();
+ begin
+  perform public.save_equipment(jsonb_set(club,'{name}','"Revised"'));
+  raise exception 'equipment revision limit write accepted';
+ exception when raise_exception then
+  if sqlerrm<>'Equipment revision limit reached' then raise; end if;
+ end;
+ if public.dataset_version()<>v0 or public.dataset_page('equipment',0,1)->0 is distinct from club then raise exception 'revision limit write mutated data'; end if;
+end $$;
+
 set local role authenticated;
 set local role anon;
 do $$ begin begin perform public.dataset_version(); raise exception 'anon allowed'; exception when insufficient_privilege then null; end; end $$;
