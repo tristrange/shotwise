@@ -64,10 +64,14 @@ function routeFromHash() {
   const [path, query] = window.location.hash.slice(1).split('?');
   const [name, id, extra] = (path ?? '').split('/');
   const page = nav.find((item) => item.id === name)?.id ?? 'overview';
+  const sessionsPath = page === 'sessions' && !extra;
   return {
     page,
     sessionId:
-      page === 'sessions' && !extra ? idSchema.safeParse(id).data : undefined,
+      sessionsPath && id !== 'compare'
+        ? idSchema.safeParse(id).data
+        : undefined,
+    compare: sessionsPath === true && id === 'compare',
     club: page === 'clubs' && !extra ? decodeSegment(id) : undefined,
     evidence: query ?? '',
   };
@@ -83,7 +87,8 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ page, sessionId, club, evidence }, setRoute] = useState(routeFromHash);
+  const [{ page, sessionId, compare, club, evidence }, setRoute] =
+    useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
@@ -299,6 +304,7 @@ export default function App() {
                 repository={repository}
                 refresh={refresh}
                 sessionId={sessionId}
+                compare={compare}
                 evidenceQuery={evidence}
                 basis={analysisSettings.basis}
                 onBasisChange={(basis) =>

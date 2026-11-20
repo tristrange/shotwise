@@ -2570,3 +2570,170 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     fullPage: true,
   });
 });
+
+test('compares two same-day visits from both entry points with stable, swappable selections', async ({
+  page,
+  account,
+}, testInfo) => {
+  const today = localToday();
+  const rows = (club: string, prefix: number) =>
+    Array.from({ length: 10 }, (_, i) => ({
+      Club: club,
+      'Flat Carry Dist. Premium (m)': String(prefix + i * 2),
+      'Flat Carry Dist. Range (m)': String(prefix + i * 2 - 10),
+    }));
+  const importer = async (
+    filename: string,
+    time: string,
+    venue: string,
+    clubRows: Record<string, string>[],
+  ) =>
+    account.repository.importCsv({
+      filename,
+      date: today,
+      time,
+      venue,
+      notes: '',
+      confirmedFull: true,
+      allowSameDay: true,
+      preview: await parseCsv(new TextEncoder().encode(csvFixture(clubRows))),
+    });
+  const few = (club: string, carry: number) =>
+    Array.from({ length: 4 }, () => ({
+      Club: club,
+      'Flat Carry Dist. Premium (m)': String(carry),
+    }));
+
+  const morning = await importer(
+    'compare-morning.csv',
+    '08:00',
+    'Morning range',
+    [...rows('7i', 118), ...few('9i', 150), ...few('PW', 75)],
+  );
+  const evening = await importer(
+    'compare-evening.csv',
+    '17:00',
+    'Evening range',
+    [...rows('7i', 110), ...few('SW', 30), ...few('PW', 70)],
+  );
+  const solo = await importer(
+    'compare-alone.csv',
+    '19:00',
+    'Night range',
+    few('3w', 200),
+  );
+
+  await login(page, account);
+  const sessionsNav =
+    testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import';
+  const reference = page.getByRole('combobox', { name: 'Reference session' });
+  const comparison = page.getByRole('combobox', { name: 'Comparison session' });
+  const compare = page.getByRole('region', { name: 'Compare sessions' });
+
+  // Entry point 1: the logbook link opens Compare.
+  await nav(page, sessionsNav);
+  await page.getByLabel('Choose CSV files').setInputFiles({
+    name: 'pending-visit.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csvFixture([{ Club: '6i' }])),
+  });
+  const draft = page.getByRole('heading', { name: 'pending-visit.csv' });
+  await expect(draft).toBeVisible();
+  await page.getByRole('link', { name: 'Compare sessions' }).click();
+  await expect(page).toHaveURL(/#sessions\/compare/);
+  await expect(
+    page.getByRole('heading', { name: 'Compare sessions' }),
+  ).toBeFocused();
+  await expect(draft).toBeHidden();
+  await page.goBack();
+  await expect(draft).toBeVisible();
+  await page.getByRole('link', { name: 'Compare sessions' }).click();
+
+  await reference.selectOption(morning.sessionId);
+  await comparison.selectOption(evening.sessionId);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `#sessions/compare\\?reference=${morning.sessionId}&comparison=${evening.sessionId}`,
+    ),
+  );
+  await expect(reference.locator('option:checked')).toHaveText(
+    new RegExp(`${today}.*08:00.*Morning range.*compare-morning\\.csv`),
+  );
+  await expect(comparison.locator('option:checked')).toHaveText(
+    new RegExp(`${today}.*17:00.*Evening range.*compare-evening\\.csv`),
+  );
+  await expect(compare.getByText(/Only in reference.*9i/)).toBeVisible();
+  await expect(compare.getByText(/Only in comparison.*SW/)).toBeVisible();
+  const iron = compare.locator('summary').filter({ hasText: /^7i\b/ });
+  await expect(iron).toContainText('127 m / 119 m');
+  await iron.click();
+  const median = compare.getByRole('row', { name: /^Median carry/ });
+  const spread = compare.getByRole('row', { name: /^Carry IQR/ });
+  await expect(median.getByRole('cell')).toHaveText(['127 m', '119 m', '-8 m']);
+  await expect(spread.getByRole('cell')).toHaveText(['9 m', '9 m', '+0 m']);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await compare.locator('summary').filter({ hasText: /^PW\b/ }).click();
+  await expect(compare.locator('details[open]')).toHaveCount(1);
+
+  // Shared intent and measurement-basis controls are exposed.
+  const intent = compare.getByRole('combobox', {
+    name: 'Shot intent',
+    exact: true,
+  });
+  await intent.selectOption({ label: 'Partial swings' });
+  await expect(compare.getByText(/No clubs in common/)).toBeVisible();
+  await intent.selectOption({ label: 'All intents' });
+  await page.getByTitle('Change measurement basis').click();
+  await expect(iron).toContainText('117 m / 109 m');
+
+  // Swap is exposed and keeps the pair visible.
+  await page.getByRole('button', { name: 'Swap sessions' }).click();
+  await expect(reference).toHaveValue(evening.sessionId);
+  await expect(comparison).toHaveValue(morning.sessionId);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `#sessions/compare\\?reference=${evening.sessionId}&comparison=${morning.sessionId}`,
+    ),
+  );
+
+  // Reload and Back preserve the exact pair.
+  await page.reload();
+  await expect(reference).toHaveValue(evening.sessionId);
+  await expect(comparison).toHaveValue(morning.sessionId);
+  await page.goBack();
+  await expect(reference).toHaveValue(morning.sessionId);
+  await expect(comparison).toHaveValue(evening.sessionId);
+
+  // No overlap: a different club on each side yields the empty-state wording.
+  await comparison.selectOption(solo.sessionId);
+  await expect(compare.getByText(/No clubs in common/)).toBeVisible();
+
+  // Entry point 2: the session-detail link preselects that visit as Reference.
+  await nav(page, sessionsNav);
+  await page.getByRole('link', { name: /compare-morning\.csv/ }).click();
+  await page.evaluate((sessionHash) => {
+    document.addEventListener('focusin', ({ target }) => {
+      if (target instanceof HTMLAnchorElement && target.hash === sessionHash) {
+        document.documentElement.dataset.logbookRowRefocused = 'true';
+      }
+    });
+  }, `#sessions/${morning.sessionId}`);
+  await page.getByRole('link', { name: 'Compare with another session' }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`#sessions/compare\\?reference=${morning.sessionId}`),
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Compare sessions' }),
+  ).toBeFocused();
+  await expect(reference).toHaveValue(morning.sessionId);
+  await expect(page.locator('html')).not.toHaveAttribute(
+    'data-logbook-row-refocused',
+    'true',
+  );
+});
