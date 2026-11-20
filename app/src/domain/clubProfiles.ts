@@ -6,7 +6,7 @@ import {
   type AnalysisQuery,
   type ClubGap,
 } from './analytics';
-import { equipmentForShots, type LabelEquipmentSummary } from './equipment';
+import { equipmentByCohort, type LabelEquipmentSummary } from './equipment';
 import {
   BASES,
   clubOrder,
@@ -101,6 +101,7 @@ export function clubProfiles(
   query: AnalysisQuery,
 ): ClubProfile[] {
   const key = BASES[basis].carry;
+  const equipmentForShots = equipmentByCohort(data);
   const sessionMap = new Map(data.sessions.map((s) => [s.id, s]));
   const groups = clubShotGroups(data);
 
@@ -213,7 +214,7 @@ export function clubProfiles(
         firstDate: dates[0] ?? null,
         lastDate: dates.at(-1) ?? null,
       },
-      equipment: equipmentForShots(data, windowShots),
+      equipment: equipmentForShots(windowShots),
       recent: {
         typical,
         spread: {

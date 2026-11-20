@@ -3142,11 +3142,12 @@ async function seedEquipmentVisit(
   filename: string,
   date = localToday(),
   carry = 120,
+  rowCount = 8,
 ) {
   const preview = await parseCsv(
     new TextEncoder().encode(
       csvFixture(
-        Array.from({ length: 8 }, (_, index) => ({
+        Array.from({ length: rowCount }, (_, index) => ({
           Club: index === 3 ? 'PW' : '7i',
           'Flat Carry Dist. Premium (m)': String(carry + index),
         })),
@@ -3165,7 +3166,12 @@ async function seedEquipmentVisit(
   });
 }
 
-function equipmentShotIds(data: Dataset, sessionId: string, from = 1, to = 8) {
+function equipmentShotIds(
+  data: Dataset,
+  sessionId: string,
+  from = 1,
+  to = Infinity,
+) {
   return data.shots
     .filter(
       (shot) =>
@@ -3225,7 +3231,13 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   page,
   account,
 }, testInfo) => {
-  const recent = await seedEquipmentVisit(account, 'equipment-session.csv');
+  const recent = await seedEquipmentVisit(
+    account,
+    'equipment-session.csv',
+    localToday(),
+    120,
+    54,
+  );
   const old = await seedEquipmentVisit(
     account,
     'backdated-7i.csv',
@@ -3252,7 +3264,7 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   const before = await account.repository.load();
   const group = equipmentShotIds(before, recent.sessionId);
   const swap = equipmentShotIds(before, recent.sessionId, 3, 5);
-  expect(group).toHaveLength(7);
+  expect(group).toHaveLength(53);
   expect(swap).toHaveLength(2);
 
   const region = await openEquipmentVisit(
@@ -3272,6 +3284,16 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
     exact: true,
   });
   await previewEquipment(region, primary.id);
+  const preview = region.getByRole('table', {
+    name: 'Exact shots in this assignment preview',
+  });
+  await expect(preview.locator('tbody tr')).toHaveCount(50);
+  await region.getByRole('button', { name: 'Next preview page' }).click();
+  await expect(preview.locator('tbody td:first-child')).toHaveText([
+    '52',
+    '53',
+    '54',
+  ]);
   const visit = before.sessions.find(
     (session) => session.id === recent.sessionId,
   );
@@ -3295,10 +3317,10 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   await expect.poll(() => assignedTo(primary.id)).toEqual([]);
 
   const range = { first: 3, last: 5 };
+  await previewEquipment(region, primary.id, { first: 4, last: 4 });
+  await expect(confirm).toBeDisabled();
+  await region.getByRole('button', { name: 'Revise', exact: true }).click();
   await previewEquipment(region, primary.id, range);
-  const preview = region.getByRole('table', {
-    name: 'Exact shots in this assignment preview',
-  });
   await expect(preview.locator('tbody tr')).toHaveCount(2);
   await expect(preview.locator('tbody td:first-child')).toHaveText(['3', '5']);
   await confirm.click();
@@ -3330,7 +3352,9 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   const equipmentRow = compare.getByRole('row', {
     name: /^Assigned equipment/,
   });
-  await expect(equipmentRow).toContainText('4/6 assigned · mixed · Backup 7i');
+  await expect(equipmentRow).toContainText(
+    '50/52 assigned · mixed · Backup 7i',
+  );
   await expect(equipmentRow).toContainText('0/7 assigned · unknown');
   expect(
     await page.evaluate(
@@ -3339,7 +3363,7 @@ test('assigns, replaces and clears exact equipment groups and source-row ranges'
   ).toBeLessThanOrEqual(1);
   await nav(page, 'Clubs');
   const profile = page.getByRole('region', { name: '7i', exact: true });
-  await expect(profile).toContainText('4 of 6 shots assigned · mixed');
+  await expect(profile).toContainText('50 of 52 shots assigned · mixed');
 });
 
 test('retains the prior equipment when a club correction needs review and restores compatibility on undo', async ({

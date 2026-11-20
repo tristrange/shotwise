@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import type { AnalysisSettings } from '../domain/analytics';
+import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
@@ -100,10 +101,7 @@ function ProfileCard({
               {' '}
               ·{' '}
               {equipment.equipment
-                .map(
-                  (item) =>
-                    `${item.name}${item.status === 'retired' ? ' (retired)' : ''}`,
-                )
+                .map(equipmentDisplayName)
                 .join(', ')}
             </>
           )}
@@ -111,8 +109,10 @@ function ProfileCard({
       )}
       <ul className="profile-stats">
         <li>
-          <strong>Typical carry {fmt(recent.typical.median)} m</strong> ·{' '}
-          {cohortLabel(recent.typical.cohort)} · {recent.typical.n} measured,{' '}
+          <strong>
+            Typical carry {fmt(recent.typical.median)} m
+          </strong>{' '}
+          · {cohortLabel(recent.typical.cohort)} · {recent.typical.n} measured,{' '}
           {recent.typical.missing} missing
           {recent.typical.median === null && ' · no carry on this basis'}
           {recent.typical.n < 10 && recent.typical.n > 0 && (
@@ -120,9 +120,9 @@ function ProfileCard({
           )}
         </li>
         <li>
-          <strong>Carry spread (IQR) {fmt(recent.spread.iqr)} m</strong> ·
-          middle half of {recent.spread.n} measured carries, mishits and flagged
-          shots included · {recent.spread.missing} missing
+          <strong>Carry spread (IQR) {fmt(recent.spread.iqr)} m</strong> · middle
+          half of {recent.spread.n} measured carries, mishits and flagged shots
+          included · {recent.spread.missing} missing
           {recent.spread.iqr === null && recent.spread.n > 0 && (
             <span className="pill"> Needs 4 measured shots</span>
           )}
@@ -132,9 +132,7 @@ function ProfileCard({
         </li>
         {recent.lowerTail.p10 !== null && (
           <li>
-            <strong>
-              Lower carry tail (P10) {fmt(recent.lowerTail.p10)} m
-            </strong>{' '}
+            <strong>Lower carry tail (P10) {fmt(recent.lowerTail.p10)} m</strong>{' '}
             · from {recent.lowerTail.n} measured carries
           </li>
         )}
@@ -197,14 +195,10 @@ function ProfileCard({
                   </a>
                 </td>
                 <td>
-                  {point.median === null
-                    ? 'No carry'
-                    : `${fmt(point.median)} m`}
+                  {point.median === null ? 'No carry' : `${fmt(point.median)} m`}
                 </td>
                 <td>
-                  {point.iqr === null
-                    ? 'Needs 4 measured'
-                    : `${fmt(point.iqr)} m`}
+                  {point.iqr === null ? 'Needs 4 measured' : `${fmt(point.iqr)} m`}
                 </td>
                 <td>
                   {point.n} / {point.missing}{' '}
@@ -264,9 +258,7 @@ export function ClubProfiles({
             />
             <BasisButton
               basis={basis}
-              onChange={(next) =>
-                onSettingsChange({ ...settings, basis: next })
-              }
+              onChange={(next) => onSettingsChange({ ...settings, basis: next })}
             />
           </div>
         </div>
@@ -277,10 +269,10 @@ export function ClubProfiles({
           with typical contact when at least 10 are measured, otherwise the
           broader estimate; wedges need an explicit full intent. Carry spread is
           the middle half (IQR) of measured carries and includes mishits and
-          flagged shots, even when Hide likely mishits is on. Missing
-          measurements stay missing on the chosen basis — profiles never fall
-          back to another basis. The latest-session line matches that session’s
-          recap; the history below matches Progress.
+          flagged shots, even when Hide likely mishits is on. Missing measurements
+          stay missing on the chosen basis — profiles never fall back to another
+          basis. The latest-session line matches that session’s recap; the
+          history below matches Progress.
         </p>
         {profiles.length === 0 && (
           <p>

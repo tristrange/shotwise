@@ -23,10 +23,7 @@ type Preview = AssignmentPreview & {
   equipmentName: string | null;
 };
 
-function equipmentName(data: Dataset, id: string | null): string | null {
-  if (!id) return null;
-  return data.equipment.find((club) => club.id === id)?.name ?? 'Unknown club';
-}
+const PREVIEW_PAGE_SIZE = 50;
 
 /**
  * Assign equipment in Session Details: pick an effective club label group, an
@@ -53,6 +50,7 @@ export function AssignEquipment({
     equipmentId: '',
   });
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewPage, setPreviewPage] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -65,6 +63,12 @@ export function AssignEquipment({
     [data, session.id],
   );
   const coverage = useMemo(() => coverageCounts(groups), [groups]);
+  const equipmentNames = useMemo(
+    () => new Map(data.equipment.map((club) => [club.id, club.name])),
+    [data.equipment],
+  );
+  const pageStart = previewPage * PREVIEW_PAGE_SIZE;
+  const pageEnd = Math.min(preview?.total ?? 0, pageStart + PREVIEW_PAGE_SIZE);
   const group = groups.find((g) => g.club === draft.clubLabel);
   const bagClubs = useMemo(
     () =>
@@ -133,10 +137,13 @@ export function AssignEquipment({
     const built = assignmentPreview(data, session.id, group.club, range);
     const equipmentId =
       draft.equipmentId === 'clear' ? null : draft.equipmentId;
+    setPreviewPage(0);
     setPreview({
       ...built,
       equipmentId,
-      equipmentName: equipmentName(data, equipmentId),
+      equipmentName: equipmentId
+        ? (equipmentNames.get(equipmentId) ?? null)
+        : null,
     });
   }
   function revise() {
@@ -296,8 +303,10 @@ export function AssignEquipment({
             {needsReviewRows.map((row) => (
               <li key={row.shotId}>
                 Row {row.rowIndex} · Shot #{row.sourceNumber || '—'} ·{' '}
-                {equipmentName(data, row.assignment?.equipmentId ?? null)} (
-                {row.assignment?.clubLabel}) · Effective label{' '}
+                {row.assignment &&
+                  (equipmentNames.get(row.assignment.equipmentId) ??
+                    'Unknown club')}{' '}
+                ({row.assignment?.clubLabel}) · Effective label{' '}
                 <strong>{row.effectiveClub}</strong>
               </li>
             ))}
@@ -365,7 +374,7 @@ export function AssignEquipment({
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.rows.map((row) => (
+                  {preview.rows.slice(pageStart, pageEnd).map((row) => (
                     <tr key={row.shotId}>
                       <td>{row.rowIndex}</td>
                       <td>{row.sourceNumber || '—'}</td>
@@ -373,7 +382,7 @@ export function AssignEquipment({
                       <td>{row.effectiveClub}</td>
                       <td>
                         {row.assignment
-                          ? `${equipmentName(data, row.assignment.equipmentId) ?? 'Unknown club'} · label ${row.assignment.clubLabel}`
+                          ? `${equipmentNames.get(row.assignment.equipmentId) ?? 'Unknown club'} · label ${row.assignment.clubLabel}`
                           : 'Unassigned'}
                       </td>
                       <td>
@@ -387,6 +396,29 @@ export function AssignEquipment({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {preview.total > PREVIEW_PAGE_SIZE && (
+            <div className="actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || previewPage === 0}
+                onClick={() => setPreviewPage(previewPage - 1)}
+              >
+                Previous preview page
+              </button>
+              <span role="status">
+                Shots {pageStart + 1}–{pageEnd} of {preview.total}
+              </span>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || pageEnd >= preview.total}
+                onClick={() => setPreviewPage(previewPage + 1)}
+              >
+                Next preview page
+              </button>
             </div>
           )}
           <div className="actions">

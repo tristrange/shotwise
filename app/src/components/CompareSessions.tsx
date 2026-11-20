@@ -18,7 +18,10 @@ import {
   type SessionComparison,
   type Shares,
 } from '../domain/compare';
-import type { LabelEquipmentSummary } from '../domain/equipment';
+import {
+  equipmentDisplayName,
+  type LabelEquipmentSummary,
+} from '../domain/equipment';
 import { BasisButton } from './AnalysisControls';
 
 /** Hash route for the comparison view; reload and Back keep the pair. */
@@ -192,11 +195,7 @@ function DirectionRows({
 }
 
 function equipmentText(summary: LabelEquipmentSummary) {
-  const names = summary.equipment
-    .map(
-      (item) => `${item.name}${item.status === 'retired' ? ' (retired)' : ''}`,
-    )
-    .join(', ');
+  const names = summary.equipment.map(equipmentDisplayName).join(', ');
   return `${summary.assigned}/${summary.shots} assigned · ${summary.coverage}${
     summary.needsReview > 0 ? ` · Needs review: ${summary.needsReview}` : ''
   }${names ? ` · ${names}` : ''}`;

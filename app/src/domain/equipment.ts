@@ -253,6 +253,21 @@ export type SessionEquipmentGroup = {
   coverage: EquipmentCoverage;
 };
 
+function countAssignmentRows(rows: AssignmentRow[]) {
+  const current = rows.filter((row) => row.status === 'current').length;
+  const needsReview = rows.filter(
+    (row) => row.status === 'needs-review',
+  ).length;
+  const assigned = current + needsReview;
+  return {
+    total: rows.length,
+    assigned,
+    current,
+    needsReview,
+    unassigned: rows.length - assigned,
+  };
+}
+
 /**
  * Effective-club-label groups of one session, derived only from the loaded
  * snapshot. Assignment is independent of intent, contact, and exclusion, so
@@ -280,22 +295,13 @@ export function sessionEquipmentGroups(
       rows.sort(
         (a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId),
       );
-      const current = rows.filter((r) => r.status === 'current').length;
-      const needsReview = rows.filter(
-        (r) => r.status === 'needs-review',
-      ).length;
+      const counts = countAssignmentRows(rows);
       return {
         club,
         rows,
-        total: rows.length,
-        assigned: current + needsReview,
-        current,
-        needsReview,
-        unassigned: rows.length - current - needsReview,
+        ...counts,
         coverage: coverageOf({
-          total: rows.length,
-          current,
-          needsReview,
+          ...counts,
           physicalClubs: new Set(
             rows.flatMap((row) =>
               row.assignment ? [row.assignment.equipmentId] : [],
@@ -360,7 +366,8 @@ export function assignmentPreview(
   const assignmentByShot = new Map(
     data.equipmentAssignments.map((a) => [a.shotId, a]),
   );
-  const rows = data.shots
+  const eligible = !isUnknownClub(label) && label.length <= 30;
+  const rows = (eligible ? data.shots : [])
     .filter(
       (shot) =>
         shot.sessionId === sessionId && effectiveClub(shot).trim() === label,
@@ -374,8 +381,6 @@ export function assignmentPreview(
     .sort(
       (a, b) => a.rowIndex - b.rowIndex || a.shotId.localeCompare(b.shotId),
     );
-  const current = rows.filter((r) => r.status === 'current').length;
-  const needsReview = rows.filter((r) => r.status === 'needs-review').length;
   return {
     expectedVersion: data.version,
     sessionId,
@@ -383,11 +388,7 @@ export function assignmentPreview(
     firstRow,
     lastRow,
     rows,
-    total: rows.length,
-    assigned: current + needsReview,
-    current,
-    needsReview,
-    unassigned: rows.length - current - needsReview,
+    ...countAssignmentRows(rows),
   };
 }
 
@@ -412,57 +413,63 @@ export type LabelEquipmentSummary = {
   equipment: LabelEquipmentClub[];
 };
 
-/** Equipment context for the same shots included in a displayed analysis. */
-export function equipmentForShots(
-  data: Dataset,
-  shots: Shot[],
-): LabelEquipmentSummary {
+export function equipmentDisplayName({
+  name,
+  status,
+}: Pick<Equipment, 'name' | 'status'>) {
+  return status === 'retired' ? `${name} (retired)` : name;
+}
+
+/** Reuse the snapshot lookup across every shot cohort in an analysis. */
+export function equipmentByCohort(data: Dataset) {
   const assignmentByShot = new Map(
     data.equipmentAssignments.map((a) => [a.shotId, a]),
   );
   const equipmentById = new Map(data.equipment.map((e) => [e.id, e]));
-  const clubs = new Map<string, LabelEquipmentClub>();
-  let current = 0;
-  let needsReview = 0;
-  for (const shot of shots) {
-    const assignment = assignmentByShot.get(shot.id);
-    if (!assignment) continue;
-    const club = equipmentById.get(assignment.equipmentId);
-    if (!club) continue;
-    const isCurrent = assignmentStatus(shot, assignment) === 'current';
-    if (isCurrent) current++;
-    else needsReview++;
-    const entry = clubs.get(assignment.equipmentId) ?? {
-      id: assignment.equipmentId,
-      name: club.name,
-      status: club.status,
-      shots: 0,
-      current: 0,
-      needsReview: 0,
-    };
-    entry.shots++;
-    if (isCurrent) entry.current++;
-    else entry.needsReview++;
-    clubs.set(assignment.equipmentId, entry);
-  }
-  const assigned = current + needsReview;
-  return {
-    shots: shots.length,
-    assigned,
-    current,
-    needsReview,
-    unassigned: shots.length - assigned,
-    coverage: coverageOf({
-      total: shots.length,
+  return (shots: Shot[]): LabelEquipmentSummary => {
+    const clubs = new Map<string, LabelEquipmentClub>();
+    let current = 0;
+    let needsReview = 0;
+    for (const shot of shots) {
+      const assignment = assignmentByShot.get(shot.id);
+      if (!assignment) continue;
+      const club = equipmentById.get(assignment.equipmentId);
+      if (!club) continue;
+      const isCurrent = assignmentStatus(shot, assignment) === 'current';
+      if (isCurrent) current++;
+      else needsReview++;
+      const entry = clubs.get(assignment.equipmentId) ?? {
+        id: assignment.equipmentId,
+        name: club.name,
+        status: club.status,
+        shots: 0,
+        current: 0,
+        needsReview: 0,
+      };
+      entry.shots++;
+      if (isCurrent) entry.current++;
+      else entry.needsReview++;
+      clubs.set(assignment.equipmentId, entry);
+    }
+    const assigned = current + needsReview;
+    return {
+      shots: shots.length,
+      assigned,
       current,
       needsReview,
-      physicalClubs: clubs.size,
-    }),
-    equipment: [...clubs.values()].sort(
-      (a, b) =>
-        (a.status === 'in-bag' ? 0 : 1) - (b.status === 'in-bag' ? 0 : 1) ||
-        a.name.localeCompare(b.name) ||
-        a.id.localeCompare(b.id),
-    ),
+      unassigned: shots.length - assigned,
+      coverage: coverageOf({
+        total: shots.length,
+        current,
+        needsReview,
+        physicalClubs: clubs.size,
+      }),
+      equipment: [...clubs.values()].sort(
+        (a, b) =>
+          (a.status === 'in-bag' ? 0 : 1) - (b.status === 'in-bag' ? 0 : 1) ||
+          a.name.localeCompare(b.name) ||
+          a.id.localeCompare(b.id),
+      ),
+    };
   };
 }

@@ -1,5 +1,5 @@
 import { directionStats, metricStats, reviewCoverage } from './analytics';
-import { equipmentForShots, type LabelEquipmentSummary } from './equipment';
+import { equipmentByCohort, type LabelEquipmentSummary } from './equipment';
 import {
   clubShotGroups,
   recapCohorts,
@@ -466,6 +466,7 @@ export function compareSessions(
   };
   const referenceClubs = collect(referenceId);
   const comparisonClubs = collect(comparisonId);
+  const equipmentForShots = equipmentByCohort(data);
 
   result.common = [...referenceClubs.keys()]
     .filter((club) => comparisonClubs.has(club))
@@ -480,12 +481,12 @@ export function compareSessions(
         reference: {
           included: referenceShots.length,
           carry: referenceCarry,
-          equipment: equipmentForShots(data, referenceShots),
+          equipment: equipmentForShots(referenceShots),
         },
         comparison: {
           included: comparisonShots.length,
           carry: comparisonCarry,
-          equipment: equipmentForShots(data, comparisonShots),
+          equipment: equipmentForShots(comparisonShots),
         },
         carryDelta: signedDelta(referenceCarry, comparisonCarry),
         carryPctDelta: pctDelta(referenceCarry, comparisonCarry),
