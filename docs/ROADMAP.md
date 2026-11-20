@@ -1,70 +1,1108 @@
-# Shotwise roadmap
+# Shotwise — Development Roadmap vNext
+## Mobile Experience, Automatic Shot Intelligence & Performance Benchmarking
 
-## Comparisons, equipment, and ball-flight analysis
+**Project:** Shotwise  
+**Repository:** https://github.com/tristrange/shotwise  
+**Live application:** https://tristrange.github.io/shotwise/#overview
 
-The previous phase delivered session recaps, practice recommendations, wedge distance control, focused shot review, safer bulk corrections, and derived Club Profiles. The next phase builds on those features in this order.
+## 1. Project direction
 
-1. Compare two practice sessions in **Sessions & import**.
-2. Manage the bag in **Clubs** and record equipment use in **Session Details**.
-3. Explore measured relationships alongside **Shot shape**.
+Shotwise is a golf performance analytics application built around shot-level data exported from Inrange Golf.
 
-Keep the existing top-level navigation. Compute comparisons and explorer results from the loaded snapshot with pure domain functions. Equipment adds persistent records for physical clubs and their assignments. Original imports, recorded club labels, source row order, and measurements remain immutable.
+The application already supports session imports, historical tracking, shot review, club profiles, equipment management, gapping, session comparisons, shot-shape analysis, ball-flight exploration, wedge analysis and practice recommendations.
 
-## Session comparisons
+The next development phase should focus on three overarching goals:
 
-Add **Compare sessions** to the logbook and **Compare with another session** to Session Details. Identify each visit by UUID and show its date, time when known, venue, and filename in the selector. Save the pair in the hash so reload and Back preserve the selection. Label the reference and comparison explicitly, and offer a swap action.
+1. **Improve the mobile experience.** Make Shotwise feel like a polished, installable iPhone app with intuitive navigation, responsive layouts and more visual presentation.
+2. **Make analytics more automatic and useful.** Reduce manual shot review, distinguish typical performance from potential, and provide more accessible club-level information.
+3. **Introduce meaningful performance benchmarks.** Compare golfers against relevant amateur and professional reference data, eventually supporting explainable club-performance scores.
 
-Start with a compact list of all common effective club labels and expand one club at a time. Show which clubs appear on only one side and give the user a way to change either selection when nothing overlaps. Stack controls and metric details on narrow screens.
+The application should remain statistically trustworthy, accessible and understandable to relatively new golfers.
 
-- Use the complete eligible population of each selected visit. Apply the same intent and basis to both sides, honour club corrections and exclusions, and keep the pair independent of Recent. Same-day sessions can be compared by ID even when their order is unclear.
-- Show recorded and included counts, observed median carry, and carry interquartile range (IQR). Keep manually reviewed mishits in the observed distribution. Show typical carry separately. Use reviewed full swings with typical contact when each side has at least 10 measured carries in that cohort. Otherwise use the same labelled broader recap cohort for both sides, where available. The full-swing benchmark is unavailable in a partial-only view.
-- Show median ball speed, launch angle, and apex. Report left, straight, and right shares for recorded start direction, curve, and lateral offset. Give each metric its own measured count. Use the confirmed mishit count over reviewed full swings and show the share of full swings reviewed. Show counts when review coverage is thin. Keep automatic unusual-shot flags separate from contact review.
-- Report signed changes in native units as comparison minus reference. Show percentage change for carry and speed when the reference is positive and coverage supports it. Use percentage points for direction shares. Mark sparse samples and show missing counts on the selected basis. Leave IQR unavailable below four measured shots. Identify differences in venue, shot mix, and measurement coverage. Treat observed changes as descriptive. The recap's historical finding rules depend on multiple prior visits.
-- Reuse shot grouping, recap cohorts, metric and direction summaries, review coverage, and the existing basis definitions. Consider a shared-axis carry plot after reviewing the compact detail view. [Session recap](../app/src/domain/recap.ts) · [Shared analytics](../app/src/domain/analytics.ts) · [Session views](../app/src/components/Sessions.tsx)
+### Guiding principles
 
-## Personal bag and equipment
+- Prioritize features that improve the actual user experience.
+- Prefer visual communication over long explanatory paragraphs.
+- Use progressive disclosure: show important information first, details on demand.
+- Reduce mandatory manual work wherever possible.
+- Preserve original Inrange measurements and club labels.
+- Keep automatic classifications distinct from user-confirmed facts.
+- Never silently reassign a club based on an inferred classification.
+- Respect statistical uncertainty and insufficient sample sizes.
+- Reuse existing domain logic, analytics and components.
+- Avoid introducing unnecessary infrastructure, languages or dependencies.
+- Keep features independently testable and suitable for small pull requests.
 
-Add **Manage bag** to Clubs. Give each physical club a stable ID, an Inrange label, a display name or model, optional manufacturer and loft, and an in-bag or retired status. Allow optional dates when known. Two clubs may share a label and overlap in ownership. Show current equipment and assignment history beside the existing profile, performance, and gapping.
+---
 
-Use **Assign equipment** in Session Details to preview the exact shots for a club label. One confirmation can apply to the group. For a mid-session swap, select a source-row range and preview that subset. Store the confirmed shot IDs with the physical club ID. Show known, mixed, and unknown coverage in the history. Club Profiles and Compare still summarize by effective club label and show physical-club context where available.
+# 2. Mobile experience and PWA support
 
-- Old visits and backdated imports start with unknown equipment. Replacement, retirement, and date edits preserve prior assignments. Dates can help suggest a club in a later version. Confirm the proposed shots before saving any assignment.
-- When a later club correction conflicts with an assignment, show **Needs review** and retain the previous assignment for repair. Undoing the correction can restore compatibility. A shot corrected into another group needs its own confirmation to adopt that group's equipment. Keep assignment changes separate from contact, intent, exclusion, and club review.
-- Add owner-scoped equipment and shot assignment tables with owner-qualified foreign keys. Reuse select-only row-level security, authenticated RPCs, per-owner locking, and one dataset version bump per write. Use revision checks for metadata and reject stale assignment previews atomically. Keep retired equipment available for historical references.
-- Page equipment within the version-checked snapshot. Restore v1 backups with empty equipment collections and use v2 for complete equipment backups. Include equipment in the empty-account check. Preserve IDs, CSV provenance checks, and assignments awaiting review in the same transaction. Stage the reviewed hosted migration before the Pages client requires it. Refresh open legacy tabs before taking an equipment-inclusive backup. [Club profiles](../app/src/domain/clubProfiles.ts) · [Database guarantees](database.md) · [Snapshot loader](../app/src/data/snapshot.ts) · [Backup parser](../app/src/domain/backup.ts)
+## 2.1 Installable Progressive Web App
 
-## Ball-flight explorer
+### Goal
 
-Add **Shape** and **Explorer** views to the existing Shot shape destination. Keep existing Shape links valid. Open Explorer with one effective club and ball speed versus carry. Offer carry, total distance, ball speed, launch angle, and apex for both axes. Keep the same axes when changing clubs so the user can inspect another club in the same way.
+Allow users to add Shotwise to their phone's Home Screen and use it with an experience resembling a native application.
 
-Reuse the shared cohort and measurement basis. Offer Recent, All-time, or one named session, with an intent filter and All contact or Reviewed typical. A named session uses its complete eligible population. Build the plot in a pure domain function and emit a point only when both selected measurements exist. Preserve zero values and report plotted shots, omitted shots, and missing counts by axis.
+The existing GitHub Pages and Supabase architecture should remain in place.
 
-Use the shot UUID for selection. Show the session, source shot number or row, measured values, and a link to review. Follow Shape's plot, selected-shot detail, and table patterns. Provide tap selection and a keyboard-operable table that gives access to every shot, including points that overlap. Name units and the selected basis on the chart.
+### Requirements
 
-Start with descriptive exploration. Defer correlation, trend lines, and automatic interpretation. If correlation is added later, use paired values for one club and a clear intent cohort, check the sample size and variation, and show which sessions contributed. Use per-session spread in Progress for a later view of launch consistency over time. [Shot Shape](../app/src/components/ShotShapes.tsx) · [Measurement bases](../app/src/domain/model.ts)
+- Add a valid web app manifest.
+- Support standalone display mode.
+- Provide appropriate app icons, including an Apple touch icon.
+- Configure application name, short name and theme colours.
+- Support iOS status-bar and safe-area behaviour.
+- Ensure the GitHub Pages `/shotwise/` deployment path works correctly.
+- Provide an appropriate launch experience.
+- Investigate optional service-worker caching for static assets.
+- Handle missing network connectivity gracefully.
 
-## Reviewable pull requests
+### Important limitations
 
-| PR | Acceptance |
-| --- | --- |
-| 1. Compare two sessions | Open Compare from the logbook and a visit. Verify same-day IDs, reload, Back, and phone layout. Cover one-sided and no-common-club cases, corrected labels, exclusions, full and partial intent, missing or sparse data, all bases, and independence from Recent. |
-| 2. Add comparison details | Verify the shared typical-carry cohort, flight and directional measurements, reviewed mishit coverage, and neutral deltas. Exercise sparse review, zero references, and basis changes. |
-| 3. Add equipment persistence | Verify owner isolation, foreign keys, stale writes and atomic rollback, snapshot paging, v1 and v2 restore, and original CSV provenance against local Supabase. |
-| 4. Manage the bag in Clubs | Register, edit, and retire a club. Allow the same label on two clubs and overlapping ownership. Preserve a draft after a conflict and verify reload and backup round-trips. |
-| 5. Assign equipment in Sessions | Confirm, revise, or clear a group or range. Cover replacement, historical imports, unknown and mixed use, and corrections and undo. Verify equipment context in Clubs and Compare. |
-| 6. Explore ball-flight measurements | Verify axis mapping, missing X and Y, sparse data, corrected clubs, exclusions, intent and contact filters, basis changes, and exact shot mapping. Cover touch, keyboard, overlapping points, and review links. |
+Installability and offline operation are separate features.
 
-## Decisions to confirm
+Shotwise currently depends on Supabase authentication and persisted data. Full offline access to private shot history is not a requirement for this phase.
 
-| Decision | Recommended default |
-| --- | --- |
-| Default comparison scope | Show all common clubs and all included shots, with intent filters and typical carry separate. A focused club default saves a step for users who usually compare the same club. |
-| Archived visits | Start with unarchived visits to match Recap and Progress. Add an explicit archive selector if archived visits need to be comparable. |
-| Equipment confirmation | Confirm a group once per session and use a row range for a swap. Revisit suggestions if repeated assignments take too much time. |
-| Explorer time scope | Offer Recent, All-time, or one session. Bring forward a custom date range if comparing groups of visits around a lesson or equipment change is a priority. |
+Avoid caching sensitive data unnecessarily or introducing stale-data problems.
 
-Defer a dedicated equipment comparison and additional equipment fields such as shaft details and notes until their use is clear.
+Assess whether a service worker is needed immediately or whether basic installability should ship first.
 
-## Verification
+### Acceptance criteria
 
-Use deterministic synthetic fixtures. For application PRs, run the unit suite, typecheck, lint, and the Pages build from `app/`. Run local database tests for persistence changes and Chromium and phone-sized WebKit tests for changed flows. Check keyboard focus, readable counts, and narrow layouts. [Repository verification](../AGENTS.md#verification)
+- Shotwise can be added to the iPhone Home Screen.
+- Launching from the Home Screen opens the application in standalone mode on supported iOS versions.
+- Icons, titles, theme and safe areas render correctly.
+- Existing authentication works.
+- Existing GitHub Pages deployment continues working.
+- The app communicates network errors clearly.
+
+## 2.2 Fix mobile hero sizing
+
+### Current problem
+
+On an iPhone, the Overview hero does not fit correctly at the default zoom level.
+
+The user currently needs to pinch out to make the full hero visible. After doing so, the rest of the application appears to fit.
+
+### Requirements
+
+Investigate and fix the root cause.
+
+Potential issues to inspect:
+
+- Horizontal overflow.
+- Hero child widths.
+- SVG dimensions and scaling.
+- Negative margins.
+- Typography and text wrapping.
+- Minimum heights.
+- Grid or flex item minimum widths.
+- Responsive breakpoints.
+- Animated elements.
+
+Do not fix the issue by artificially reducing the viewport scale or disabling user zoom.
+
+The hero should fit naturally at the phone's default viewport.
+
+Also evaluate whether the mobile hero should be shorter than the desktop version. It should remain visually impressive without forcing the user to scroll excessively before reaching the statistics.
+
+### Acceptance criteria
+
+- No pinch-zoom adjustment is necessary.
+- No unintended horizontal page overflow.
+- The animated graphic remains correctly clipped and responsive.
+- Text stays readable.
+- The hero works across common iPhone viewport sizes.
+- Reduced-motion preferences are respected.
+
+## 2.3 Five-tab bottom navigation
+
+### Current problem
+
+The mobile application has too many top-level navigation destinations.
+
+Navigation currently scrolls horizontally at the top of the screen.
+
+This is less convenient than a typical mobile app navigation pattern.
+
+### Proposed navigation
+
+Replace the current mobile navigation with five primary destinations:
+
+| Tab | Main content |
+|---|---|
+| Home | Overview, key club information, practice insights |
+| Analyse | Clubs, Gapping, Progress, Shot Shape, Ball-Flight Explorer |
+| Sessions | Import, session history, recaps, comparisons |
+| Review | Optional shot review and corrections |
+| More | Equipment management, settings, backups |
+
+These names and groupings are initial proposals.
+
+Evaluate whether Review deserves a permanent primary tab now that the product is moving toward automatic classification. It may ultimately belong under More, leaving room for a more frequently used destination.
+
+### Requirements
+
+- Fixed bottom navigation on mobile.
+- Maximum five primary tabs.
+- Clear active state.
+- Icons and concise labels.
+- Comfortable touch targets.
+- Correct iPhone safe-area spacing.
+- No sideways-scrolling primary navigation.
+- Existing routes and deep links remain functional.
+- Nested analysis screens remain discoverable.
+- Do not lose access to any existing features.
+
+Desktop can retain a sidebar, ideally with consistent information architecture.
+
+### Acceptance criteria
+
+- Five or fewer primary mobile tabs.
+- All existing features remain reachable.
+- No content is hidden behind the bottom navigation.
+- Navigation works correctly in standalone PWA mode.
+- Back navigation and deep links continue functioning.
+
+---
+
+# 3. Overview and club information redesign
+
+## 3.1 Expandable club summaries
+
+### Goal
+
+The Overview currently emphasizes median carry distance.
+
+Users should be able to access additional performance measurements directly without navigating to a separate detailed page.
+
+### Proposed interaction
+
+Tapping a club expands an inline detail area.
+
+Collapsed state:
+
+- Club name.
+- Typical median carry.
+- Compact carry distribution.
+- Optional score or reliability indicator once implemented.
+
+Expanded state:
+
+- Ball speed.
+- Launch angle.
+- Apex height.
+- Carry consistency.
+- Strong-strike carry once available.
+- Shot count.
+- Data coverage or uncertainty.
+- Relevant shot-shape or directional measurements.
+- Link to the full club profile.
+
+The expanded content could also contain compact visualizations.
+
+### Requirements
+
+- Reuse existing club analytics rather than introducing duplicate calculations.
+- Respect measurement basis and shared filters.
+- Support keyboard and touch interaction.
+- Keep expansion smooth and responsive.
+- Allow users to expand and collapse clubs independently or with sensible accordion behaviour.
+- Avoid overcrowding the Overview.
+- Continue supporting full club profile navigation.
+
+## 3.2 Include pitching wedge in iron-style performance analysis
+
+### Goal
+
+The pitching wedge should generally appear alongside irons in the main performance and gapping views.
+
+Currently, wedge handling is deliberately conservative because many wedge shots are intentional partial swings.
+
+This remains appropriate for short-game analysis, but PW deserves slightly different treatment.
+
+### Proposed approach
+
+- Treat PW as eligible for the iron-style club overview and gapping.
+- Keep explicit partial shots outside full-swing carry benchmarks.
+- Allow the automatic classifier to distinguish likely partial PW shots from likely full shots.
+- Keep PW available in wedge distance-control analysis too.
+- Preserve the distinction between normal PW performance and intentional PW distance-control drills.
+
+Do not assume that every PW shot is full simply because PW appears alongside the irons.
+
+Consider making club analysis roles configurable rather than permanently hardcoding treatment for PW, GW, SW and LW.
+
+---
+
+# 4. Visual redesign: show more, explain less
+
+## Goal
+
+Reduce the amount of text presented throughout the application.
+
+Shotwise currently provides extensive statistical explanations, but the result can feel overwhelming.
+
+The desired direction is a clean, visual, information-dense interface that remains approachable.
+
+Use the principle:
+
+**Show the result first. Explain it when requested.**
+
+### Proposed changes
+
+Replace suitable text-heavy sections with:
+
+- Compact metric cards.
+- Small trend charts and sparklines.
+- Carry distribution plots.
+- Box plots and percentile bands.
+- Visual club comparisons.
+- Progress indicators.
+- Concise badges indicating data limitations.
+- Contextual help icons.
+- Expandable methodology explanations.
+
+### Information hierarchy
+
+Use three levels:
+
+**Level 1 — At a glance**
+
+Display the most important measurements, comparisons and insights.
+
+**Level 2 — Exploration**
+
+Allow the user to expand sections, open charts and inspect individual clubs or sessions.
+
+**Level 3 — Methodology**
+
+Make statistical explanations and calculation details available on demand.
+
+### Design considerations
+
+- Preserve the existing Shotwise visual identity.
+- Avoid decorative charts that do not communicate useful information.
+- Keep exact numerical data accessible.
+- Maintain readable labels and accessible text equivalents.
+- Use consistent measurement units and terminology.
+- Consider mobile-first information density.
+- Prefer compact layouts over long sequences of explanatory paragraphs.
+
+Treat this as an incremental design improvement across affected screens, not necessarily a single large redesign PR.
+
+---
+
+# 5. Automatic shot classification
+
+## 5.1 Product direction
+
+### Goal
+
+Make Shotwise useful immediately after importing an Inrange session, without requiring the user to review or manually categorize shots.
+
+Manual review should become optional.
+
+The user should be able to import a CSV, open their analytics, and trust that the application has made reasonable, conservative assessments automatically.
+
+### Core requirement
+
+**Automatic classification becomes the default interpretation layer, while manual decisions remain authoritative.**
+
+The original Inrange data must remain immutable.
+
+Manual classifications should override automated decisions.
+
+The application must retain uncertainty instead of forcing unreliable classifications.
+
+## 5.2 Classification dimensions
+
+Keep three independent dimensions.
+
+### A. Shot intent
+
+Possible values:
+
+- Likely full swing.
+- Likely partial swing.
+- Unknown.
+
+### B. Strike quality
+
+Possible values:
+
+- Typical strike.
+- Likely mishit.
+- Uncertain.
+
+### C. Club identity
+
+Possible values:
+
+- Plausible recorded club.
+- Suspected incorrect club.
+- Unknown club.
+
+These dimensions must remain independent.
+
+For example, an intentional partial shot can be a perfectly reasonable strike.
+
+A mishit can still have a correctly recorded club.
+
+A long and well-struck shot can have an incorrect club label.
+
+## 5.3 Use multiple shot measurements
+
+Evaluate classification using a combination of:
+
+- Carry distance.
+- Ball speed.
+- Launch angle.
+- Apex height.
+- Carry-to-total relationship.
+- Recent club-specific distributions.
+- Recorded target information.
+- Shot order.
+- Neighbouring shots.
+- Historical data and changing player ability.
+
+Avoid relying exclusively on fixed launch-angle thresholds or distance cutoffs.
+
+For example:
+
+A short, very low-launch 6 iron is probably a mishit.
+
+A short, high-launch 60-degree wedge may be intentional.
+
+These are probabilistic interpretations, not guaranteed facts.
+
+## 5.4 Sequence-aware club inference
+
+**This is an important new requirement.**
+
+At a driving range, golfers commonly hit several consecutive shots using the same club.
+
+The initial user typically hits at least 10 shots with a club before switching, although this is a tendency rather than a strict rule.
+
+Shotwise should take advantage of this behaviour.
+
+### Example 1 — Missing club label
+
+Consider the sequence:
+
+| Shot range | Recorded club |
+|---|---|
+| 1–10 | 7i |
+| 11–13 | ? |
+| 14–20 | 7i |
+
+If the three unidentified shots have measurements compatible with the surrounding 7 iron shots, the application can infer that 7 iron is a plausible club.
+
+### Example 2 — Forgotten tablet switch
+
+| Shot range | Recorded club |
+|---|---|
+| 1–10 | 9i |
+| 11–20 | 9i |
+| 21–30 | D |
+
+Suppose shots 11–20 have ball speeds, launch characteristics and carry distances much closer to the driver's profile.
+
+This may indicate that the golfer switched clubs at shot 11 but forgot to update the Inrange tablet until shot 21.
+
+The application should detect this as a possible sequence-level labelling problem.
+
+### Example 3 — Ambiguous transition
+
+| Shot range | Recorded club |
+|---|---|
+| 1–10 | 7i |
+| 11–14 | ? |
+| 15–25 | 5i |
+
+The unidentified shots may belong to the end of the 7 iron block, the beginning of the 5 iron block, or both.
+
+The application should examine shot characteristics and possible transition points rather than blindly assigning the entire unknown block to one club.
+
+### Proposed inference approach
+
+Investigate a sequence-aware model that combines:
+
+1. Individual shot compatibility with candidate clubs.
+2. Nearby recorded club labels.
+3. Consecutive shot runs.
+4. The likelihood of club changes.
+5. The number of observations supporting each inference.
+
+Potential techniques include:
+
+- Rule-based sequence segmentation.
+- Change-point detection.
+- Dynamic programming over possible club sequences.
+- Hidden Markov Models, if the additional complexity is justified.
+
+Start with the simplest approach that works reliably.
+
+Do not automatically introduce machine learning solely because the problem resembles a sequence-classification task.
+
+### Important safeguards
+
+- A golfer may intentionally alternate clubs.
+- Club transitions may occur inside blocks of missing labels.
+- The first or last shots of a session may have little contextual information.
+- Mishits should not automatically be mistaken for club changes.
+- New golfers improve rapidly.
+- Equipment changes may affect measurement distributions.
+- Recorded club labels are useful evidence but not infallible.
+
+**Never silently overwrite the recorded or manually corrected club.**
+
+For high-confidence suspected errors, the application may exclude affected shots from club-specific benchmarks or mark them as provisionally unassigned under a documented policy.
+
+For an unknown club, a high-confidence inferred club may be displayed as a provisional assignment, but it must remain distinguishable from a confirmed assignment.
+
+Manual corrections always take precedence.
+
+The analytics should distinguish between recorded, inferred and confirmed club identities.
+
+## 5.5 Personal calibration and improving golfers
+
+The classifier should adapt to the golfer's recent ability.
+
+A beginner's driver may improve substantially across several sessions.
+
+Historical poor performance should not indefinitely influence current classification thresholds.
+
+Consider:
+
+- Recent sliding windows.
+- Robust per-club baselines.
+- Minimum sample sizes.
+- Multiple-session evidence.
+- Gradual adaptation.
+- Safeguards against incorrect baselines.
+- Conservative fallback behaviour for new users.
+
+Avoid creating circular dependencies where incorrect automatic classifications continually reinforce themselves.
+
+## 5.6 Confidence and uncertainty
+
+Every automated assessment should have a reason and evidence.
+
+Possible internal states:
+
+- High-confidence classification.
+- Low-confidence classification.
+- Abstention due to insufficient evidence.
+
+Avoid displaying unsupported numerical confidence percentages.
+
+Prefer labels such as:
+
+- Likely mishit.
+- Likely partial.
+- Possible wrong club.
+- Not enough information.
+
+Show uncertainty when it materially affects statistics.
+
+## 5.7 Optional review workflow
+
+The existing review system should remain available.
+
+However:
+
+- It should not be required after import.
+- Automatic analytics should work without review.
+- Import summaries should prioritize viewing results.
+- Optional review should be visually secondary.
+- Manual corrections should remain reversible.
+- Original data and audit history must remain intact.
+
+Consider simplifying navigation if Review becomes a less frequently used feature.
+
+### Evaluation
+
+Assess classification accuracy using representative labelled test data.
+
+Do not evaluate only shots previously flagged by the algorithm, because that would introduce selection bias.
+
+Track false positives, false negatives, abstentions and classification coverage.
+
+Use a versioned classifier so new algorithms can be compared fairly and old manual decisions remain stable.
+
+---
+
+# 6. Strong-strike potential and performance filtering
+
+## 6.1 Goal
+
+Separate what a golfer can achieve with a club from what they normally achieve.
+
+This is particularly important for beginners.
+
+A golfer may occasionally hit excellent drives while also producing many severe mishits.
+
+The app should communicate both the upside and the reliability.
+
+### Proposed performance modes
+
+**All shots**
+
+Show legitimate full-swing outcomes including mishits.
+
+Best for evaluating real-world reliability.
+
+**Typical shots**
+
+Exclude sufficiently well-supported mishits while retaining normal variation.
+
+Best for expected carry and club gapping.
+
+**Strong strikes**
+
+Focus on higher-performing full swings to estimate realistic distance potential.
+
+Best for evaluating what the club can produce when struck well.
+
+Review how these modes interact with existing filters before implementation. Avoid multiple overlapping controls that produce confusing results.
+
+## 6.2 Estimating potential
+
+Investigate robust upper-tail statistics such as:
+
+- P75 carry.
+- P80 carry.
+- Upper-quartile mean.
+- Median of high-performing eligible strikes.
+
+Evaluate which estimator is most stable and meaningful.
+
+The initial recommendation is to investigate P80 as a potential-distance indicator.
+
+Avoid relying exclusively on the maximum recorded carry.
+
+Avoid arbitrary symmetric ranges around the overall median, especially for highly inconsistent clubs.
+
+### No artificial upper ceiling
+
+An exceptionally long, legitimate shot should not be discarded merely because it exceeds a predetermined upper carry limit.
+
+However, extreme positive outliers should still be checked for incorrect club labels or measurement anomalies.
+
+### Important distinction
+
+A long shot is not automatically a good golf shot.
+
+For the initial implementation, call this measurement **distance potential** or **strong-strike carry**, rather than claiming it captures overall shot quality.
+
+Directional accuracy and other characteristics should be evaluated separately.
+
+## 6.3 Keep consistency independent
+
+Do not measure consistency exclusively from the filtered set of strong strikes.
+
+Doing so would produce artificially narrow distributions.
+
+Instead, show potential alongside reliability and carry variability calculated from the appropriate broader population.
+
+For example:
+
+- Typical carry: 160 m.
+- Strong-strike carry: 195 m.
+- Carry IQR: 35 m.
+- Severe mishit frequency: reported when supported by adequate evidence.
+
+This indicates both high potential and poor reliability.
+
+### Acceptance criteria
+
+- Potential is not dominated by early beginner history.
+- Intentional partial shots do not pollute full-swing benchmarks.
+- Suspected incorrect clubs cannot silently create false personal bests.
+- Strong-strike calculations remain consistent across screens.
+- Small samples are marked clearly.
+- Reliability remains visible when a potential filter is selected.
+- Analytics retain links to contributing shots.
+
+---
+
+# 7. External golf performance benchmarks
+
+## 7.1 Goal
+
+Allow golfers to compare their performance against relevant external populations, rather than only their own historical results.
+
+A golfer can be consistent relative to their own history while still underperforming in distance or another measurable dimension compared with similar golfers.
+
+External benchmarks can help reveal this.
+
+## 7.2 Research promising data sources
+
+Investigate sources such as:
+
+### Shot Scope
+
+Golf performance data by handicap, including club distances and performance averages.
+
+Potentially useful for amateur club-distance references.
+
+### Arccos Golf
+
+Large-scale amateur shot tracking, including driving distance and accuracy by handicap, age and gender.
+
+Potentially useful for driving benchmarks.
+
+### TrackMan
+
+PGA Tour and LPGA Tour averages for ball speed, carry, launch angle and other launch-monitor measurements.
+
+Useful for professional reference comparisons.
+
+Also investigate additional high-quality sources if appropriate.
+
+### Data requirements
+
+Before integrating a benchmark dataset, establish:
+
+- Source and publication date.
+- Sample size where available.
+- Population represented.
+- Club type.
+- Measurement units.
+- Carry versus total distance.
+- Whether results represent averages, medians, percentiles or filtered performance.
+- Whether data is from the range or golf course.
+- Whether measurements are directly comparable to Inrange.
+- Terms of use and redistribution permissions.
+
+Do not assume that publicly viewable statistics may be freely copied into the application.
+
+If data licensing is unclear, propose a compliant alternative.
+
+## 7.3 Handicap-based comparison
+
+Prefer actual amateur reference data grouped by handicap rather than applying arbitrary scaling factors to professional statistics.
+
+Potential groups:
+
+- Beginner/high handicap.
+- Handicap 20–29.
+- Handicap 10–19.
+- Handicap 0–9.
+- Scratch.
+- LPGA Tour.
+- PGA Tour.
+
+These groups are illustrative and should follow available data.
+
+Allow the user to select a comparison group even if they do not have an official handicap.
+
+Do not infer an official handicap from range data.
+
+## 7.4 Measurement compatibility
+
+This is critical.
+
+Inrange exports include:
+
+- Range-ball carry.
+- Premium-ball estimated carry.
+- Flat carry.
+- Total distance.
+- Launch characteristics.
+
+External sources may report substantially different quantities.
+
+Never silently compare on-course total distance with Inrange carry distance.
+
+Where a meaningful comparison is impossible, omit the benchmark or explain the mismatch.
+
+Tour-level data should not be used as an automatic definition of optimal launch angle for amateurs.
+
+Club loft, model, swing speed, environmental conditions and measurement methodology can all affect comparability.
+
+## 7.5 User interface
+
+Introduce optional benchmark overlays in club profiles and potentially Overview.
+
+Users should be able to compare:
+
+- Their current performance.
+- Their historical performance.
+- A selected external benchmark.
+
+Use concise visual comparisons with clear source attribution.
+
+Keep benchmark comparisons separate from personal improvement trends.
+
+### Initial scope
+
+Start with trustworthy, comparable distance benchmarks.
+
+Expand to launch, ball speed, accuracy and consistency only where suitable data exists.
+
+Avoid presenting unsupported handicap-equivalent ratings.
+
+---
+
+# 8. Club performance scores
+
+## 8.1 Goal
+
+Provide an intuitive assessment of which clubs a golfer performs well with and which clubs deserve attention.
+
+Users should be able to tap a club's overall score and inspect the underlying category scores and measurements.
+
+## 8.2 Proposed categories
+
+Investigate four core dimensions.
+
+### Distance potential
+
+How effectively the golfer generates carry with a club.
+
+Where suitable external benchmarks exist, compare against relevant golfers.
+
+Otherwise, show the raw potential metric or a clearly identified personal benchmark.
+
+### Consistency
+
+How predictable the club's carry distance is.
+
+Use appropriate distribution statistics such as IQR or lower-tail performance.
+
+Avoid artificially inflating consistency scores by looking only at strong strikes.
+
+### Directional control
+
+Evaluate shot direction and curvature relative to the intended line where measurements support it.
+
+Do not treat curvature alone as landing dispersion.
+
+Consider whether relevant metrics are missing in sessions without target tracking.
+
+### Reliability
+
+Evaluate the frequency of severe mishits or otherwise poor full-swing outcomes.
+
+Account for automatic-classification uncertainty and manual-review coverage.
+
+Avoid displaying precise reliability percentages if the classifier has not been sufficiently validated.
+
+## 8.3 Overall score
+
+A composite score could be useful, but only if it is defensible.
+
+Do not arbitrarily combine unrelated numbers just to produce a rating out of 100.
+
+The planning phase should establish:
+
+- What the score represents.
+- How categories are normalized.
+- What reference populations are used.
+- How categories are weighted.
+- Whether weights differ by club type.
+- How uncertainty affects the score.
+- What happens when a category has insufficient data.
+- How historical improvement affects current scores.
+
+Do not treat increased carry or increased launch angle as universally better.
+
+A golfer's most reliable club is not necessarily their longest or most improved.
+
+Consider whether separate category scores and a potential-versus-reliability visualization should launch before the overall composite.
+
+## 8.4 Detailed score breakdown
+
+The desired experience is:
+
+**Overview**
+
+A compact club card with a score and basic performance summary.
+
+**Expanded club card**
+
+Distance potential, consistency, directional control and reliability.
+
+**Full club profile**
+
+Underlying measurements, reference benchmarks, data coverage, historical development and scoring methodology.
+
+All scores must be explainable and reproducible.
+
+Do not introduce numerical ratings where the underlying evidence is insufficient.
+
+---
+
+# 9. Architecture and data integrity
+
+Review the existing React, TypeScript and Supabase implementation before proposing changes.
+
+Important requirements:
+
+- Preserve original imported CSV data.
+- Preserve recorded club labels.
+- Keep effective club assignments distinct from originals.
+- Separate automatic assessments from manual decisions.
+- Preserve equipment identity and existing equipment assignment semantics.
+- Maintain owner isolation and database security.
+- Maintain backward-compatible backup and restore.
+- Respect archived sessions and exclusions.
+- Avoid duplicated statistical implementations.
+- Reuse existing measurement basis mapping.
+- Keep business logic in testable domain modules.
+- Version classification algorithms and benchmark datasets where needed.
+- Preserve manual corrections across classifier upgrades.
+
+### Shot assessment model
+
+Consider a model similar to:
+
+- Original shot measurements.
+- Recorded club.
+- Effective manually corrected club.
+- Optional inferred club.
+- Recorded or inferred shot intent.
+- Recorded or inferred contact classification.
+- Assessment provenance.
+- Confidence or abstention reason.
+- Classifier version.
+- Manual override state.
+- Exclusion state.
+
+Do not introduce unnecessary schema complexity before reviewing how the current shot review model works.
+
+Prefer a clearly defined resolution policy for combining manual and automatic classifications.
+
+### Performance
+
+Avoid introducing Python, Rust, machine-learning services or additional backend infrastructure without a demonstrated need.
+
+The current TypeScript analytics architecture should remain the default.
+
+Profile performance before optimizing.
+
+---
+
+# 10. Proposed development milestones
+
+These are the proposed milestones, not an instruction to implement everything at once.
+
+## Phase 1 — Mobile foundation
+
+**PR 1:** PWA installability and icons.
+
+**PR 2:** Mobile hero responsiveness and overflow fixes.
+
+**PR 3:** Five-tab bottom navigation and information architecture.
+
+Outcome: Shotwise feels like a properly designed mobile application.
+
+## Phase 2 — Accessible club analytics
+
+**PR 4:** Expandable club summaries on Overview.
+
+**PR 5:** Pitching wedge integration with iron-style analytics.
+
+**PR 6:** Incremental visual cleanup of Overview and club details.
+
+Outcome: Users can understand more without navigating through text-heavy pages.
+
+## Phase 3 — Automatic classification foundation
+
+**PR 7:** Audit existing review models, classification rules and eligibility calculations; define automatic-versus-manual precedence.
+
+**PR 8:** Automatic shot-intent and contact assessment, with uncertainty handling.
+
+**PR 9:** Sequence-aware club inference, including unknown labels and suspected forgotten club switches.
+
+**PR 10:** Integrate automatic classifications into analytics and make review optional.
+
+**PR 11:** Evaluate classifier behaviour and add a representative testing methodology.
+
+Outcome: Imported sessions produce useful analytics immediately with minimal manual effort.
+
+Consider smaller PRs if needed, particularly for sequence inference and persistence changes.
+
+## Phase 4 — Performance potential
+
+**PR 12:** Define and implement strong-strike carry estimation.
+
+**PR 13:** Add clear All / Typical / Strong-strike performance controls.
+
+**PR 14:** Show potential and reliability together in club summaries and profiles.
+
+Outcome: Users can distinguish their distance potential from their normal reliability.
+
+## Phase 5 — External benchmarking
+
+**PR 15:** Research and document suitable reference datasets and usage permissions.
+
+**PR 16:** Introduce a source-aware benchmark data model.
+
+**PR 17:** Add optional benchmark comparisons to club profiles.
+
+Outcome: Golfers can understand their performance relative to relevant external references without misleading comparisons.
+
+## Phase 6 — Explainable club ratings
+
+**PR 18:** Design and validate category-score definitions.
+
+**PR 19:** Introduce category scores with breakdowns.
+
+**PR 20:** Add an overall club score only if the data and normalization justify it.
+
+Outcome: An intuitive assessment of club strengths and weaknesses, grounded in explainable measurements.
+
+## Continuous work — Design simplification
+
+Throughout all phases:
+
+- Replace repetitive text with concise charts where appropriate.
+- Improve mobile interactions.
+- Consolidate duplicated interface patterns.
+- Maintain accessible explanations on demand.
+- Test usability on phone-sized screens.
+- Keep charts and ratings consistent across views.
+
+---
+
+# 11. Verification and testing
+
+Follow the repository's existing standards.
+
+### UI and PWA tests
+
+Verify:
+
+- Common iPhone viewport widths.
+- Standalone PWA launch behaviour.
+- Safe-area spacing.
+- Bottom navigation and keyboard accessibility.
+- Deep-link preservation.
+- Hero responsiveness.
+- No horizontal page overflow.
+- Reduced-motion behaviour.
+- Light and dark themes.
+
+### Classification tests
+
+Use synthetic fixtures covering:
+
+- Legitimate full swings.
+- Severe mishits.
+- Intentional partial wedges.
+- Ambiguous low-launch shots.
+- Unknown club labels.
+- Consecutive runs of the same club.
+- Forgotten tablet changes.
+- Club switches inside unknown blocks.
+- Alternating clubs.
+- Single-shot anomalies.
+- Sparse new-user history.
+- Rapid improvement.
+- Equipment changes.
+- Manually corrected clubs.
+- Multiple sessions on the same date.
+- Missing measurements.
+- Revision conflicts and backup compatibility.
+
+Include tests ensuring that manual overrides remain authoritative.
+
+### Analytics tests
+
+Cover:
+
+- Different measurement bases.
+- Strong-strike percentile calculations.
+- All-shot reliability.
+- Small samples.
+- Partial versus full intent.
+- Positive club-label outliers.
+- External benchmark compatibility.
+- Missing benchmark categories.
+- Score decomposition and consistency.
+- Stable calculations across Overview, club profiles and other relevant screens.
+
+Use deterministic fixtures and avoid committing private Inrange exports.
+
+---
+
+# 12. Instructions for Mistral
+
+## First task: review and plan
+
+**Do not immediately implement the entire roadmap.**
+
+Start by inspecting the actual repository, including:
+
+- Current project instructions.
+- Existing architecture.
+- Analytics and classification implementations.
+- Review persistence.
+- Equipment management.
+- Current navigation and CSS.
+- Charting infrastructure.
+- Existing tests.
+- Current roadmap documentation.
+
+Identify which requirements:
+
+1. Already exist.
+2. Are partially implemented.
+3. Are genuinely missing.
+4. Conflict with existing architecture or assumptions.
+
+Then recommend necessary changes to this roadmap.
+
+## Planning deliverables
+
+Provide:
+
+1. A current-state assessment referencing relevant files.
+2. An architectural proposal for the next phase.
+3. A detailed design for the automatic assessment and sequence-inference system.
+4. An approach to trustworthy strong-strike and reliability statistics.
+5. A benchmark-data research and integration plan.
+6. A principled approach to club scoring.
+7. A mobile UI and navigation proposal.
+8. A refined implementation roadmap with small, testable PRs.
+9. Important unresolved decisions, with recommendations.
+
+Do not assume all 20 proposed PRs are necessary. Consolidate or split milestones where this improves implementation quality.
+
+## Implementation workflow
+
+After the plan is approved:
+
+- Implement one reviewable milestone at a time.
+- Reuse existing architecture.
+- Add tests with each feature.
+- Verify the application locally.
+- Avoid unrelated refactoring.
+- Summarize changes, limitations and test results.
+- Keep documentation synchronized with implemented behaviour.
+
+## Final objective
+
+Shotwise should become a polished, low-friction golf analytics application that:
+
+- Works naturally as a mobile Home Screen app.
+- Communicates information primarily through clear visuals.
+- Automatically interprets shot data while preserving uncertainty.
+- Makes manual review optional.
+- Distinguishes typical performance, distance potential and reliability.
+- Compares performance against meaningful personal and external references.
+- Helps golfers identify their strongest clubs and their biggest opportunities for improvement.
+
+**The most important principle is that Shotwise should make sophisticated analytics feel simple to the golfer, without making the underlying statistics simplistic or misleading.**
+
+## Owner's emphasis
+
+Two points the owner wants emphasized when working from this roadmap:
+
+1. **Sequence-aware inference should be central to automatic classification, not just an optional enhancement.** The habit of hitting many consecutive balls with the same club is valuable information; a model that uses shot order, measurements and probable club transitions should handle missing labels much better than per-shot classification. But the model must learn or allow for different practice patterns rather than assuming everybody always hits 10 balls per club.
+2. **Treat club scoring as the final milestone, not the first analytics feature.** Once automatic classifications, robust strong-strike estimates, reliable consistency measurements and suitable external benchmarks exist, scores will rest on a much stronger foundation.
+
+Intended working style: hand the agent the entire roadmap, have it compare the roadmap against the current repository and propose the first few PRs. Then use a separate targeted code review (e.g. Codex) for the more consequential changes — particularly classification, database migrations and scoring.
