@@ -23,6 +23,7 @@ import { ClubGaps } from './components/ClubGaps';
 import { ClubProfiles } from './components/ClubProfiles';
 import { ManageBag } from './components/ManageBag';
 import { ShotShapes } from './components/ShotShapes';
+import { BallFlightExplorer } from './components/BallFlightExplorer';
 import type { AnalysisSettings } from './domain/analytics';
 import { useScrollReveal } from './reveal';
 
@@ -74,6 +75,12 @@ function routeFromHash() {
         : undefined,
     compare: sessionsPath === true && id === 'compare',
     club: page === 'clubs' && !extra ? decodeSegment(id) : undefined,
+    shapeView:
+      page === 'shape'
+        ? id === 'explorer'
+          ? ('explorer' as const)
+          : ('shape' as const)
+        : undefined,
     evidence: query ?? '',
   };
 }
@@ -89,7 +96,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ page, sessionId, compare, club, evidence }, setRoute] =
+  const [{ page, sessionId, compare, club, shapeView, evidence }, setRoute] =
     useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
@@ -305,13 +312,20 @@ export default function App() {
                 />
               </>
             )}
-            {page === 'shape' && (
-              <ShotShapes
-                data={data}
-                settings={analysisSettings}
-                onSettingsChange={setAnalysisSettings}
-              />
-            )}
+            {page === 'shape' &&
+              (shapeView === 'explorer' ? (
+                <BallFlightExplorer
+                  data={data}
+                  settings={analysisSettings}
+                  onSettingsChange={setAnalysisSettings}
+                />
+              ) : (
+                <ShotShapes
+                  data={data}
+                  settings={analysisSettings}
+                  onSettingsChange={setAnalysisSettings}
+                />
+              ))}
             {page === 'sessions' && (
               <Sessions
                 data={data}

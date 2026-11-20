@@ -15,6 +15,34 @@ const direction = (value: number | null, unit: string) =>
     ? 'Missing'
     : `${Math.abs(value).toFixed(1)}${unit} ${value < 0 ? 'left' : value > 0 ? 'right' : 'straight'}`;
 
+/** Shape and Explorer share the Shot shape destination; existing #shape links stay valid. */
+export function ShapeViewTabs({ view }: { view: 'shape' | 'explorer' }) {
+  return (
+    <div className="view-tabs">
+      <div className="segmented" role="group" aria-label="Shot shape views">
+        <button
+          className={view === 'shape' ? 'active' : ''}
+          aria-pressed={view === 'shape'}
+          onClick={() => {
+            window.location.hash = 'shape';
+          }}
+        >
+          Shape
+        </button>
+        <button
+          className={view === 'explorer' ? 'active' : ''}
+          aria-pressed={view === 'explorer'}
+          onClick={() => {
+            window.location.hash = 'shape/explorer';
+          }}
+        >
+          Explorer
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ShotShapes({
   data,
   settings,
@@ -41,6 +69,7 @@ export function ShotShapes({
       <div className="section-heading">
         <h1>Shot shape</h1>
       </div>
+      <ShapeViewTabs view="shape" />
       <section className="panel">
         <div className="panel-heading">
           <div>

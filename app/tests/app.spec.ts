@@ -3433,3 +3433,262 @@ test('retains the prior equipment when a club correction needs review and restor
   await openBag(page);
   await expect(reviewCount).toHaveText('—');
 });
+
+// --- Ball-flight explorer (roadmap row 6) ---------------------------------
+
+type ExplorerVisit = { sessionId: string; filename: string };
+
+function explorerRow(
+  club: string,
+  speed: string,
+  rangeSpeed: string,
+  carry: string,
+  rangeCarry: string,
+) {
+  return {
+    Club: club,
+    'Ball Speed (kph) Premium': speed,
+    'Ball Speed (kph)': rangeSpeed,
+    'Flat Carry Dist. Premium (m)': carry,
+    'Flat Carry Dist. Range (m)': rangeCarry,
+    'Carry Dist. Range (m)': rangeCarry,
+    'Flat Total Dist. Premium (m)':
+      carry === '--' ? '--' : String(Number(carry) + 10),
+    'Flat Total Dist. Range (m)':
+      rangeCarry === '--' ? '--' : String(Number(rangeCarry) + 10),
+    'Launch Angle (deg) Premium': '20°',
+    'Apex (m) Premium': '15',
+  };
+}
+
+async function importExplorerVisit(
+  account: Account,
+  filename: string,
+  date: string,
+  rows: Record<string, string>[],
+): Promise<ExplorerVisit> {
+  const result = await account.repository.importCsv({
+    filename,
+    date,
+    time: '10:00',
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  return { sessionId: result.sessionId, filename };
+}
+
+async function seedExplorer(account: Account) {
+  const today = localToday();
+  const recent = await importExplorerVisit(
+    account,
+    'explorer-recent.csv',
+    today,
+    [
+      explorerRow('7i', '130', '120', '100', '90'),
+      explorerRow('7i', '130', '120', '100', '90'), // exact overlapping pair
+      explorerRow('7i', '120', '110', '110', '100'),
+      explorerRow('7i', '--', '108', '105', '95'), // missing speed on premium basis
+      explorerRow('7i', '125', '115', '--', '--'), // missing carry on both bases
+      explorerRow('7i', '0', '0', '0', '0'), // zero is a measurement, not missing
+      explorerRow('9i', '110', '100', '130', '120'),
+      explorerRow('9i', '115', '105', '135', '125'),
+    ],
+  );
+  const old = await importExplorerVisit(
+    account,
+    'explorer-old.csv',
+    shiftDate(today, -90),
+    [
+      explorerRow('7i', '100', '90', '70', '60'),
+      explorerRow('7i', '102', '92', '72', '62'),
+    ],
+  );
+  return { recent, old };
+}
+
+async function openExplorer(page: Page) {
+  await nav(page, 'Shot shape');
+  await expect(
+    page.getByRole('heading', { name: 'Shot shape', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Explorer', exact: true }).click();
+  return page.getByRole('region', { name: 'Ball-flight explorer', exact: true });
+}
+
+test('Explorer keeps axis choices across clubs and honours scope, basis and paired counts', async ({
+  page,
+  account,
+}) => {
+  const { old } = await seedExplorer(account);
+  await login(page, account);
+  const explorer = await openExplorer(page);
+
+  const club = explorer.getByRole('combobox', {
+    name: /^(Effective club|Club)$/,
+  });
+  const xAxis = explorer.getByRole('combobox', { name: 'X axis', exact: true });
+  const yAxis = explorer.getByRole('combobox', { name: 'Y axis', exact: true });
+  const swap = explorer.getByRole('button', { name: 'Swap axes', exact: true });
+  const scope = explorer.getByRole('group', { name: 'Time scope', exact: true });
+  const session = explorer.getByRole('combobox', { name: 'Session', exact: true });
+  const points = explorer.getByRole('button', { name: /^Plot / });
+
+  await expect(
+    page.getByRole('button', { name: 'Shape', exact: true }),
+  ).toBeVisible();
+
+  await expect(xAxis.locator('option:checked')).toContainText('Ball speed');
+  await expect(yAxis.locator('option:checked')).toContainText('Carry');
+  const x = await xAxis.inputValue();
+  const y = await yAxis.inputValue();
+  await club.selectOption('7i');
+  await swap.click();
+  await club.selectOption('9i');
+  await expect(xAxis).toHaveValue(y);
+  await expect(yAxis).toHaveValue(x);
+  await expect(points).toHaveCount(2);
+  await club.selectOption('7i');
+
+  // Recent excludes the 90-day visit; All-time includes it; a named session isolates it.
+  await expect(explorer).toContainText('4 of 6');
+  await scope.getByRole('button', { name: 'All-time', exact: true }).click();
+  await expect(points).toHaveCount(6);
+  await expect(explorer).toContainText('6 of 8');
+  await scope.getByRole('button', { name: 'Session', exact: true }).click();
+  await session.selectOption(old.sessionId);
+  await expect(session.locator('option:checked')).toContainText(old.filename);
+  await expect(points).toHaveCount(2);
+
+  // The shared basis button still applies here and changes the measured counts.
+  await scope.getByRole('button', { name: 'Recent', exact: true }).click();
+  const basis = page.getByTitle('Change measurement basis');
+  await expect(basis).toHaveText('Premium · flat (estimate)');
+  await expect(explorer).toContainText('4 of 6');
+  await basis.click();
+  await expect(basis).toHaveText('Range · flat');
+  await expect(explorer).toContainText('5 of 6');
+  expect(await explorer.textContent()).toMatch(/missing/i);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
+test('Explorer keyboard table targets an exact overlapping shot and opens its review', async ({
+  page,
+  account,
+}, testInfo) => {
+  const { recent } = await seedExplorer(account);
+  const data = await account.repository.load();
+  const shots = data.shots.filter((shot) => shot.sessionId === recent.sessionId);
+  const first = shots.find((shot) => shot.rowIndex === 1);
+  const overlapping = shots.find((shot) => shot.rowIndex === 2);
+  if (!first || !overlapping) throw new Error('Missing overlapping shots');
+  expect(overlapping.measurements.speedPremium).toBe(
+    first.measurements.speedPremium,
+  );
+  expect(overlapping.measurements.flatCarryPremium).toBe(
+    first.measurements.flatCarryPremium,
+  );
+
+  await login(page, account);
+  const explorer = await openExplorer(page);
+  await explorer
+    .getByRole('combobox', { name: /^(Effective club|Club)$/ })
+    .selectOption('7i');
+  const points = explorer.getByRole('button', { name: /^Plot / });
+  const table = explorer.getByRole('table', { name: /shots?/i }).first();
+  const detail = explorer
+    .getByRole('region', { name: /Selected shot|Shot detail/i })
+    .first();
+
+  // Both overlapping shots are plotted, but only the table can target one by row.
+  await expect(points).toHaveCount(4);
+  const thirdPoint = explorer.getByRole('button', {
+    name: /^Plot .*\brow 3\b/i,
+  });
+  if (testInfo.project.name === 'phone-webkit') await thirdPoint.tap();
+  else await thirdPoint.click();
+  await expect(detail).toContainText('Row 3');
+
+  const inspect = table.getByRole('button', {
+    name: new RegExp(`\\b(?:row|shot)\\s+${overlapping.rowIndex}\\b`, 'i'),
+  });
+  await expect(inspect).toHaveCount(1);
+  await inspect.focus();
+  await page.keyboard.press('Enter');
+  await expect(detail).toContainText(`Row ${overlapping.rowIndex}`);
+  await expect(detail).toContainText(recent.filename);
+  await expect(detail).toContainText('130.0');
+  await expect(detail).toContainText('100.0');
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  const review = detail.getByRole('link', { name: 'Review shot', exact: true });
+  await expect(review).toHaveAttribute('href', new RegExp(recent.sessionId));
+  await expect(review).toHaveAttribute('href', new RegExp(overlapping.id));
+  await review.click();
+  await expect(page).toHaveURL(new RegExp(overlapping.id));
+  const supportingShots = page.getByRole('region', { name: 'Supporting shots' });
+  await expect(supportingShots).toContainText(`Row ${overlapping.rowIndex}`);
+  await expect(supportingShots.locator('.shot-list .shot')).toHaveCount(1);
+
+  await page.goBack();
+  await table.getByRole('button', { name: /^Inspect row 5\b/ }).click();
+  await expect(detail).toContainText('Carry: Missing');
+  await review.click();
+  await expect(supportingShots).toContainText('Row 5');
+  await expect(supportingShots).not.toContainText('measured shots');
+});
+
+test('Explorer keeps large plots on one tab stop and pages the full shot table', async ({
+  page,
+  account,
+}) => {
+  const visit = await importExplorerVisit(
+    account,
+    'explorer-long.csv',
+    localToday(),
+    Array.from({ length: 51 }, (_, index) =>
+      explorerRow('7i', '130', '120', String(100 + index), '90'),
+    ),
+  );
+  await login(page, account);
+  const explorer = await openExplorer(page);
+  await explorer.getByRole('button', { name: 'Session', exact: true }).click();
+  await explorer
+    .getByRole('combobox', { name: 'Session', exact: true })
+    .selectOption(visit.sessionId);
+  const points = explorer.getByRole('button', { name: /^Plot / });
+  await expect(points).toHaveCount(51);
+  const tabStop = explorer.locator('circle[tabindex="0"]');
+  await expect(tabStop).toHaveCount(1);
+  await tabStop.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tabStop).toBeFocused();
+  await expect(tabStop).toHaveAccessibleName(/^Plot 7i row 2\b/);
+
+  const table = explorer.getByRole('table', { name: '7i explorer shots' });
+  const inspect = table.getByRole('button', { name: /^Inspect row / });
+  await expect(inspect).toHaveCount(50);
+  await explorer.getByRole('button', { name: 'Next shot page' }).click();
+  await expect(inspect).toHaveCount(1);
+  await inspect.click();
+  await expect(
+    explorer.getByRole('region', { name: /^Selected shot/ }),
+  ).toContainText('Row 51');
+  await explorer.getByRole('button', { name: 'Previous shot page' }).click();
+  await expect(inspect).toHaveCount(50);
+});
