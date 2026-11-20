@@ -4,6 +4,7 @@ import {
   initialReview,
   metricKeySchema,
   measurementsSchema,
+  type Equipment,
   type Session,
   type Shot,
   type Review,
@@ -47,6 +48,20 @@ export function makeShot(
     },
     review: { ...initialReview, ...review },
     ...rest,
+  };
+}
+export function makeEquipment(overrides: Partial<Equipment> = {}): Equipment {
+  return {
+    id: crypto.randomUUID(),
+    inrangeLabel: '7i',
+    name: 'Lab 7i',
+    manufacturer: null,
+    loft: null,
+    status: 'in-bag',
+    acquiredOn: null,
+    retiredOn: null,
+    revision: 0,
+    ...overrides,
   };
 }
 export function csvFixture(rows: Record<string, string>[]): string {

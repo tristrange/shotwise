@@ -1,6 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { datasetSchema, sessionSchema } from '../domain/model';
+import {
+  datasetSchema,
+  equipmentAssignmentPreviewSchema,
+  equipmentSaveInputSchema,
+  equipmentSchema,
+  sessionSchema,
+} from '../domain/model';
 import { loadConsistent } from './snapshot';
 import type { Backend, Repository } from './contracts';
 import type { Database } from './database.types';
@@ -63,6 +69,21 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
     updateSession: async (session) => {
       await rpc('update_session', {
         p_session: z.json().parse(sessionSchema.parse(session)),
+      });
+    },
+    saveEquipment: async (input) =>
+      equipmentSchema.parse(
+        await rpc('save_equipment', {
+          p_equipment: z
+            .json()
+            .parse(equipmentSaveInputSchema.parse(input)),
+        }),
+      ),
+    assignEquipment: async (input) => {
+      await rpc('assign_equipment', {
+        p_preview: z
+          .json()
+          .parse(equipmentAssignmentPreviewSchema.parse(input)),
       });
     },
     restore: async (dataset) => {

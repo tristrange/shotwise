@@ -9,6 +9,62 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      equipment: {
+        Row: {
+          data: NonNullable<Json>;
+          id: string;
+          owner_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          data: NonNullable<Json>;
+          id: string;
+          owner_id: string;
+        };
+        Update: {
+          data?: NonNullable<Json>;
+          id?: string;
+          owner_id?: string;
+        };
+        Relationships: [];
+      };
+      equipment_assignments: {
+        Row: {
+          club_label: string;
+          equipment_id: string;
+          owner_id: string;
+          shot_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          club_label: string;
+          equipment_id: string;
+          owner_id: string;
+          shot_id: string;
+        };
+        Update: {
+          club_label?: string;
+          equipment_id?: string;
+          owner_id?: string;
+          shot_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'equipment_assignments_owner_id_equipment_id_fkey';
+            columns: ['owner_id', 'equipment_id'];
+            isOneToOne: false;
+            referencedRelation: 'equipment';
+            referencedColumns: ['owner_id', 'id'];
+          },
+          {
+            foreignKeyName: 'equipment_assignments_owner_id_shot_id_fkey';
+            columns: ['owner_id', 'shot_id'];
+            isOneToOne: true;
+            referencedRelation: 'shots';
+            referencedColumns: ['owner_id', 'id'];
+          },
+        ];
+      };
       imports: {
         Row: {
           content_hash: string;
@@ -172,6 +228,7 @@ export type Database = {
     };
     Functions: {
       apply_reviews: { Args: { p_changes: Json }; Returns: undefined };
+      assign_equipment: { Args: { p_preview: Json }; Returns: undefined };
       commit_import: { Args: { p_input: Json }; Returns: Json };
       dataset_page: {
         Args: { p_limit: number; p_offset: number; p_table: string };
@@ -179,6 +236,7 @@ export type Database = {
       };
       dataset_version: { Args: Record<PropertyKey, never>; Returns: number };
       restore_backup: { Args: { p_dataset: Json }; Returns: undefined };
+      save_equipment: { Args: { p_equipment: Json }; Returns: Json };
       undo_reviews: { Args: { p_shots: Json }; Returns: undefined };
       update_session: { Args: { p_session: Json }; Returns: undefined };
     };
