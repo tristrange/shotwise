@@ -2737,3 +2737,150 @@ test('compares two same-day visits from both entry points with stable, swappable
     'true',
   );
 });
+
+test('compares shared cohorts, flight and direction details with neutral deltas across bases', async ({
+  page,
+  account,
+}, testInfo) => {
+  const importer = async (evening: boolean) => {
+    const start = evening ? ['2L', '0', '2R', '2R'] : ['2L', '2L', '0', '2R'];
+    const curve = evening ? ['1L', '1L', '0', '1R'] : ['1L', '0', '0', '1R'];
+    const typical = Array.from({ length: 12 }, (_, index) => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': evening ? '132' : '120',
+      'Flat Carry Dist. Range (m)': evening ? '121' : '110',
+      'Ball Speed (kph) Premium': evening ? '117' : '130',
+      'Ball Speed (kph)': evening ? '108' : '120',
+      'Launch Angle (deg) Premium': evening ? '22' : '20',
+      'Apex (m) Premium': evening ? '14' : '15',
+      'Launch Direction': start[index % start.length] ?? '0',
+      Curve: curve[index % curve.length] ?? '0',
+      'From Centre (m)': curve[index % curve.length] ?? '0',
+    }));
+    const mishit = {
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '60',
+      'Flat Carry Dist. Range (m)': '55',
+    };
+    const thin = [0, 2, 4].map((offset) => ({
+      Club: '5i',
+      'Flat Carry Dist. Premium (m)': String((evening ? 160 : 150) + offset),
+      'Flat Carry Dist. Range (m)': String((evening ? 150 : 140) + offset),
+    }));
+    return account.repository.importCsv({
+      filename: evening ? 'detail-evening.csv' : 'detail-morning.csv',
+      date: localToday(),
+      time: evening ? '17:00' : '08:00',
+      venue: evening ? 'Evening range' : 'Morning range',
+      notes: '',
+      confirmedFull: true,
+      allowSameDay: true,
+      preview: await parseCsv(
+        new TextEncoder().encode(csvFixture([...typical, mishit, ...thin])),
+      ),
+    });
+  };
+  const morning = await importer(false);
+  const evening = await importer(true);
+  const data = await account.repository.load();
+  await account.repository.review(
+    data.shots.map((shot) => {
+      const carry = shot.measurements.flatCarryPremium;
+      return {
+        shotId: shot.id,
+        expectedRevision: shot.revision,
+        review: {
+          ...shot.review,
+          intent: 'full',
+          contact:
+            shot.recordedClub === '7i' && carry === 60
+              ? 'mishit'
+              : shot.recordedClub === '5i' && (carry === 154 || carry === 164)
+                ? 'uncertain'
+                : 'typical',
+        },
+      };
+    }),
+  );
+
+  await login(page, account);
+  await nav(
+    page,
+    testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
+  );
+  await page.getByRole('link', { name: 'Compare sessions' }).click();
+  const reference = page.getByRole('combobox', { name: 'Reference session' });
+  const comparison = page.getByRole('combobox', { name: 'Comparison session' });
+  const compare = page.getByRole('region', { name: 'Compare sessions' });
+  await reference.selectOption(morning.sessionId);
+  await comparison.selectOption(evening.sessionId);
+
+  const club = (label: RegExp) =>
+    compare
+      .locator('details')
+      .filter({ has: page.locator('summary').filter({ hasText: label }) });
+  const iron = club(/^7i\b/);
+  const five = club(/^5i\b/);
+  await iron.locator('summary').click();
+  const cells = (label: string, details = iron) =>
+    details
+      .getByRole('row')
+      .filter({ has: page.getByRole('rowheader', { name: label, exact: true }) })
+      .getByRole('cell');
+
+  await expect(iron).toContainText('reviewed full swings with typical contact');
+  await expect(cells('Typical carry · reviewed typical')).toHaveText([
+    '120 m', '132 m', '+12 m',
+  ]);
+  await expect(cells('Typical carry · measured').first()).toHaveText(
+    '12 measured, 0 missing',
+  );
+  await expect(cells('Relative carry change').last()).toHaveText('+10%');
+  await expect(cells('Ball speed')).toHaveText(['130 kph', '117 kph', '-13 kph']);
+  await expect(cells('Ball speed · relative').last()).toHaveText('-10%');
+  await expect(cells('Launch angle').last()).toHaveText('+2°');
+  await expect(cells('Apex').last()).toHaveText('-1 m');
+  await expect(cells('Start direction · measured').first()).toHaveText(
+    '12 measured, 1 missing',
+  );
+  await expect(cells('Start direction · left')).toHaveText([
+    '50% (6/12)', '25% (3/12)', '-25 pp',
+  ]);
+  await expect(cells('Curve · left')).toHaveText([
+    '25% (3/12)', '50% (6/12)', '+25 pp',
+  ]);
+  await expect(cells('Lateral offset · straight').last()).toHaveText('-25 pp');
+  await expect(cells('Confirmed mishits').first()).toContainText(
+    '1 of 13 reviewed full swings',
+  );
+  await expect(cells('Full swings reviewed').first()).toContainText(
+    '13 of 13 full swings',
+  );
+
+  await page.getByTitle('Change measurement basis').click();
+  await expect(iron).toHaveAttribute('open', '');
+  await expect(iron).toContainText('Range · flat');
+  await expect(cells('Typical carry · reviewed typical')).toHaveText([
+    '110 m', '121 m', '+11 m',
+  ]);
+  await expect(cells('Ball speed').last()).toHaveText('-12 kph');
+  await expect(cells('Apex · measured').first()).toHaveText(
+    '0 measured, 13 missing',
+  );
+
+  await five.locator('summary').click();
+  await expect(five).toContainText('broader recap cohort');
+  await expect(five).toContainText('Carry IQR needs at least 4 measured shots');
+  await expect(five).toContainText('Review coverage is thin');
+  await expect(five).toContainText('2 of 3 full swings');
+  await expect(cells('Typical carry · broader cohort', five)).toHaveText([
+    '142 m', '152 m', '+10 m',
+  ]);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+});
