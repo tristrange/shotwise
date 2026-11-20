@@ -10,7 +10,11 @@ import {
   type Session,
   type Shot,
 } from './model';
-import { compareSessions } from './compare';
+import {
+  compareSessions,
+  MIN_TYPICAL_MEASURED,
+  type TypicalCarry,
+} from './compare';
 
 const reference = makeSession({
   id: 'ref-1',
@@ -382,5 +386,317 @@ describe('session comparison', () => {
     expect(missingMedian.common[0]?.reference.carry.n).toBe(0);
     expect(missingMedian.common[0]?.reference.carry.missing).toBe(2);
     expect(missingMedian.common[0]?.carryDelta).toBeNull();
+  });
+});
+
+describe('comparison details', () => {
+  const typicalReview = (): Partial<Review> => ({
+    intent: 'full',
+    contact: 'typical',
+  });
+  const fullReview = (): Partial<Review> => ({ intent: 'full' });
+
+  type DetailRow = {
+    carry: number | null;
+    speed?: number | null;
+    launch?: number | null;
+    apex?: number | null;
+    dir?: number | null;
+    curve?: number | null;
+    lateral?: number | null;
+    review?: Partial<Review>;
+  };
+  function detailSeries(session: Session, rows: DetailRow[]) {
+    return rows.map((row, i) =>
+      makeShot({
+        id: `${session.id}-d${i}`,
+        rowIndex: i + 1,
+        sessionId: session.id,
+        measurements: {
+          flatCarryPremium: row.carry,
+          speedPremium: row.speed ?? null,
+          launchPremium: row.launch ?? null,
+          apexPremium: row.apex ?? null,
+          launchDirection: row.dir ?? null,
+          curve: row.curve ?? null,
+          fromCentre: row.lateral ?? null,
+        },
+        review: row.review,
+      }),
+    );
+  }
+
+  it('uses the reviewed typical cohort only when both sides have at least 10 measured carries in it', () => {
+    const result = compare([
+      ...detailSeries(
+        reference,
+        Array.from({ length: MIN_TYPICAL_MEASURED + 2 }, (_, i) => ({
+          carry: 100 + i * 2,
+          review: typicalReview(),
+        })),
+      ),
+      // Unknown-intent shots stay out of the reviewed cohort.
+      ...detailSeries(reference, [{ carry: 999 }]),
+      ...detailSeries(
+        comparison,
+        Array.from({ length: MIN_TYPICAL_MEASURED + 2 }, (_, i) => ({
+          carry: 110 + i * 2,
+          review: typicalReview(),
+        })),
+      ),
+    ]);
+    const club = result.common[0];
+    const typical = club?.typical as Extract<
+      TypicalCarry,
+      { kind: 'reviewed' | 'broader' }
+    >;
+    expect(typical.kind).toBe('reviewed');
+    expect(typical.label).toContain('reviewed full swings');
+    expect(typical.reference.n).toBe(MIN_TYPICAL_MEASURED + 2);
+    expect(typical.comparison.n).toBe(MIN_TYPICAL_MEASURED + 2);
+    expect(typical.reference.median).toBe(111);
+    expect(typical.comparison.median).toBe(121);
+    expect(typical.delta).toBeCloseTo(10);
+    expect(typical.pctDelta).toBeCloseTo(10 / 111);
+  });
+
+  it('falls back to the same labelled broader cohort when one side is below the reviewed threshold', () => {
+    const result = compare([
+      ...detailSeries(
+        reference,
+        Array.from({ length: 12 }, (_, i) => ({
+          carry: 100 + i * 2,
+          review: typicalReview(),
+        })),
+      ),
+      ...detailSeries(comparison, [
+        ...Array.from({ length: MIN_TYPICAL_MEASURED - 1 }, (_, i) => ({
+          carry: 110 + i * 2,
+          review: typicalReview(),
+        })),
+        // Unknown intent with unassessed contact still counts in the broader cohort.
+        ...Array.from({ length: 3 }, (_, i) => ({ carry: 130 + i })),
+      ]),
+    ]);
+    const typical = result.common[0]?.typical as Extract<
+      TypicalCarry,
+      { kind: 'reviewed' | 'broader' }
+    >;
+    expect(typical.kind).toBe('broader');
+    expect(typical.label).toContain('broader recap cohort');
+    expect(typical.reference.n).toBe(12);
+    expect(typical.comparison.n).toBe(12);
+    expect(typical.comparison.median).toBe(121);
+    expect(typical.delta).toBeCloseTo(10);
+  });
+
+  it('withholds the typical carry in a partial-only view', () => {
+    const result = compare(
+      [
+        ...detailSeries(reference, [
+          { carry: 100, review: { intent: 'partial' } },
+          { carry: 102, review: { intent: 'partial' } },
+        ]),
+        ...detailSeries(comparison, [
+          { carry: 110, review: { intent: 'partial' } },
+        ]),
+      ],
+      'premium-flat',
+      'partial',
+    );
+    const typical = result.common[0]?.typical;
+    expect(typical?.kind).toBe('unavailable');
+    if (typical?.kind === 'unavailable') {
+      expect(typical.reason).toContain('partial-only');
+    }
+  });
+
+  it('shows flight medians with per-metric counts, missing and neutral native deltas', () => {
+    const result = compare([
+      ...detailSeries(reference, [
+        { carry: 100, speed: 150, launch: 12, apex: 28, dir: -1 },
+        { carry: 102, speed: 152, launch: 13, apex: 29, dir: -1 },
+        { carry: 104, speed: null, launch: 14, apex: 30, dir: 0 },
+        { carry: 106, speed: 156, launch: 15, apex: 31, dir: 1 },
+        { carry: 108, speed: 158, launch: 16, apex: 32, dir: 1 },
+      ]),
+      ...detailSeries(comparison, [
+        { carry: 110, speed: 160, launch: 14, apex: 30 },
+        { carry: 112, speed: 162, launch: 15, apex: 31 },
+        { carry: 114, speed: 164, launch: 16, apex: 32 },
+        { carry: 116, speed: 166, launch: 17, apex: 33 },
+        { carry: 118, speed: 168, launch: 18, apex: 34 },
+      ]),
+    ]);
+    const { flight } = result.common[0]!;
+    expect(flight.speed.reference).toMatchObject({
+      n: 4,
+      missing: 1,
+      median: 154,
+    });
+    expect(flight.speed.comparison.median).toBe(164);
+    expect(flight.speed.delta).toBeCloseTo(10);
+    expect(flight.speed.pctDelta).toBeCloseTo(10 / 154);
+    expect(flight.launch.reference).toMatchObject({
+      n: 5,
+      missing: 0,
+      median: 14,
+    });
+    expect(flight.launch.delta).toBeCloseTo(2);
+    expect(flight.launch.pctDelta).toBeNull();
+    expect(flight.apex.reference.median).toBe(30);
+    expect(flight.apex.comparison.median).toBe(32);
+    expect(flight.apex.delta).toBeCloseTo(2);
+  });
+
+  it('shows relative carry change only with a positive reference and sufficient coverage', () => {
+    const positive = compare([
+      ...series(reference, [100, 102, 104, 106]),
+      ...series(comparison, [110, 112, 114, 116]),
+    ]);
+    expect(positive.common[0]?.carryDelta).toBeCloseTo(10);
+    expect(positive.common[0]?.carryPctDelta).toBeCloseTo(10 / 103);
+
+    const zeroReference = compare([
+      ...series(reference, [0, 0, 0, 0]),
+      ...series(comparison, [10, 12, 14, 16]),
+    ]);
+    expect(zeroReference.common[0]?.carryDelta).toBeCloseTo(13);
+    expect(zeroReference.common[0]?.carryPctDelta).toBeNull();
+
+    const sparse = compare([
+      ...series(reference, [100, 108]),
+      ...series(comparison, [110, 118]),
+    ]);
+    expect(sparse.common[0]?.carryPctDelta).toBeNull();
+    expect(sparse.common[0]?.sparse).toBe(true);
+  });
+
+  it('reports direction shares per side and percentage-point deltas', () => {
+    const result = compare([
+      ...detailSeries(reference, [
+        { carry: 100, dir: -1, curve: -2, lateral: 3 },
+        { carry: 102, dir: -1, curve: 0, lateral: 1 },
+        { carry: 104, dir: 0, curve: 0, lateral: -1 },
+        { carry: 106, dir: 1, curve: 2, lateral: -3 },
+      ]),
+      ...detailSeries(comparison, [
+        { carry: 110, dir: -1 },
+        { carry: 112, dir: 0 },
+        { carry: 114, dir: 1 },
+        { carry: 116, dir: 1 },
+      ]),
+    ]);
+    const { direction } = result.common[0]!;
+    expect(direction.launchDirection.reference).toMatchObject({
+      n: 4,
+      missing: 0,
+      left: 2,
+      straight: 1,
+      right: 1,
+    });
+    expect(direction.launchDirection.reference.shares).toEqual({
+      left: 0.5,
+      straight: 0.25,
+      right: 0.25,
+    });
+    expect(direction.launchDirection.comparison.shares).toEqual({
+      left: 0.25,
+      straight: 0.25,
+      right: 0.5,
+    });
+    expect(direction.launchDirection.deltaPp).toEqual({
+      left: -25,
+      straight: 0,
+      right: 25,
+    });
+    // Curve and lateral were only measured on the reference side.
+    expect(direction.curve.comparison.n).toBe(0);
+    expect(direction.curve.comparison.shares).toBeNull();
+    expect(direction.curve.deltaPp).toBeNull();
+    expect(direction.lateral.reference.n).toBe(4);
+    expect(direction.lateral.comparison.missing).toBe(4);
+  });
+
+  it('reports confirmed mishits over reviewed full swings and review coverage', () => {
+    const result = compare([
+      ...detailSeries(reference, [
+        { carry: 100, review: { ...fullReview(), contact: 'typical' } },
+        { carry: 102, review: { ...fullReview(), contact: 'typical' } },
+        { carry: 104, review: { ...fullReview(), contact: 'typical' } },
+        { carry: 106, review: { ...fullReview(), contact: 'typical' } },
+        { carry: 108, review: { ...fullReview(), contact: 'mishit' } },
+        { carry: 110, review: { ...fullReview(), contact: 'uncertain' } },
+        { carry: 112, review: { intent: 'partial', contact: 'typical' } },
+      ]),
+      ...detailSeries(comparison, [
+        { carry: 120, review: { ...fullReview(), contact: 'typical' } },
+        { carry: 122, review: { ...fullReview(), contact: 'mishit' } },
+        { carry: 124, review: { ...fullReview(), contact: 'uncertain' } },
+        { carry: 126, review: { ...fullReview(), contact: 'uncertain' } },
+        { carry: 128, review: { ...fullReview(), contact: 'uncertain' } },
+      ]),
+    ]);
+    const { review } = result.common[0]!;
+    expect(review.reference).toMatchObject({
+      fullSwings: 6,
+      reviewed: 5,
+      unassessed: 1,
+      mishits: 1,
+      thin: false,
+    });
+    expect(review.reference.rate).toBeCloseTo(1 / 5);
+    expect(review.reference.reviewedShare).toBeCloseTo(5 / 6);
+    // The partial swing is not a full swing, so it is outside the review basis.
+    expect(review.comparison.fullSwings).toBe(5);
+    expect(review.comparison.thin).toBe(true);
+    expect(review.comparison.rate).toBeCloseTo(1 / 2);
+    expect(review.rateDeltaPp).toBeCloseTo((0.5 - 0.2) * 100);
+    expect(review.reviewedShareDeltaPp).toBeCloseTo((2 / 5 - 5 / 6) * 100);
+  });
+
+  it('flags differing venue, shot mix and measurement coverage between the visits', () => {
+    const otherVenue = makeSession({
+      ...comparison,
+      id: 'cmp-venue',
+      venue: 'Range B',
+    });
+    const result = compareSessions(
+      build(
+        [reference, otherVenue],
+        [
+          // Reference: every measured carry has unknown intent, all measured.
+          ...series(reference, [100, 102, 104, 106, 108, 110, 112, 114], {}),
+          // Comparison: full intent everywhere and half the carries missing.
+          ...series(otherVenue, [120, null, 122, null, 124, null], {
+            review: fullReview(),
+          }),
+        ],
+      ),
+      reference.id,
+      otherVenue.id,
+      'premium-flat',
+      'all',
+    );
+    expect(result.venueDiffers).toBe(true);
+    expect(result.shotMixDiffers).toBe(true);
+    expect(result.coverageDiffers).toBe(true);
+    expect(result.reference.mix.coverageShare).toBe(1);
+    expect(result.comparison.mix.coverageShare).toBe(0.5);
+    expect(result.reference.intents).toEqual({
+      full: 0,
+      partial: 0,
+      unknown: 8,
+    });
+    expect(result.comparison.carryMeasured).toBe(3);
+    expect(result.comparison.carryMissing).toBe(3);
+
+    const sameVenue = compare([
+      ...series(reference, [100, 102, 104, 106]),
+      ...series(comparison, [110, 112, 114, 116]),
+    ]);
+    expect(sameVenue.venueDiffers).toBe(false);
+    expect(sameVenue.shotMixDiffers).toBe(false);
+    expect(sameVenue.coverageDiffers).toBe(false);
   });
 });

@@ -18,7 +18,7 @@ import { quantile } from './statistics';
 const BASELINE_SESSIONS = 3;
 const MIN_PRIOR_PER_SESSION = 5;
 const MIN_LOWER_TAIL = 20;
-const SUBSTANTIAL_SHARE_CHANGE = 0.25;
+export const SUBSTANTIAL_SHARE_CHANGE = 0.25;
 
 type SessionShots = { session: Session; shots: Shot[] };
 type History = {
