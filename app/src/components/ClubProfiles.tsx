@@ -188,11 +188,13 @@ export function ClubProfiles({
   settings,
   onSettingsChange,
   focusClub,
+  onManageBag,
 }: {
   data: Dataset;
   settings: AnalysisSettings;
   onSettingsChange: (settings: AnalysisSettings) => void;
   focusClub?: string;
+  onManageBag: () => void;
 }) {
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
@@ -214,6 +216,9 @@ export function ClubProfiles({
             </p>
           </div>
           <div className="card-controls">
+            <button type="button" className="secondary" onClick={onManageBag}>
+              Manage bag
+            </button>
             <MishitToggle settings={settings} onChange={onSettingsChange} />
             <ViewToggle
               mode={settings.mode}

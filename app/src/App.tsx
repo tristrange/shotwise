@@ -21,6 +21,7 @@ import { ThemeToggle, useTheme } from './components/ThemeToggle';
 import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
 import { ClubProfiles } from './components/ClubProfiles';
+import { ManageBag } from './components/ManageBag';
 import { ShotShapes } from './components/ShotShapes';
 import type { AnalysisSettings } from './domain/analytics';
 import { useScrollReveal } from './reveal';
@@ -79,6 +80,7 @@ function routeFromHash() {
 
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
+  const manageBagHeading = useRef<HTMLHeadingElement>(null);
   const [analysisSettings, setAnalysisSettings] = useState(
     initialAnalysisSettings,
   );
@@ -284,12 +286,24 @@ export default function App() {
               />
             )}
             {page === 'clubs' && (
-              <ClubProfiles
-                data={data}
-                settings={analysisSettings}
-                onSettingsChange={setAnalysisSettings}
-                focusClub={club}
-              />
+              <>
+                <ClubProfiles
+                  data={data}
+                  settings={analysisSettings}
+                  onSettingsChange={setAnalysisSettings}
+                  focusClub={club}
+                  onManageBag={() => {
+                    manageBagHeading.current?.focus();
+                    manageBagHeading.current?.scrollIntoView({ block: 'start' });
+                  }}
+                />
+                <ManageBag
+                  data={data}
+                  repository={repository}
+                  refresh={refresh}
+                  headingRef={manageBagHeading}
+                />
+              </>
             )}
             {page === 'shape' && (
               <ShotShapes
