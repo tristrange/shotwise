@@ -55,8 +55,6 @@ const FIELD_MESSAGES: Record<string, string> = {
   status: 'Choose In bag or Retired.',
   acquiredOn: 'Acquired on must be a valid calendar date.',
   retiredOn: 'Retired on must be a valid calendar date.',
-  id: 'This club needs a stable ID. Start the form again.',
-  revision: 'This club needs a valid revision. Start the form again.',
 };
 
 /**
@@ -95,7 +93,7 @@ export function draftToSaveInput(
 export function isEquipmentConflict(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (/another device/i.test(error.message) || /conflict/i.test(error.message))
+    error.message.startsWith('This record changed on another device.')
   );
 }
 

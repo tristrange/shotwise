@@ -8,32 +8,27 @@ import {
   isEquipmentConflict,
   sortEquipment,
   type EquipmentDraft,
+  type EquipmentHistory,
 } from '../domain/equipment';
 import {
   type Dataset,
   type Equipment,
   type EquipmentStatus,
-  type Session,
 } from '../domain/model';
 import { clubHref } from './ClubProfiles';
-import { sessionHref } from './SessionRecap';
-
-function visitLabel({ date, time }: Pick<Session, 'date' | 'time'>) {
-  return time ? `${date} at ${time.slice(0, 5)}` : date;
-}
+import { sessionHref, visitLabel } from './SessionRecap';
 
 function BagItem({
   club,
-  data,
+  history,
   onEdit,
   disabled,
 }: {
   club: Equipment;
-  data: Dataset;
+  history: EquipmentHistory;
   onEdit: (club: Equipment) => void;
   disabled: boolean;
 }) {
-  const history = equipmentHistory(data, club.id);
   const details = [club.manufacturer, club.loft && `Loft ${club.loft}`].filter(
     Boolean,
   );
@@ -44,7 +39,7 @@ function BagItem({
   return (
     <li className="bag-item">
       <div className="bag-row">
-        <div className="bag-meta">
+        <div className="bag-meta" id={`bag-meta-${club.id}`}>
           <strong>{club.name}</strong>
           <span>
             Inrange label:{' '}
@@ -62,6 +57,7 @@ function BagItem({
         </div>
         <button
           className="secondary"
+          aria-describedby={`bag-meta-${club.id}`}
           disabled={disabled}
           onClick={() => onEdit(club)}
         >
@@ -126,7 +122,14 @@ export function ManageBag({
   const [conflict, setConflict] = useState<Equipment | null>(null);
   const saveButton = useRef<HTMLButtonElement>(null);
 
-  const clubs = useMemo(() => sortEquipment(data.equipment), [data.equipment]);
+  const clubs = useMemo(
+    () =>
+      sortEquipment(data.equipment).map((club) => ({
+        club,
+        history: equipmentHistory(data, club.id),
+      })),
+    [data],
+  );
   const formOpen = draft !== null;
 
   function startNew() {
@@ -337,11 +340,11 @@ export function ManageBag({
         </p>
       )}
       <ul className="bag-list">
-        {clubs.map((club) => (
+        {clubs.map(({ club, history }) => (
           <BagItem
             key={club.id}
             club={club}
-            data={data}
+            history={history}
             onEdit={startEdit}
             disabled={formOpen || busy}
           />

@@ -87,7 +87,7 @@ describe('equipment drafts', () => {
 });
 
 describe('equipment conflicts', () => {
-  it('recognises the repository revision-conflict message and raw conflict errors', () => {
+  it('recognises the repository revision-conflict message', () => {
     expect(
       isEquipmentConflict(
         new Error(
@@ -95,7 +95,7 @@ describe('equipment conflicts', () => {
         ),
       ),
     ).toBe(true);
-    expect(isEquipmentConflict(new Error('Equipment conflict'))).toBe(true);
+    expect(isEquipmentConflict(new Error('Equipment conflict'))).toBe(false);
     expect(isEquipmentConflict(new Error('Unable to reach Shotwise.'))).toBe(
       false,
     );

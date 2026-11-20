@@ -1,19 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import type { AnalysisSettings } from '../domain/analytics';
-import { localToday, type Dataset, type Session } from '../domain/model';
+import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
-import { sessionHref } from './SessionRecap';
+import { sessionHref, visitLabel } from './SessionRecap';
 
 const decimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat(undefined, { style: 'percent' });
 
 export function clubHref(club: string) {
   return `#clubs/${encodeURIComponent(club)}`;
-}
-
-function visitLabel({ date, time }: Pick<Session, 'date' | 'time'>) {
-  return time ? `${date} at ${time.slice(0, 5)}` : date;
 }
 
 const fmt = (n: number | null) => (n === null ? '—' : decimal.format(n));
