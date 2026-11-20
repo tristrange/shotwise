@@ -368,56 +368,62 @@ function ClubDetails({
           </tbody>
         </table>
       </div>
-      <div className="table-wrap">
-        <table>
-          <caption>
-            Contact review · confirmed mishits over reviewed full swings ·
-            automatic unusual-shot flags are kept separate
-          </caption>
-          <thead>
-            <tr>
-              <th>Review</th>
-              <th>Reference</th>
-              <th>Comparison</th>
-              <th>Difference</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">Full swings reviewed</th>
-              <td>
-                {review.reference.reviewed} of {review.reference.fullSwings}{' '}
-                full swings
-                {review.reference.reviewedShare !== null &&
-                  ` (${percent.format(review.reference.reviewedShare)})`}
-              </td>
-              <td>
-                {review.comparison.reviewed} of {review.comparison.fullSwings}{' '}
-                full swings
-                {review.comparison.reviewedShare !== null &&
-                  ` (${percent.format(review.comparison.reviewedShare)})`}
-              </td>
-              <td>{signedPp(review.reviewedShareDeltaPp)}</td>
-            </tr>
-            <tr>
-              <th scope="row">Confirmed mishits</th>
-              <td>
-                {review.reference.mishits} of {review.reference.reviewed}{' '}
-                reviewed full swings
-                {review.reference.rate !== null &&
-                  ` (${percent.format(review.reference.rate)})`}
-              </td>
-              <td>
-                {review.comparison.mishits} of {review.comparison.reviewed}{' '}
-                reviewed full swings
-                {review.comparison.rate !== null &&
-                  ` (${percent.format(review.comparison.rate)})`}
-              </td>
-              <td>{signedPp(review.rateDeltaPp)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {review.reference.fullSwings || review.comparison.fullSwings ? (
+        <div className="table-wrap">
+          <table>
+            <caption>
+              Contact review · confirmed mishits over reviewed full swings ·
+              automatic unusual-shot flags are kept separate
+            </caption>
+            <thead>
+              <tr>
+                <th>Review</th>
+                <th>Reference</th>
+                <th>Comparison</th>
+                <th>Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Full swings reviewed</th>
+                <td>
+                  {review.reference.reviewed} of {review.reference.fullSwings}{' '}
+                  full swings
+                  {review.reference.reviewedShare !== null &&
+                    ` (${percent.format(review.reference.reviewedShare)})`}
+                </td>
+                <td>
+                  {review.comparison.reviewed} of {review.comparison.fullSwings}{' '}
+                  full swings
+                  {review.comparison.reviewedShare !== null &&
+                    ` (${percent.format(review.comparison.reviewedShare)})`}
+                </td>
+                <td>{signedPp(review.reviewedShareDeltaPp)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Confirmed mishits</th>
+                <td>
+                  {review.reference.mishits} of {review.reference.reviewed}{' '}
+                  reviewed full swings
+                  {review.reference.rate !== null &&
+                    ` (${percent.format(review.reference.rate)})`}
+                </td>
+                <td>
+                  {review.comparison.mishits} of {review.comparison.reviewed}{' '}
+                  reviewed full swings
+                  {review.comparison.rate !== null &&
+                    ` (${percent.format(review.comparison.rate)})`}
+                </td>
+                <td>{signedPp(review.rateDeltaPp)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="muted">
+          No full swings in this selection for contact review.
+        </p>
+      )}
       {reviewThin && (
         <p className="notice">
           Review coverage is thin on at least one side (fewer than{' '}

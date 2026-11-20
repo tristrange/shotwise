@@ -2784,20 +2784,23 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
   const evening = await importer(true);
   const data = await account.repository.load();
   await account.repository.review(
-    data.shots.map((shot) => ({
-      shotId: shot.id,
-      expectedRevision: shot.revision,
-      review: {
-        ...shot.review,
-        intent: 'full',
-        contact:
-          shot.rowIndex === 13
-            ? 'mishit'
-            : shot.rowIndex === 16
-              ? 'uncertain'
-              : 'typical',
-      },
-    })),
+    data.shots.map((shot) => {
+      const carry = shot.measurements.flatCarryPremium;
+      return {
+        shotId: shot.id,
+        expectedRevision: shot.revision,
+        review: {
+          ...shot.review,
+          intent: 'full',
+          contact:
+            shot.recordedClub === '7i' && carry === 60
+              ? 'mishit'
+              : shot.recordedClub === '5i' && (carry === 154 || carry === 164)
+                ? 'uncertain'
+                : 'typical',
+        },
+      };
+    }),
   );
 
   await login(page, account);

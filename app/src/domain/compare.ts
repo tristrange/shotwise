@@ -36,7 +36,7 @@ export type SideMix = {
   unknownIntentShare: number | null;
   /** Share of measured carries with a recorded target distance. */
   targetedShare: number | null;
-  /** Share of included shots with a carry measurement on the selected basis. */
+  /** Share of intent-filtered shots with a carry measurement on the selected basis. */
   coverageShare: number | null;
 };
 
@@ -47,9 +47,9 @@ export type CompareSide = {
   recorded: number;
   included: number;
   afterIntent: number;
-  /** Included shots by review intent; review fields stay independent. */
+  /** Intent-filtered shot counts by intent. */
   intents: Record<Shot['review']['intent'], number>;
-  /** Included shots with a carry measurement on the selected basis. */
+  /** Intent-filtered shots with a carry measurement on the selected basis. */
   carryMeasured: number;
   carryMissing: number;
   mix: SideMix;
@@ -258,7 +258,7 @@ function reviewSide(shots: Shot[]): ReviewSide {
     mishits: contact.mishits,
     rate: contact.rate,
     reviewedShare: full ? contact.fullReviewed / full : null,
-    thin: contact.fullReviewed < MIN_REVIEWED_FULL,
+    thin: full > 0 && contact.fullReviewed < MIN_REVIEWED_FULL,
   };
 }
 

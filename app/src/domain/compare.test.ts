@@ -506,6 +506,8 @@ describe('comparison details', () => {
     );
     const typical = result.common[0]?.typical;
     expect(typical?.kind).toBe('unavailable');
+    expect(result.common[0]?.review.reference.thin).toBe(false);
+    expect(result.common[0]?.review.comparison.thin).toBe(false);
     if (typical?.kind === 'unavailable') {
       expect(typical.reason).toContain('partial-only');
     }
