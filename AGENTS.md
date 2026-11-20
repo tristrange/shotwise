@@ -41,6 +41,9 @@ Choose checks appropriate to the change. Add behavior-focused tests for calculat
 ## Git and pull requests
 
 - Create a new branch for project work. Use lowercase, hyphen-separated names with `feat/`, `fix/`, `refactor/`, `perf/`, `test/`, `docs/`, or `chore/`. Never use the `codex/` prefix.
+- Give each concurrent session its own worktree. Never run parallel agents in the same physical checkout: they share one working tree, so one session's uncommitted edits surface as another session's changes.
+- Never switch branches with a dirty working tree. Commit or stash first — `git checkout` carries uncommitted changes across branches, which can make a stale `main` look like hand-written duplicate work.
+- Fetch and fast-forward `main` before starting work. If `main` is behind `origin/main` with a dirty tree whose changes duplicate already-merged PRs, stash them, `git pull --ff-only`, and drop the stash once confirmed redundant.
 - Keep commits focused and use descriptive messages, preferably Conventional Commits. Do not rewrite shared history or force-push without explicit authorization.
 - Agents may implement, commit, push, open PRs, run checks, review results, and address feedback. Keep unrelated work out of the same PR.
 - Review the final diff and explain the change and verification in the PR. Do not claim a PR is ready or checks passed without evidence.
