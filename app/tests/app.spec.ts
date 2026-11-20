@@ -1,8 +1,14 @@
 import { test as base, expect, type Page, type TestInfo } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 import { localStack } from './local';
-import { csvFixture } from '../src/domain/fixtures';
-import { localToday, shiftDate, type Dataset } from '../src/domain/model';
+import { csvFixture, makeEquipment } from '../src/domain/fixtures';
+import {
+  effectiveClub,
+  localToday,
+  shiftDate,
+  type Dataset,
+} from '../src/domain/model';
 import { parseCsv } from '../src/domain/csv';
 import { createRepository } from '../src/data/repository';
 import { parseBackup, serializeBackup } from '../src/domain/backup';
@@ -2883,4 +2889,238 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
       ),
     )
     .toBeLessThanOrEqual(1);
+});
+
+async function openBag(page: Page) {
+  await nav(page, 'Clubs');
+  await page.getByRole('button', { name: 'Manage bag', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Manage bag' })).toBeFocused();
+  await expect(page.getByRole('region', { name: 'Manage bag' })).toBeVisible();
+}
+
+function editClub(page: Page, name: string) {
+  return page.getByRole('button', { name: `Edit ${name}`, exact: true });
+}
+
+async function equipmentNamed(account: Account, name: string) {
+  return (await account.repository.load()).equipment.find(
+    (item) => item.name === name,
+  );
+}
+
+test('registers, edits and retires bag clubs with overlapping labels and round-trips through reload and v2 backup', async ({
+  page,
+  account,
+}) => {
+  await login(page, account);
+  await openBag(page);
+
+  const add = page.getByRole('button', { name: 'Add club', exact: true });
+  const label = page.getByLabel('Inrange label', { exact: true });
+  const name = page.getByLabel('Display name', { exact: true });
+  const manufacturer = page.getByLabel('Manufacturer', { exact: true });
+  const loft = page.getByLabel('Loft', { exact: true });
+  const status = page.getByRole('combobox', { name: /^Status/ });
+  const acquired = page.getByLabel('Acquired on', { exact: true });
+  const retired = page.getByLabel('Retired on', { exact: true });
+  const save = page.getByRole('button', { name: 'Save club', exact: true });
+
+  // Register a physical club.
+  await add.click();
+  await label.fill('7i');
+  await name.fill('Primary 7i');
+  await manufacturer.fill('Titleist');
+  await loft.fill('34');
+  await status.selectOption({ label: 'In bag' });
+  await acquired.fill('2026-01-10');
+  await save.click();
+  await expect
+    .poll(() => equipmentNamed(account, 'Primary 7i'))
+    .toEqual(
+      expect.objectContaining({
+        inrangeLabel: '7i',
+        name: 'Primary 7i',
+        manufacturer: 'Titleist',
+        loft: '34',
+        status: 'in-bag',
+        acquiredOn: '2026-01-10',
+        retiredOn: null,
+        revision: 0,
+      }),
+    );
+
+  // A second club may share the label and overlap in ownership.
+  await add.click();
+  await label.fill('7i');
+  await name.fill('Backup 7i');
+  await status.selectOption({ label: 'Retired' });
+  await acquired.fill('2026-01-01');
+  await retired.fill('2026-03-01');
+  await save.click();
+  await expect
+    .poll(() => equipmentNamed(account, 'Backup 7i'))
+    .toEqual(
+      expect.objectContaining({
+        inrangeLabel: '7i',
+        name: 'Backup 7i',
+        status: 'retired',
+        acquiredOn: '2026-01-01',
+        retiredOn: '2026-03-01',
+        revision: 0,
+      }),
+    );
+
+  const primary = await equipmentNamed(account, 'Primary 7i');
+  const backup = await equipmentNamed(account, 'Backup 7i');
+  if (!primary || !backup) throw new Error('Missing seeded equipment');
+  expect(primary.id).not.toBe(backup.id);
+  expect(primary.inrangeLabel).toBe(backup.inrangeLabel);
+
+  // Edit and retire the first club; the other fields survive the edit.
+  await editClub(page, 'Primary 7i').click();
+  await name.fill('Primary 7i v2');
+  await manufacturer.fill('Titleist');
+  await loft.fill('33');
+  await status.selectOption({ label: 'Retired' });
+  await acquired.fill('2026-01-10');
+  await retired.fill('2026-06-01');
+  await save.click();
+  await expect
+    .poll(() => equipmentNamed(account, 'Primary 7i v2'))
+    .toEqual(
+      expect.objectContaining({
+        id: primary.id,
+        inrangeLabel: '7i',
+        name: 'Primary 7i v2',
+        manufacturer: 'Titleist',
+        loft: '33',
+        status: 'retired',
+        acquiredOn: '2026-01-10',
+        retiredOn: '2026-06-01',
+        revision: 1,
+      }),
+    );
+
+  // Reload from persistence and reopen the bag.
+  await page.reload();
+  await openBag(page);
+  await expect(editClub(page, 'Primary 7i v2')).toBeVisible();
+  await expect(editClub(page, 'Backup 7i')).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await nav(page, 'Settings');
+  const downloaded = page.waitForEvent('download');
+  await page
+    .getByRole('button', { name: 'Download backup', exact: true })
+    .click();
+  const backupText = await readFile(await (await downloaded).path(), 'utf8');
+  const dataset = await account.repository.load();
+  expect(JSON.parse(backupText).version).toBe(2);
+  const roundTrip = await parseBackup(backupText);
+  expect(roundTrip.equipment).toEqual(dataset.equipment);
+  expect(roundTrip.equipmentAssignments).toEqual(dataset.equipmentAssignments);
+});
+
+test('keeps an equipment edit draft after a conflicting save and reconciles to the latest revision', async ({
+  page,
+  account,
+}) => {
+  const seeded = await account.repository.saveEquipment({
+    ...makeEquipment({ name: 'Original club' }),
+    revision: null,
+  });
+  await login(page, account);
+  await openBag(page);
+  await editClub(page, 'Original club').click();
+  const name = page.getByLabel('Display name', { exact: true });
+  await name.fill('My edited club');
+
+  // Deterministic conflict: another device saves the same record after the
+  // draft opened, so the app's pinned revision is now stale.
+  await account.repository.saveEquipment({ ...seeded, name: 'External edit' });
+
+  await page.getByRole('button', { name: 'Save club', exact: true }).click();
+  await expect(page.getByRole('alert').first()).toBeVisible();
+  await expect(name).toHaveValue('My edited club');
+  const useLatest = page.getByRole('button', {
+    name: 'Use latest revision',
+    exact: true,
+  });
+  await expect(useLatest).toBeVisible();
+
+  await useLatest.click();
+  await expect(name).toHaveValue('My edited club');
+  expect((await equipmentNamed(account, 'External edit'))?.id).toBe(seeded.id);
+  const save = page.getByRole('button', { name: 'Save club', exact: true });
+  await save.click();
+
+  await expect
+    .poll(async () => {
+      const data = await account.repository.load();
+      return data.equipment.find((item) => item.id === seeded.id)?.name;
+    })
+    .toBe('My edited club');
+  const final = (await account.repository.load()).equipment.find(
+    (item) => item.id === seeded.id,
+  );
+  if (!final) throw new Error('Missing equipment after reconciliation');
+  expect(final.revision).toBe(seeded.revision + 2);
+});
+
+test('persists a seeded historical equipment assignment and exposes its visit', async ({
+  page,
+  account,
+}) => {
+  await seed(account);
+  const equipment = await account.repository.saveEquipment({
+    ...makeEquipment({ name: 'Historical 7i', status: 'retired' }),
+    revision: null,
+  });
+  const data = await account.repository.load();
+  const session = data.sessions[0];
+  if (!session) throw new Error('Missing seeded session');
+  const shotIds = data.shots
+    .filter(
+      (shot) =>
+        shot.sessionId === session.id && effectiveClub(shot) === '7i',
+    )
+    .map((shot) => shot.id);
+  expect(shotIds.length).toBeGreaterThan(0);
+
+  await account.repository.assignEquipment({
+    expectedVersion: data.version,
+    sessionId: session.id,
+    clubLabel: '7i',
+    equipmentId: equipment.id,
+    shotIds,
+  });
+
+  const after = await account.repository.load();
+  expect(
+    after.equipmentAssignments
+      .filter((item) => item.equipmentId === equipment.id)
+      .map((item) => item.shotId)
+      .sort(),
+  ).toEqual([...shotIds].sort());
+
+  await login(page, account);
+  await openBag(page);
+  await page.reload();
+  await openBag(page);
+  const persisted = await account.repository.load();
+  expect(persisted.equipmentAssignments).toEqual(after.equipmentAssignments);
+  await expect(editClub(page, 'Historical 7i')).toBeVisible();
+  const history = page.getByRole('table', {
+    name: 'Assignment history for Historical 7i',
+  });
+  await expect(history.getByRole('link', { name: session.date })).toHaveAttribute(
+    'href',
+    `#sessions/${session.id}`,
+  );
 });

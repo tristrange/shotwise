@@ -1,4 +1,4 @@
-import type { Basis, MetricKey } from '../domain/model';
+import type { Basis, MetricKey, Session } from '../domain/model';
 import type { sessionRecap } from '../domain/recap';
 import { BasisButton } from './AnalysisControls';
 
@@ -157,7 +157,7 @@ export function recapEvidence(
 const decimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat(undefined, { style: 'percent' });
 
-function visitLabel({ date, time }: Recap['session']) {
+export function visitLabel({ date, time }: Pick<Session, 'date' | 'time'>) {
   return time ? `${date} at ${time.slice(0, 5)}` : date;
 }
 
