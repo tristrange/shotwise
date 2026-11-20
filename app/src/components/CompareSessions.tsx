@@ -18,6 +18,10 @@ import {
   type SessionComparison,
   type Shares,
 } from '../domain/compare';
+import {
+  equipmentDisplayName,
+  type LabelEquipmentSummary,
+} from '../domain/equipment';
 import { BasisButton } from './AnalysisControls';
 
 /** Hash route for the comparison view; reload and Back keep the pair. */
@@ -190,6 +194,13 @@ function DirectionRows({
   );
 }
 
+function equipmentText(summary: LabelEquipmentSummary) {
+  const names = summary.equipment.map(equipmentDisplayName).join(', ');
+  return `${summary.assigned}/${summary.shots} assigned · ${summary.coverage}${
+    summary.needsReview > 0 ? ` · Needs review: ${summary.needsReview}` : ''
+  }${names ? ` · ${names}` : ''}`;
+}
+
 function ClubDetails({
   club,
   basisLabel,
@@ -237,6 +248,12 @@ function ClubDetails({
               <th scope="row">Included shots</th>
               <td>{reference.included}</td>
               <td>{comparison.included}</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <th scope="row">Assigned equipment</th>
+              <td>{equipmentText(reference.equipment)}</td>
+              <td>{equipmentText(comparison.equipment)}</td>
               <td>—</td>
             </tr>
             <tr>

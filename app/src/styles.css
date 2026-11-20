@@ -402,6 +402,19 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .correction-rows li strong { color: var(--ink); }
 .correction-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 0; }
 
+/* ---------- equipment assignment ---------- */
+.assign-equipment { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 18px; }
+.assign-equipment h3 { scroll-margin-top: 64px; }
+.needs-review { margin: 12px 0; }
+.needs-review p { margin: 4px 0; }
+.needs-review ul { list-style: none; margin: 8px 0; padding: 0; }
+.needs-review li { padding: 7px 0; border-bottom: 1px solid var(--line); font: 400 12px/1.6 var(--mono); color: var(--ink2); overflow-wrap: anywhere; }
+.needs-review li strong { color: var(--ink); }
+.needs-review .pill { margin-right: 8px; }
+.assignment-preview { border: 1px solid var(--ink); background: var(--panel); padding: 18px; margin: 20px 0; }
+.assignment-preview h4 { overflow-wrap: anywhere; }
+.assignment-preview .table-wrap { margin: 12px 0; }
+
 /* ---------- progress ---------- */
 .club-progress { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--ink); }
 .progress-plots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
@@ -473,6 +486,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
   .correction-preview { padding: 14px; }
   .correction-actions { gap: 10px; }
   .correction-actions button { flex: 1 1 auto; }
+  .assignment-preview { padding: 14px; }
 }
 
 /* Scroll-entry motion is applied with the Web Animations API in reveal.ts.

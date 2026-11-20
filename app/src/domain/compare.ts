@@ -1,4 +1,5 @@
 import { directionStats, metricStats, reviewCoverage } from './analytics';
+import { equipmentByCohort, type LabelEquipmentSummary } from './equipment';
 import {
   clubShotGroups,
   recapCohorts,
@@ -125,8 +126,16 @@ export type TypicalCarry =
 
 export type ClubComparison = {
   club: string;
-  reference: { included: number; carry: MetricStats };
-  comparison: { included: number; carry: MetricStats };
+  reference: {
+    included: number;
+    carry: MetricStats;
+    equipment: LabelEquipmentSummary;
+  };
+  comparison: {
+    included: number;
+    carry: MetricStats;
+    equipment: LabelEquipmentSummary;
+  };
   /** Signed median-carry difference: comparison minus reference. */
   carryDelta: number | null;
   /** Relative carry change when the reference is positive and coverage supports it. */
@@ -457,6 +466,7 @@ export function compareSessions(
   };
   const referenceClubs = collect(referenceId);
   const comparisonClubs = collect(comparisonId);
+  const equipmentForShots = equipmentByCohort(data);
 
   result.common = [...referenceClubs.keys()]
     .filter((club) => comparisonClubs.has(club))
@@ -468,10 +478,15 @@ export function compareSessions(
       const comparisonCarry = metricStats(comparisonShots, carryKey);
       return {
         club,
-        reference: { included: referenceShots.length, carry: referenceCarry },
+        reference: {
+          included: referenceShots.length,
+          carry: referenceCarry,
+          equipment: equipmentForShots(referenceShots),
+        },
         comparison: {
           included: comparisonShots.length,
           carry: comparisonCarry,
+          equipment: equipmentForShots(comparisonShots),
         },
         carryDelta: signedDelta(referenceCarry, comparisonCarry),
         carryPctDelta: pctDelta(referenceCarry, comparisonCarry),

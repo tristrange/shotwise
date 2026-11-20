@@ -11,6 +11,7 @@ import type { Repository } from '../data/contracts';
 import { resolvePracticeEvidence } from './PracticeInsights';
 import { SessionRecap, recapEvidence, sessionHref } from './SessionRecap';
 import { ShotReview } from './ShotReview';
+import { AssignEquipment } from './AssignEquipment';
 import {
   CompareSessions,
   compareHref,
@@ -577,6 +578,12 @@ function SessionDetail({
           </button>
         </div>
       )}
+      <AssignEquipment
+        data={data}
+        repository={repository}
+        refresh={refresh}
+        session={session}
+      />
       {evidenceQuery ? (
         <section
           aria-labelledby="session-evidence"

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import type { AnalysisSettings } from '../domain/analytics';
+import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Dataset } from '../domain/model';
 import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
@@ -36,12 +37,23 @@ function gapNote(gap: ClubProfile['gap']) {
 function ProfileCard({
   profile,
   focus,
+  bagCount,
 }: {
   profile: ClubProfile;
   focus: boolean;
+  bagCount: number;
 }) {
-  const { club, window: range, recent, latest, history, gap, best, basisLabel } =
-    profile;
+  const {
+    club,
+    window: range,
+    recent,
+    latest,
+    history,
+    gap,
+    best,
+    basisLabel,
+    equipment,
+  } = profile;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!focus) return;
@@ -71,6 +83,30 @@ function ProfileCard({
         {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
         {rangeText}
       </p>
+      {bagCount > 0 && (
+        <p className="context">
+          Equipment · {equipment.assigned} of {equipment.shots} shots assigned ·{' '}
+          {equipment.coverage}
+          {equipment.needsReview > 0 && (
+            <>
+              {' '}
+              ·{' '}
+              <span className="pill">
+                Needs review: {equipment.needsReview}
+              </span>
+            </>
+          )}
+          {equipment.equipment.length > 0 && (
+            <>
+              {' '}
+              ·{' '}
+              {equipment.equipment
+                .map(equipmentDisplayName)
+                .join(', ')}
+            </>
+          )}
+        </p>
+      )}
       <ul className="profile-stats">
         <li>
           <strong>
@@ -249,6 +285,7 @@ export function ClubProfiles({
             key={profile.club}
             profile={profile}
             focus={focusClub === profile.club}
+            bagCount={data.equipment.length}
           />
         ))}
       </section>
