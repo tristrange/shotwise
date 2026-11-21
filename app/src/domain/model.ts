@@ -252,9 +252,19 @@ export function effectiveClub(shot: Shot): string {
 export function isWedge(club: string): boolean {
   return /^(PW|SW|GW|LW|AW|UW|W|\d{2}°?)$/i.test(club.trim());
 }
+/**
+ * The pitching wedge is treated like an iron for full-swing analysis: most PW
+ * shots are full swings, unlike the higher wedges where partial shots are
+ * common. PW still counts as a wedge for distance-control analysis.
+ */
+export function isPitchingWedge(club: string): boolean {
+  return /^pw$/i.test(club.trim());
+}
 export function fullSwingCandidate(shot: Shot) {
-  return shot.review.intent === 'full' ||
-    (shot.review.intent === 'unknown' && !isWedge(effectiveClub(shot)));
+  if (shot.review.intent === 'full') return true;
+  if (shot.review.intent !== 'unknown') return false;
+  const club = effectiveClub(shot);
+  return !isWedge(club) || isPitchingWedge(club);
 }
 
 export function venueKey(session: Session) {

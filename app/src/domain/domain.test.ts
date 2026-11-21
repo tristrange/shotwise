@@ -13,7 +13,7 @@ import {
   type AnalysisQuery,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
-import { clubOrder, emptyDataset } from './model';
+import { clubOrder, emptyDataset, fullSwingCandidate } from './model';
 import type { Review } from './model';
 
 const allTimeQuery = {
@@ -514,6 +514,66 @@ describe('club gapping', () => {
       n: 10,
       reliable: true,
     });
+  });
+
+  it('treats unreviewed pitching-wedge shots as iron-style full-swing candidates', () => {
+    const unreviewed = (club: string, carries: number[]) =>
+      carries.map((carry, i) =>
+        makeShot({
+          sessionId: session.id,
+          recordedClub: club,
+          rowIndex: i + 1,
+          measurements: { flatCarryPremium: carry },
+        }),
+      );
+    const data = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: [
+        ...unreviewed('7i', [150, 154, 158, 160, 160, 160, 162, 166, 170, 170]),
+        ...unreviewed('PW', [100, 102, 104, 106, 108, 110, 112, 114, 116, 118]),
+        ...unreviewed('SW', [50, 52, 54, 56, 58, 60, 62, 64, 66, 68]),
+        makeShot({
+          sessionId: session.id,
+          recordedClub: 'PW',
+          rowIndex: 40,
+          measurements: { flatCarryPremium: 60 },
+          review: { intent: 'partial' },
+        }),
+      ],
+    };
+    const rows = clubGaps(data, 'premium-flat', allTimeQuery);
+    // PW joins the irons; SW stays out until reviewed; the partial PW is excluded.
+    expect(rows.map((row) => row.club)).toEqual(['7i', 'PW']);
+    expect(rows.find((row) => row.club === 'PW')).toMatchObject({
+      n: 10,
+      median: 109,
+    });
+  });
+
+  it('fullSwingCandidate keeps higher wedges conservative and partials out', () => {
+    const base = { sessionId: session.id, recordedClub: '7i' };
+    expect(
+      fullSwingCandidate(makeShot({ ...base, review: { intent: 'full' } })),
+    ).toBe(true);
+    expect(
+      fullSwingCandidate(makeShot({ ...base, review: { intent: 'unknown' } })),
+    ).toBe(true);
+    expect(
+      fullSwingCandidate(
+        makeShot({ ...base, recordedClub: 'PW', review: { intent: 'unknown' } }),
+      ),
+    ).toBe(true);
+    expect(
+      fullSwingCandidate(
+        makeShot({ ...base, recordedClub: 'SW', review: { intent: 'unknown' } }),
+      ),
+    ).toBe(false);
+    expect(
+      fullSwingCandidate(
+        makeShot({ ...base, recordedClub: 'PW', review: { intent: 'partial' } }),
+      ),
+    ).toBe(false);
   });
 
   it('includes unreviewed shots but leaves out identified partials and mishits', () => {
