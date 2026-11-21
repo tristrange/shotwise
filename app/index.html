@@ -1,2 +1,46 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#173f35"/><meta name="description" content="Understand your golf. Private, explainable analytics for your Inrange sessions."/><link rel="icon" href="/favicon.svg"/><title>Shotwise · Understand your golf</title><script>try{var s=localStorage.getItem('shotwise-theme');document.documentElement.dataset.theme=(s==='light'||s==='dark')?s:(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}</script></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#173f35" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#0c0d12"
+    />
+    <meta
+      name="description"
+      content="Understand your golf. Private, explainable analytics for your Inrange sessions."
+    />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Shotwise" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>Shotwise · Understand your golf</title>
+    <script>
+      try {
+        var s = localStorage.getItem('shotwise-theme');
+        document.documentElement.dataset.theme =
+          s === 'light' || s === 'dark'
+            ? s
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
