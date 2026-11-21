@@ -214,10 +214,10 @@ it('uses stable ordering for equally supported patterns and keeps one action per
   );
 });
 
-it('uses effective labels, honours review filters, and requires explicit full intent for wedges', () => {
+it('uses effective labels, honours review filters, and requires explicit full intent for higher wedges', () => {
   const sessions = [first, second];
   const shots = sessions.flatMap((session) =>
-    group(session, 'PW', alternating(70, 130)),
+    group(session, 'SW', alternating(70, 130)),
   );
   expect(insights(sessions, shots)).toEqual([]);
   const reviewed: ReturnType<typeof group> = shots.map((shot) => ({
@@ -235,4 +235,22 @@ it('uses effective labels, honours review filters, and requires explicit full in
     review: { contact: 'mishit' },
   });
   expect(insights(sessions, reviewed)).toEqual([]);
+});
+
+it('treats unreviewed pitching-wedge shots as iron-style full swings, but not partials', () => {
+  const sessions = [first, second];
+  const pwShots = sessions.flatMap((session) =>
+    group(session, 'PW', alternating(70, 130)),
+  );
+  // PW counts as a full-swing candidate without review, so the alternating
+  // pattern surfaces as an inconsistency.
+  expect(insights(sessions, pwShots)[0]?.evidence[0]).toMatchObject({
+    kind: 'inconsistency',
+    carry: { club: 'PW' },
+  });
+  const partials = pwShots.map((shot) => ({
+    ...shot,
+    review: { ...shot.review, intent: 'partial' as const },
+  }));
+  expect(insights(sessions, partials)).toEqual([]);
 });

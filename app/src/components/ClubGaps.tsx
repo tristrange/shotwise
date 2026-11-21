@@ -53,8 +53,9 @@ export function ClubGaps({
           </div>
         </div>
         <p>
-          Unreviewed non-wedge shots can count. Wedges need explicit full
-          intent. Partial and mishit shots are excluded. The dot is median carry
+          Unreviewed non-wedge shots can count, and so can unreviewed
+          pitching-wedge shots. Other wedges need explicit full intent.
+          Partial and mishit shots are excluded. The dot is median carry
           and the bar is the middle 80%. Grey rows have fewer than ten shots. A
           negative gap means this club carried farther than the one above. Gap
           recommendations use medians from comparable visits on multiple dates.
