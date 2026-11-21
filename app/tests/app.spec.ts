@@ -440,6 +440,51 @@ test('keeps theme controls in sync across desktop, tablet and phone', async ({
   ).toBeVisible();
 });
 
+test('fits the overview hero on phone viewports without pinch zoom', async ({
+  page,
+  account,
+}) => {
+  await seed(account);
+  await login(page, account);
+  for (const [width, height] of [
+    [390, 844],
+    [375, 667],
+    [320, 568],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    const hero = page.locator('.hero');
+    await expect(hero).toBeVisible();
+    // No horizontal page overflow at common iPhone widths.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    // The full hero is visible at the default zoom level: it starts below the
+    // header and its bottom edge stays inside the viewport.
+    const fit = await page.evaluate(() => {
+      const hero = document.querySelector('.hero')?.getBoundingClientRect();
+      return hero
+        ? { top: hero.top, bottom: hero.bottom, height: hero.height }
+        : null;
+    });
+    expect(fit).not.toBeNull();
+    expect(fit!.top).toBeGreaterThan(0);
+    expect(fit!.bottom).toBeLessThanOrEqual(height + 1);
+    // Mobile hero is shorter than the desktop 560px minimum.
+    expect(fit!.height).toBeLessThan(500);
+    // Hero text stays inside the hero box (nothing clipped by overflow hidden).
+    const clipped = await page.evaluate(() => {
+      const hero = document.querySelector('.hero') as HTMLElement;
+      const copy = hero.querySelector('.hero-copy') as HTMLElement;
+      return copy.getBoundingClientRect().bottom - hero.getBoundingClientRect().bottom;
+    });
+    expect(clipped).toBeLessThanOrEqual(1);
+  }
+});
+
 test('uses theme colours for carry bands and labels', async ({
   page,
   account,
