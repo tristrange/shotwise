@@ -59,6 +59,23 @@ describe('PWA installability assets', () => {
     expect(pngSize(buffer)).toEqual({ width: 180, height: 180 });
   });
 
+  it('keeps the header and sticky navigation clear of the iOS status-bar safe area', async () => {
+    // In standalone mode (black-translucent) web content extends under the
+    // status bar, so both the header and the sticky nav need safe-area-inset-top.
+    const css = await readFile(
+      new URL('../src/styles.css', import.meta.url),
+      'utf8',
+    );
+    const block = (selector: string) => {
+      const match = css.match(
+        new RegExp(`^\\s*${selector}\\s*\\{[^}]*\\}`, 'm'),
+      );
+      return match?.[0] ?? '';
+    };
+    expect(block('.mobile-header')).toContain('env(safe-area-inset-top)');
+    expect(block('.mobile-nav')).toContain('top: env(safe-area-inset-top)');
+  });
+
   it('links the manifest and iOS meta tags from index.html', async () => {
     const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
     expect(html).toContain('rel="manifest"');
