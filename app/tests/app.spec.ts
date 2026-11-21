@@ -57,11 +57,31 @@ async function login(page: Page, account: Account) {
     page.getByRole('heading', { name: 'Overview', exact: true }),
   ).toBeVisible();
 }
+// Phone layout uses five bottom tabs (Home/Analyse/Sessions/Review/More) with
+// analysis pages in the Analyse sub-nav; desktop keeps the full sidebar.
+const tabLabels: Record<string, string> = { Overview: 'Home', Settings: 'More' };
+const analysePages = new Set(['Clubs', 'Gapping', 'Progress', 'Shot shape']);
 async function nav(page: Page, name: string) {
-  await page
+  let target = page
     .getByRole('button', { name, exact: true })
-    .filter({ visible: true })
-    .click();
+    .filter({ visible: true });
+  if ((await target.count()) === 0) {
+    const alt = tabLabels[name];
+    if (alt) {
+      target = page
+        .getByRole('button', { name: alt, exact: true })
+        .filter({ visible: true });
+    } else if (analysePages.has(name)) {
+      await page
+        .getByRole('button', { name: 'Analyse', exact: true })
+        .filter({ visible: true })
+        .click();
+      target = page
+        .getByRole('button', { name, exact: true })
+        .filter({ visible: true });
+    }
+  }
+  await target.click();
 }
 const fixture = () =>
   csvFixture([
@@ -438,6 +458,87 @@ test('keeps theme controls in sync across desktop, tablet and phone', async ({
       .getByRole('button', { name: 'Switch to light theme' })
       .filter({ visible: true }),
   ).toBeVisible();
+});
+
+test('uses a five-tab bottom navigation on phones with every feature reachable', async ({
+  page,
+  account,
+}) => {
+  await seed(account);
+  await login(page, account);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bottomNav = page.locator('.bottom-nav');
+  await expect(bottomNav).toBeVisible();
+  await expect(bottomNav.getByRole('button')).toHaveCount(5);
+  for (const label of ['Home', 'Analyse', 'Sessions', 'Review', 'More']) {
+    await expect(
+      bottomNav.getByRole('button', { name: label, exact: true }),
+    ).toBeVisible();
+  }
+  // The old sideways-scrolling top nav is gone.
+  await expect(page.locator('.mobile-nav')).toHaveCount(0);
+
+  // The Analyse tab exposes nested analysis screens through the sub-nav.
+  await bottomNav.getByRole('button', { name: 'Analyse', exact: true }).click();
+  const subNav = page.locator('.sub-nav');
+  await expect(subNav).toBeVisible();
+  await subNav.getByRole('button', { name: 'Gapping', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Club gapping', exact: true }),
+  ).toBeVisible();
+  await expect(
+    bottomNav.getByRole('button', { name: 'Analyse', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  // Every tab reaches its destination.
+  await bottomNav.getByRole('button', { name: 'Sessions', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Sessions & import', exact: true }),
+  ).toBeVisible();
+  await bottomNav.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Review', exact: true }),
+  ).toBeVisible();
+  await bottomNav.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Settings', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Manage bag' }),
+  ).toBeVisible();
+  await bottomNav.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Overview', exact: true }),
+  ).toBeVisible();
+
+  // Deep links keep working and highlight the right tab.
+  await page.evaluate(() => {
+    window.location.hash = 'shape/explorer';
+  });
+  await expect(
+    page.getByRole('region', { name: 'Ball-flight explorer', exact: true }),
+  ).toBeVisible();
+  await expect(
+    bottomNav.getByRole('button', { name: 'Analyse', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  // No content is hidden behind the fixed bottom bar.
+  const clearance = await page.evaluate(() => {
+    const nav = document.querySelector('.bottom-nav') as HTMLElement;
+    const main = document.querySelector('.main-content') as HTMLElement;
+    return (
+      parseFloat(getComputedStyle(main).paddingBottom) >=
+      nav.getBoundingClientRect().height
+    );
+  });
+  expect(clearance).toBe(true);
 });
 
 test('fits the overview hero on phone viewports without pinch zoom', async ({
