@@ -254,7 +254,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 }
 .gap-head span:nth-child(3), .gap-head span:nth-child(4) { text-align: right; }
 .gap-row { padding: 15px 0; border-bottom: 1px solid var(--line); }
-.gap-club { font: 600 14px/1 'Instrument Sans', sans-serif; }
+.gap-club { font: 600 14px/1 'Instrument Sans', sans-serif; display: flex; align-items: center; flex-wrap: wrap; }
 .gap-carry { min-width: 0; }
 .gap-stats { display: grid; gap: 3px; margin-bottom: 9px; }
 .gap-stats small, .gap-n small, .gap-value small { display: block; font: 400 11px/1.4 'Instrument Sans', sans-serif; color: var(--mute); }
@@ -264,6 +264,22 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .gap-dot { position: absolute; top: 2px; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; background: var(--accent); z-index: 1; }
 .gap-row.low .gap-band { background: rgba(127,127,127,.2); }
 .gap-row.low .gap-dot { background: var(--mute); }
+.gap-item { border-bottom: 1px solid var(--line); }
+.gap-item .gap-row { border-bottom: 0; }
+.expand-toggle {
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 10px;
+  background: none; padding: 2px 0; color: var(--mute);
+  font: 500 11px/1 'Instrument Sans', sans-serif;
+}
+.expand-toggle:hover { background: none; color: var(--ink); }
+.expand-toggle svg { transition: transform .18s ease; }
+.expand-toggle svg.open { transform: rotate(180deg); }
+.gap-detail { padding: 2px 0 18px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px 20px; margin-bottom: 10px; }
+.detail-stat { border-left: 2px solid var(--line); padding-left: 10px; display: grid; gap: 3px; justify-items: start; }
+.detail-label { font: 600 10px/1.4 'Instrument Sans', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+.detail-value { font: 400 20px/1.1 'Newsreader', Georgia, serif; letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.detail-sub { font: 400 11px/1.4 var(--mono); color: var(--mute); }
 .gap-n { text-align: right; color: var(--mute); font: 400 12px/1.4 var(--mono); }
 .gap-value { text-align: right; font: 400 12px/1.4 var(--mono); color: var(--ink2); }
 .gap-value.big { color: var(--ochre); font-weight: 600; }

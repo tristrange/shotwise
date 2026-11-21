@@ -586,6 +586,54 @@ test('fits the overview hero on phone viewports without pinch zoom', async ({
   }
 });
 
+test('expands overview club summaries inline with per-club measurements', async ({
+  page,
+  account,
+}) => {
+  await seed(account);
+  await login(page, account);
+  // Accessible name toggles between Show/Hide, so match loosely.
+  const toggle7i = page.getByRole('button', { name: /details for 7i/i });
+  const toggleSW = page.getByRole('button', { name: /details for SW/i });
+  await expect(toggle7i).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#club-detail-7i')).toHaveCount(0);
+
+  // Keyboard: focus + Enter expands.
+  await toggle7i.focus();
+  await page.keyboard.press('Enter');
+  await expect(toggle7i).toHaveAttribute('aria-expanded', 'true');
+  const detail7i = page.locator('#club-detail-7i');
+  await expect(detail7i).toBeVisible();
+  await expect(detail7i).toContainText('Ball speed');
+  await expect(detail7i).toContainText('kph');
+  await expect(detail7i).toContainText('Launch');
+  await expect(detail7i).toContainText('21.0°');
+  await expect(detail7i).toContainText('Apex');
+  await expect(detail7i).toContainText('Carry spread (IQR)');
+  await expect(detail7i.getByRole('link', { name: 'Full club profile' })).toHaveAttribute(
+    'href',
+    '#clubs/7i',
+  );
+
+  // Clubs expand independently.
+  await toggleSW.click();
+  await expect(page.locator('#club-detail-SW')).toBeVisible();
+  await expect(detail7i).toBeVisible();
+  await toggle7i.click();
+  await expect(page.locator('#club-detail-7i')).toHaveCount(0);
+  await expect(page.locator('#club-detail-SW')).toBeVisible();
+
+  // No horizontal overflow with details open on a phone.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
 test('uses theme colours for carry bands and labels', async ({
   page,
   account,
