@@ -13,6 +13,7 @@ import {
   CLASSIFIER_VERSION,
   type ShotAssessment,
 } from '../domain/classify';
+import { assessSequences, SEQUENCE_RULE_VERSION } from '../domain/sequence';
 import {
   effectiveClub,
   FIELD_HEADERS,
@@ -67,6 +68,10 @@ export function ShotReview({
   );
   const autoAssessments = useMemo(
     () => assessShots(data.shots, data.sessions, 'premium-flat'),
+    [data.shots, data.sessions],
+  );
+  const sequenceAssessments = useMemo(
+    () => assessSequences(data.shots, data.sessions, 'premium-flat'),
     [data.shots, data.sessions],
   );
   const flags = clubFlags(data.shots, data.sessions);
@@ -848,6 +853,22 @@ export function ShotReview({
                       {badge.label}
                     </span>
                   ))}
+                  {(() => {
+                    const seq = sequenceAssessments.get(s.id);
+                    if (
+                      seq?.kind === 'suspected-wrong-club' &&
+                      s.review.club.kind === 'unreviewed'
+                    )
+                      return (
+                        <span
+                          className="pill"
+                          title={`${seq.reason} (${SEQUENCE_RULE_VERSION}; recorded label kept)`}
+                        >
+                          auto: possible wrong club ({seq.suspectedClub}?)
+                        </span>
+                      );
+                    return null;
+                  })()}
                 </div>
                 {flag && (
                   <p className="flag">

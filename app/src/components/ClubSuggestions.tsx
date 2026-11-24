@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   clubOrder,
   effectiveClub,
@@ -6,6 +6,7 @@ import {
   type Dataset,
 } from '../domain/model';
 import { suggestClub } from '../domain/analytics';
+import { assessSequences, SEQUENCE_RULE_VERSION } from '../domain/sequence';
 import type { Repository } from '../data/contracts';
 
 export function ClubSuggestions({
@@ -22,6 +23,10 @@ export function ClubSuggestions({
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const sequence = useMemo(
+    () => assessSequences(data.shots, data.sessions, 'premium-flat'),
+    [data.shots, data.sessions],
+  );
 
   if (!active) return null;
 
@@ -55,7 +60,12 @@ export function ClubSuggestions({
   async function confirm(shotId: string) {
     if (busy) return;
     const shot = unknown.find((s) => s.id === shotId);
-    const club = choices[shotId] ?? suggestions.get(shotId)?.club ?? '';
+    const seq = shot ? sequence.get(shot.id) : undefined;
+    const club =
+      choices[shotId] ??
+      (seq?.kind === 'inferred-club' ? seq.club : undefined) ??
+      suggestions.get(shotId)?.club ??
+      '';
     if (!shot || !club) return;
     setBusy(shotId);
     setError('');
@@ -95,9 +105,11 @@ export function ClubSuggestions({
         </span>
       </div>
       <p>
-        These shots have no readable club label. We compare carry with clubs
-        that have at least ten known shots, within 15 m. Confirm a suggestion
-        or choose another.
+        These shots have no readable club label. When surrounding shots point
+        to one club, the sequence suggestion is shown first (provisional,{' '}
+        {SEQUENCE_RULE_VERSION}); otherwise we compare carry with clubs that
+        have at least ten known shots, within 15 m. Confirm a suggestion or
+        choose another — the recorded label is never changed automatically.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -107,8 +119,12 @@ export function ClubSuggestions({
       <div className="suggestion-list">
         {unknown.map((shot) => {
           const suggestion = suggestions.get(shot.id);
+          const seq = sequence.get(shot.id);
+          const inferred =
+            seq?.kind === 'inferred-club' ? seq : undefined;
           const carry = shot.measurements.flatCarryPremium;
-          const selected = choices[shot.id] ?? suggestion?.club ?? '';
+          const selected =
+            choices[shot.id] ?? inferred?.club ?? suggestion?.club ?? '';
           return (
             <div className="suggestion-row" key={shot.id}>
               <div className="suggestion-meta">
@@ -119,9 +135,11 @@ export function ClubSuggestions({
                 <span>{carry === null ? '—' : carry.toFixed(1)} m carry</span>
               </div>
               <span className="suggestion-hint">
-                {suggestion
-                  ? `Suggested ${suggestion.club} · ${suggestion.delta.toFixed(1)} m from ${suggestion.sampleSize} shots (${suggestion.source})`
-                  : 'No clear carry-based suggestion — choose a club if you know it'}
+                {inferred
+                  ? `Sequence: likely ${inferred.club} · ${inferred.evidence} surrounding ${inferred.club} shots (${SEQUENCE_RULE_VERSION}, provisional)`
+                  : suggestion
+                    ? `Suggested ${suggestion.club} · ${suggestion.delta.toFixed(1)} m from ${suggestion.sampleSize} shots (${suggestion.source})`
+                    : 'No clear suggestion — choose a club if you know it'}
               </span>
               <select
                 aria-label={`Club for row ${shot.rowIndex}`}
