@@ -727,6 +727,66 @@ test('shows non-authoritative automatic assessment badges in review', async ({
   await expect(mishitShot.getByText('auto: likely mishit')).toHaveCount(0);
 });
 
+test('infers missing clubs from shot sequence and flags forgotten club switches', async ({
+  page,
+  account,
+}) => {
+  const rows = [
+    ...Array.from({ length: 10 }, () => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '160',
+      'Ball Speed (kph) Premium': '150',
+    })),
+    ...Array.from({ length: 3 }, () => ({
+      Club: '?',
+      'Flat Carry Dist. Premium (m)': '159',
+      'Ball Speed (kph) Premium': '149',
+    })),
+    ...Array.from({ length: 10 }, () => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '161',
+      'Ball Speed (kph) Premium': '151',
+    })),
+    ...Array.from({ length: 12 }, () => ({
+      Club: '9i',
+      'Flat Carry Dist. Premium (m)': '120',
+      'Ball Speed (kph) Premium': '118',
+    })),
+    // Forgotten tablet switch: labelled 9i but hit like a driver.
+    ...Array.from({ length: 10 }, () => ({
+      Club: '9i',
+      'Flat Carry Dist. Premium (m)': '235',
+      'Ball Speed (kph) Premium': '205',
+    })),
+    ...Array.from({ length: 12 }, () => ({
+      Club: 'D',
+      'Flat Carry Dist. Premium (m)': '240',
+      'Ball Speed (kph) Premium': '210',
+    })),
+  ];
+  await account.repository.importCsv({
+    filename: 'sequence.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  await login(page, account);
+  await nav(page, 'Review');
+  // Unknown block surrounded by 7i: sequence inference proposes 7i for all three.
+  await expect(page.getByText(/Sequence: likely 7i/)).toHaveCount(3);
+  // The driver-like 9i block is flagged as a possible wrong club, label kept.
+  await page.getByRole('button', { name: 'All shots', exact: true }).click();
+  await expect(
+    page.getByText('auto: possible wrong club (D?)').first(),
+  ).toBeVisible();
+  const suspect = page.locator('.shot', { hasText: '235 m' }).first();
+  await expect(suspect).toContainText('9i → 9i');
+});
+
 test('uses theme colours for carry bands and labels', async ({
   page,
   account,
