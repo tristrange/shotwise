@@ -586,6 +586,44 @@ test('fits the overview hero on phone viewports without pinch zoom', async ({
   }
 });
 
+test('includes unreviewed pitching-wedge shots in iron-style gapping but not higher wedges', async ({
+  page,
+  account,
+}) => {
+  const rows = [
+    ...Array.from({ length: 10 }, (_, i) => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': String(150 + i),
+    })),
+    ...Array.from({ length: 10 }, (_, i) => ({
+      Club: 'PW',
+      'Flat Carry Dist. Premium (m)': String(100 + i),
+    })),
+    ...Array.from({ length: 10 }, (_, i) => ({
+      Club: 'SW',
+      'Flat Carry Dist. Premium (m)': String(50 + i),
+    })),
+  ];
+  await account.repository.importCsv({
+    filename: 'pw-gapping.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  await login(page, account);
+  await nav(page, 'Gapping');
+  const list = page.getByRole('list', { name: 'Club carry distances' });
+  await expect(list.getByRole('link', { name: '7i', exact: true })).toBeVisible();
+  await expect(list.getByRole('link', { name: 'PW', exact: true })).toBeVisible();
+  await expect(
+    list.getByRole('link', { name: 'SW', exact: true }),
+  ).toHaveCount(0);
+});
+
 test('expands overview club summaries inline with per-club measurements', async ({
   page,
   account,
