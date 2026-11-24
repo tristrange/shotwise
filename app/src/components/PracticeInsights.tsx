@@ -19,7 +19,7 @@ const linkSettings = z.object({
   basis: basisSchema,
   mode: z.enum(['recent', 'all']),
   intent: reviewSchema.shape.intent.or(z.literal('all')),
-  contact: z.enum(['all', 'typical']),
+  contact: z.enum(['all', 'typical', 'strong']),
   hide: z.enum(['true', 'false']),
 });
 

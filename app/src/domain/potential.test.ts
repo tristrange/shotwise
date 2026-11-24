@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { clubGaps, type AnalysisQuery } from './analytics';
-import { clubStrongStrike, potentialCarry, strongStrikePopulation, MIN_POTENTIAL_SAMPLES } from './potential';
+import {
+  clubGaps,
+  selectCohort,
+  type AnalysisQuery,
+} from './analytics';
+import {
+  clubStrongStrike,
+  potentialCarry,
+  strongStrikePopulation,
+  MIN_POTENTIAL_SAMPLES,
+} from './potential';
+import { clubProfiles } from './clubProfiles';
 import { makeSession, makeShot } from './fixtures';
 import { emptyDataset, type Dataset, type Session, type Shot } from './model';
 import { quantile } from './statistics';
@@ -225,5 +235,123 @@ describe('strong-strike estimator investigation (roadmap §6.2)', () => {
     expect(seven.potential).toBe(quantile(values, 0.8));
     expect(seven.potential).toBeLessThan(999);
     expect(seven.n).toBe(36);
+  });
+});
+
+describe('strong performance mode in selectCohort (roadmap §6.1)', () => {
+  const session = makeSession({ id: 's', date: TODAY });
+  // 20 shots of 7i with carries 100..119, plus an automatic mishit and a
+  // small 8i group below the minimum sample.
+  const shots: Shot[] = [
+    ...Array.from({ length: 20 }, (_, i) =>
+      makeShot({
+        id: `s-7i-${i}`,
+        sessionId: session.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 100 + i, speedPremium: 200 },
+      }),
+    ),
+    makeShot({
+      id: 's-mishit',
+      sessionId: session.id,
+      rowIndex: 21,
+      recordedClub: '7i',
+      measurements: { flatCarryPremium: 40, speedPremium: 70 },
+    }),
+    ...Array.from({ length: 5 }, (_, i) =>
+      makeShot({
+        id: `s-8i-${i}`,
+        sessionId: session.id,
+        rowIndex: 30 + i,
+        recordedClub: '8i',
+        measurements: { flatCarryPremium: 140, speedPremium: 190 },
+      }),
+    ),
+  ];
+  const data = dataset([session], shots);
+  const base = { mode: 'all', today: TODAY, intent: 'all' } as const;
+
+  it('keeps only shots at or above the club P80, excludes mishits and thin clubs', () => {
+    const all = selectCohort(shots, [session], { ...base, contact: 'all' });
+    expect(all).toHaveLength(26);
+    const typical = selectCohort(shots, [session], { ...base, contact: 'typical' });
+    expect(typical.map((s) => s.id)).not.toContain('s-mishit');
+    // Only shots the automatic layer could assess (>= 10 earlier 7i shots)
+    // resolve to typical; the rest stay uncertain and out of Typical mode.
+    expect(typical).toHaveLength(10);
+    const strong = selectCohort(shots, [session], { ...base, contact: 'strong' });
+    // P80 of the 20 typical carries (100..119) is 115.2 -> carries 116..119.
+    expect(strong.map((s) => s.id).sort()).toEqual([
+      's-7i-16',
+      's-7i-17',
+      's-7i-18',
+      's-7i-19',
+    ]);
+    // The 8i group has no P80 threshold (n < 10) and drops out.
+    expect(strong.every((s) => s.recordedClub === '7i')).toBe(true);
+  });
+
+  it('matches the strong-strike population used for distance potential', () => {
+    const strong = selectCohort(shots, [session], { ...base, contact: 'strong' });
+    const population = strongStrikePopulation(data, 'premium-flat', {
+      ...base,
+      contact: 'all',
+    });
+    const threshold = potentialCarry(
+      population
+        .filter((s) => s.recordedClub === '7i')
+        .map((s) => s.measurements.flatCarryPremium ?? 0),
+    );
+    expect(threshold).toBe(115.2);
+    expect(strong).toHaveLength(4);
+  });
+
+  it('computes strong-strike thresholds within a scoped visit, not across all history', () => {
+    const older = makeSession({ id: 'older', date: '2026-11-01' });
+    // An older visit with much longer carries must not raise the threshold
+    // for the scoped visit.
+    const olderShots = Array.from({ length: 20 }, (_, i) =>
+      makeShot({
+        id: `old-${i}`,
+        sessionId: older.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 190 + i, speedPremium: 230 },
+      }),
+    );
+    const scoped = selectCohort([...olderShots, ...shots], [older, session], {
+      ...base,
+      contact: 'strong',
+      scopeSessionId: session.id,
+    });
+    // Threshold is P80 of the scoped visit (100..119 -> 115.2), not ~206.
+    expect(scoped.map((s) => s.id).sort()).toEqual([
+      's-7i-16',
+      's-7i-17',
+      's-7i-18',
+      's-7i-19',
+    ]);
+    // Without the scope, the same query is dominated by the older visit.
+    const unscoped = selectCohort([...olderShots, ...shots], [older, session], {
+      ...base,
+      contact: 'strong',
+    });
+    expect(unscoped.every((s) => s.sessionId === 'older')).toBe(true);
+  });
+
+  it('keeps club-profile reliability on the broader cohort in strong mode', () => {
+    const profiles = clubProfiles(data, 'premium-flat', {
+      ...base,
+      contact: 'strong',
+    });
+    const seven = profiles.find((p) => p.club === '7i')!;
+    // Spread/lower tail/coverage use the full population including the
+    // mishit (21 measured carries), not the 4 strong strikes.
+    expect(seven.recent.spread.n).toBe(21);
+    expect(seven.recent.lowerTail.n).toBe(21);
+    expect(seven.recent.contact.total).toBe(21);
+    // The typical (performance) metric follows the strong filter.
+    expect(seven.recent.typical.n).toBeLessThanOrEqual(4);
   });
 });

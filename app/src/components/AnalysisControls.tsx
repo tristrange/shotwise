@@ -48,6 +48,53 @@ export function BasisButton({
   );
 }
 
+const PERFORMANCE_OPTIONS: {
+  value: AnalysisSettings['contact'];
+  label: string;
+  title: string;
+}[] = [
+  {
+    value: 'all',
+    label: 'All',
+    title: 'All shots, including mishits — real-world reliability',
+  },
+  {
+    value: 'typical',
+    label: 'Typical',
+    title: 'Typical-contact full swings — expected carry and gapping',
+  },
+  {
+    value: 'strong',
+    label: 'Strong-strike',
+    title: 'Only strong strikes (at or above each club’s P80 carry) — distance potential',
+  },
+];
+
+/** Performance mode: All / Typical / Strong-strike (roadmap §6.1). */
+export function PerformanceToggle({
+  settings,
+  onChange,
+}: {
+  settings: AnalysisSettings;
+  onChange: (settings: AnalysisSettings) => void;
+}) {
+  return (
+    <div className="segmented" role="group" aria-label="Performance mode">
+      {PERFORMANCE_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          className={settings.contact === option.value ? 'active' : ''}
+          aria-pressed={settings.contact === option.value}
+          title={option.title}
+          onClick={() => onChange({ ...settings, contact: option.value })}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ViewToggle({
   mode,
   onChange,

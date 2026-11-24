@@ -26,9 +26,21 @@ export type AnalysisQuery = {
   mode: 'recent' | 'all';
   today: string;
   intent: Review['intent'] | 'all';
-  contact: 'all' | 'typical';
+  /**
+   * Performance mode (roadmap §6.1): 'all' keeps every included shot,
+   * 'typical' keeps resolved typical-contact shots, 'strong' keeps only
+   * strong strikes — full swings at or above the club's P80 carry.
+   */
+  contact: 'all' | 'typical' | 'strong';
   club?: string;
   hideLikelyMishits?: boolean;
+  /**
+   * Optional single-visit scope (e.g. the Explorer's named session): applied
+   * before strong-strike thresholds are computed, so P80 and the minimum
+   * sample come from the scoped visit's own population. Assessment resolution
+   * still sees the full history.
+   */
+  scopeSessionId?: string;
 };
 export type AnalysisSettings = Pick<
   AnalysisQuery,
@@ -37,6 +49,16 @@ export type AnalysisSettings = Pick<
   basis: Basis;
 };
 export const RULE_VERSION = 'club-label-1';
+
+/** P80 is the recommended robust upper-tail estimator (roadmap §6.2, ADR-0002). */
+export const POTENTIAL_QUANTILE = 0.8;
+/** Minimum measured carries before a strong-strike (P80) threshold exists. */
+export const MIN_POTENTIAL_SAMPLES = 10;
+/** P80 carry of a value list — the strong-strike ("distance potential") estimate. */
+export function potentialCarry(values: number[]): number | null {
+  if (values.length < MIN_POTENTIAL_SAMPLES) return null;
+  return quantile(values, POTENTIAL_QUANTILE);
+}
 export function metricStats(shots: Shot[], key: MetricKey) {
   const values = shots.flatMap((s) =>
     s.measurements[key] === null ? [] : [s.measurements[key]],
@@ -144,23 +166,82 @@ export function selectCohort(
       );
     });
   }
+  if (query.scopeSessionId)
+    selected = selected.filter((s) => s.sessionId === query.scopeSessionId);
   const assessments = query.hideLikelyMishits
     ? assessUnusualShots(shots, sessions)
     : null;
+  // Strong-strike mode: per-club P80 thresholds over the typical full-swing
+  // population of the current selection (after any visit scope, so thresholds
+  // come from the scoped visit); clubs below the minimum sample have no
+  // threshold and drop out of this view (marked unreliable elsewhere).
+  const strongThresholds =
+    query.contact === 'strong'
+      ? strongStrikeThresholds(selected, resolved, clubOf, basis)
+      : null;
   return selected.filter((s) => {
     const r = resolved.get(s.id);
     if (!r) return false;
     const assessment = assessments?.get(s.id);
+    const club = clubOf(s);
+    const carry = s.measurements[BASES[basis].carry];
+    const threshold = strongThresholds?.get(club);
+    const strong =
+      threshold !== undefined &&
+      isFullSwingResolved(r) &&
+      r.contact !== 'mishit' &&
+      !r.suspectedWrongClub &&
+      !isUnknownClub(club) &&
+      carry !== null &&
+      threshold <= carry;
     return (
       (!query.hideLikelyMishits ||
         (r.contact !== 'mishit' &&
           !(assessment?.kind === 'assessed' && assessment.unusual))) &&
       (!query.club ||
-        (clubOf(s) === query.club && !r.suspectedWrongClub)) &&
+        (club === query.club && !r.suspectedWrongClub)) &&
       (query.intent === 'all' || r.intent === query.intent) &&
-      (query.contact === 'all' || r.contact === 'typical')
+      (query.contact === 'all' ||
+        (query.contact === 'typical' && r.contact === 'typical') ||
+        (query.contact === 'strong' && strong))
     );
   });
+}
+
+/**
+ * Per-club P80 carry thresholds over the typical (resolved full-swing,
+ * non-mishit, known-club, non-suspected) population — the strong-strike
+ * boundary used by the 'strong' performance mode (ADR-0002).
+ */
+function strongStrikeThresholds(
+  selected: Shot[],
+  resolved: Map<string, ResolvedShot>,
+  clubOf: (s: Shot) => string,
+  basis: Basis,
+): Map<string, number> {
+  const key = BASES[basis].carry;
+  const byClub = new Map<string, number[]>();
+  for (const shot of selected) {
+    const r = resolved.get(shot.id);
+    if (!r) continue;
+    const club = clubOf(shot);
+    const carry = shot.measurements[key];
+    if (
+      !isFullSwingResolved(r) ||
+      r.contact === 'mishit' ||
+      r.suspectedWrongClub ||
+      isUnknownClub(club) ||
+      carry === null
+    )
+      continue;
+    byClub.set(club, [...(byClub.get(club) ?? []), carry]);
+  }
+  const thresholds = new Map<string, number>();
+  for (const [club, values] of byClub) {
+    const threshold = potentialCarry(values);
+    if (threshold !== null) thresholds.set(club, threshold);
+  }
+  return thresholds;
 }
 /**
  * Manual review coverage of a shot set, plus how much of the rest the

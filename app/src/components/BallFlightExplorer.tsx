@@ -73,7 +73,7 @@ export function BallFlightExplorer({
   const [scope, setScope] = useState<'recent' | 'all' | 'session'>('recent');
   const [sessionId, setSessionId] = useState('');
   const [intent, setIntent] = useState<ExplorerQuery['intent']>('all');
-  const [contact, setContact] = useState<'all' | 'typical'>('all');
+  const [contact, setContact] = useState<ExplorerQuery['contact']>('all');
   const [shotPage, setShotPage] = useState(0);
 
   const today = localToday();
@@ -295,12 +295,13 @@ export function BallFlightExplorer({
                 <select
                   value={contact}
                   onChange={(e) => {
-                    setContact(e.target.value as 'all' | 'typical');
+                    setContact(e.target.value as ExplorerQuery['contact']);
                     setShotPage(0);
                   }}
                 >
-                  <option value="all">All contact</option>
-                  <option value="typical">Reviewed typical</option>
+                  <option value="all">All shots</option>
+                  <option value="typical">Typical</option>
+                  <option value="strong">Strong-strike</option>
                 </select>
               </label>
             </div>

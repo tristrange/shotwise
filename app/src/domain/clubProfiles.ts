@@ -142,7 +142,17 @@ export function clubProfiles(
           basis,
         )
       : selected;
-    const reliability = filterCohort(windowShots, resolved, 'reliability');
+    // Reliability (spread, lower tail, contact coverage) always comes from
+    // the broader population — never from the strong-strike subset — so a
+    // potential filter cannot make an inconsistent club look reliable
+    // (roadmap §6.3, ADR-0002).
+    const reliabilityBase = selectCohort(
+      data.shots,
+      data.sessions,
+      { ...query, club, contact: 'all', hideLikelyMishits: false },
+      basis,
+    );
+    const reliability = filterCohort(reliabilityBase, resolved, 'reliability');
     const broaderStats = metricStats(
       filterCohort(selected, resolved, 'broader'),
       key,
