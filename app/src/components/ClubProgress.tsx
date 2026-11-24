@@ -1,7 +1,12 @@
 import { clubProgress } from '../domain/progress';
 import type { AnalysisSettings } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
-import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import {
+  BasisButton,
+  MishitToggle,
+  PerformanceToggle,
+  ViewToggle,
+} from './AnalysisControls';
 
 type SessionPoint = ReturnType<typeof clubProgress>[number]['sessions'][number];
 
@@ -119,7 +124,10 @@ export function ClubProgress({
           <p className="context">{cohort}</p>
         </div>
         <div className="card-controls">
-          <MishitToggle settings={settings} onChange={onSettingsChange} />
+          <PerformanceToggle settings={settings} onChange={onSettingsChange} />
+          {settings.contact !== 'strong' && (
+            <MishitToggle settings={settings} onChange={onSettingsChange} />
+          )}
           <ViewToggle mode={settings.mode} onChange={(mode) => onSettingsChange({ ...settings, mode })} />
           <BasisButton basis={basis} onChange={(next) => onSettingsChange({ ...settings, basis: next })} />
         </div>

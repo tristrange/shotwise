@@ -17,7 +17,12 @@ import {
   summarize,
   type AnalysisSettings,
 } from '../domain/analytics';
-import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import {
+  BasisButton,
+  MishitToggle,
+  PerformanceToggle,
+  ViewToggle,
+} from './AnalysisControls';
 import { clubHref } from './ClubProfiles';
 import { ClubProgress } from './ClubProgress';
 import { Hero } from './Hero';
@@ -148,7 +153,13 @@ export function Analysis({
               <p className="context">{cohort}</p>
             </div>
             <div className="card-controls">
-              <MishitToggle settings={settings} onChange={onSettingsChange} />
+              <PerformanceToggle
+                settings={settings}
+                onChange={onSettingsChange}
+              />
+              {settings.contact !== 'strong' && (
+                <MishitToggle settings={settings} onChange={onSettingsChange} />
+              )}
               <ViewToggle
                 mode={settings.mode}
                 onChange={(mode) => onSettingsChange({ ...settings, mode })}

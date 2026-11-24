@@ -3,7 +3,12 @@ import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Dataset } from '../domain/model';
-import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import {
+  BasisButton,
+  MishitToggle,
+  PerformanceToggle,
+  ViewToggle,
+} from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
 
 const decimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
@@ -251,7 +256,10 @@ export function ClubProfiles({
             <button type="button" className="secondary" onClick={onManageBag}>
               Manage bag
             </button>
-            <MishitToggle settings={settings} onChange={onSettingsChange} />
+            <PerformanceToggle settings={settings} onChange={onSettingsChange} />
+            {settings.contact !== 'strong' && (
+              <MishitToggle settings={settings} onChange={onSettingsChange} />
+            )}
             <ViewToggle
               mode={settings.mode}
               onChange={(mode) => onSettingsChange({ ...settings, mode })}

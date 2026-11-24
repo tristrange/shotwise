@@ -315,6 +315,45 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   expect(await account.repository.load()).toEqual(original);
 });
 
+test('switches overview club rows between All, Typical and Strong-strike', async ({
+  page,
+  account,
+}) => {
+  const rows = Array.from({ length: 20 }, (_, i) => ({
+    Club: '7i',
+    'Flat Carry Dist. Premium (m)': String(100 + i),
+    'Ball Speed (kph) Premium': '200',
+  }));
+  await account.repository.importCsv({
+    filename: 'strong.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  await login(page, account);
+  await nav(page, 'Overview');
+  const list = page.getByRole('list', { name: 'Median carry by club' });
+  const row = list.getByRole('listitem').filter({ hasText: '7i' });
+  const shots = row.locator('.gap-n');
+  await expect(shots).toContainText('20');
+  // P80 of carries 100..119 is 115.2, so Strong-strike keeps 116..119.
+  await page.getByRole('button', { name: 'Strong-strike', exact: true }).click();
+  await expect(shots).toContainText('4');
+  // The mishit toggle is redundant in strong mode and stays hidden.
+  await expect(
+    page.getByRole('button', { name: 'Hide likely mishits', exact: true }),
+  ).toHaveCount(0);
+  // Typical needs an automatic assessment (>= 10 earlier same-club shots).
+  await page.getByRole('button', { name: 'Typical', exact: true }).click();
+  await expect(shots).toContainText('10');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(shots).toContainText('20');
+});
+
 test('hides archived shots and club labels from suggestions', async ({
   page,
   account,

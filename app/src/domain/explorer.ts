@@ -55,7 +55,7 @@ export type ExplorerQuery = {
   basis: Basis;
   scope: ExplorerScope;
   intent: Review['intent'] | 'all';
-  contact: 'all' | 'typical';
+  contact: AnalysisQuery['contact'];
   today: string;
 };
 

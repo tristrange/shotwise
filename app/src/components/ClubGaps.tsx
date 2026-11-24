@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { clubGaps, type AnalysisSettings } from '../domain/analytics';
 import { localToday, type Dataset } from '../domain/model';
-import { BasisButton, MishitToggle, ViewToggle } from './AnalysisControls';
+import {
+  BasisButton,
+  MishitToggle,
+  PerformanceToggle,
+  ViewToggle,
+} from './AnalysisControls';
 import { clubHref } from './ClubProfiles';
 import { PracticeInsights } from './PracticeInsights';
 import { WedgePractice } from './WedgePractice';
@@ -39,7 +44,10 @@ export function ClubGaps({
             <h2>Typical carry and the gap to the next club</h2>
           </div>
           <div className="card-controls">
-            <MishitToggle settings={settings} onChange={onSettingsChange} />
+            <PerformanceToggle settings={settings} onChange={onSettingsChange} />
+            {settings.contact !== 'strong' && (
+              <MishitToggle settings={settings} onChange={onSettingsChange} />
+            )}
             <ViewToggle
               mode={settings.mode}
               onChange={(mode) => onSettingsChange({ ...settings, mode })}

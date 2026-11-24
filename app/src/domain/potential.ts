@@ -1,4 +1,10 @@
-import { metricStats, selectCohort, type AnalysisQuery } from './analytics';
+import {
+  metricStats,
+  MIN_POTENTIAL_SAMPLES,
+  potentialCarry,
+  selectCohort,
+  type AnalysisQuery,
+} from './analytics';
 import {
   isFullSwingResolved,
   resolvedClub,
@@ -12,7 +18,8 @@ import {
   type Dataset,
   type Shot,
 } from './model';
-import { quantile } from './statistics';
+
+export { MIN_POTENTIAL_SAMPLES, potentialCarry };
 
 /**
  * Strong-strike carry — "distance potential" (roadmap §6, ADR-0002).
@@ -27,10 +34,7 @@ import { quantile } from './statistics';
 export const STRONG_STRIKE_RULE_VERSION = 'strong-strike-1';
 
 /** P80 is the recommended robust upper-tail estimator (roadmap §6.2, ADR-0002). */
-export const POTENTIAL_QUANTILE = 0.8;
-
-/** Minimum measured carries before a potential estimate is shown at all. */
-export const MIN_POTENTIAL_SAMPLES = 10;
+export { POTENTIAL_QUANTILE } from './analytics';
 
 export type StrongStrikeCarry = {
   club: string;
@@ -74,12 +78,6 @@ export function strongStrikePopulation(
       );
     },
   );
-}
-
-/** P80 carry of a raw value list, or null below the minimum sample size. */
-export function potentialCarry(values: number[]): number | null {
-  if (values.length < MIN_POTENTIAL_SAMPLES) return null;
-  return quantile(values, POTENTIAL_QUANTILE);
 }
 
 /**
