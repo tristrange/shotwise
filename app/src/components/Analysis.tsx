@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import {
+  resolvedClub,
+  resolveShots,
+} from '../domain/assessment';
 import {
   BASES,
   clubOrder,
-  effectiveClub,
   isUnknownClub,
   localToday,
   type Dataset,
@@ -34,7 +37,15 @@ export function Analysis({
 }) {
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
-  const selected = selectCohort(data.shots, data.sessions, query);
+  const resolved = useMemo(
+    () => resolveShots(data.shots, data.sessions, basis),
+    [data.shots, data.sessions, basis],
+  );
+  const clubOf = (shot: (typeof data.shots)[number]) => {
+    const r = resolved.get(shot.id);
+    return r ? resolvedClub(r) : '';
+  };
+  const selected = selectCohort(data.shots, data.sessions, query, basis);
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
   const shots = selected.toSorted(
     (a, b) =>
@@ -52,7 +63,7 @@ export function Analysis({
   const cohort = `${summary.n} shots · ${summary.sessions} sessions · ${
     dates.length ? `${dates[0]} to ${dates.at(-1)}` : 'No dates'
   }`;
-  const clubs = [...new Set(selected.map(effectiveClub))]
+  const clubs = [...new Set(selected.map(clubOf))]
     .filter((club) => !isUnknownClub(club))
     .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -64,7 +75,10 @@ export function Analysis({
       return next;
     });
   const rows = clubs.map((name) => {
-    const clubShots = selected.filter((s) => effectiveClub(s) === name);
+    // Club rows are club-specific benchmarks: suspected wrong-club labels stay out.
+    const clubShots = selected.filter(
+      (s) => clubOf(s) === name && !resolved.get(s.id)?.suspectedWrongClub,
+    );
     const fields = BASES[basis];
     const stats = metricStats(clubShots, fields.carry);
     return {

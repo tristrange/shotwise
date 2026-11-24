@@ -4,10 +4,10 @@ import {
   selectCohort,
   type AnalysisQuery,
 } from './analytics';
+import { resolvedClub, resolveShots, type ResolvedShot } from './assessment';
 import {
   BASES,
   clubOrder,
-  effectiveClub,
   isWedge,
   type Basis,
   type Dataset,
@@ -22,7 +22,11 @@ type Group = { club: string; shots: Shot[] } & (
 
 const intentOrder = { full: 0, partial: 1, unknown: 2 };
 
-function summarizeGroup(group: Group, basis: Basis) {
+function summarizeGroup(
+  group: Group,
+  basis: Basis,
+  resolved: Map<string, ResolvedShot>,
+) {
   const fields = BASES[basis];
   const { shots } = group;
   // Proximity provides evidence that the recorded target was selected.
@@ -30,13 +34,15 @@ function summarizeGroup(group: Group, basis: Basis) {
     group.kind === 'target'
       ? shots.filter((shot) => shot.measurements.proximity !== null)
       : [];
+  const intentOf = (shot: Shot) =>
+    resolved.get(shot.id)?.intent ?? shot.review.intent;
   return {
     ...group,
     visits: new Set(shots.map((shot) => shot.sessionId)).size,
     intentCounts: {
-      full: shots.filter((shot) => shot.review.intent === 'full').length,
-      partial: shots.filter((shot) => shot.review.intent === 'partial').length,
-      unknown: shots.filter((shot) => shot.review.intent === 'unknown').length,
+      full: shots.filter((shot) => intentOf(shot) === 'full').length,
+      partial: shots.filter((shot) => intentOf(shot) === 'partial').length,
+      unknown: shots.filter((shot) => intentOf(shot) === 'unknown').length,
     },
     carry: metricStats(shots, fields.carry),
     speed: metricStats(shots, fields.speed),
@@ -57,8 +63,12 @@ export function wedgePractice(
   basis: Basis,
   query: AnalysisQuery,
 ) {
-  const shots = selectCohort(data.shots, data.sessions, query).filter((shot) =>
-    isWedge(effectiveClub(shot)),
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const shots = selectCohort(data.shots, data.sessions, query, basis).filter(
+    (shot) => {
+      const r = resolved.get(shot.id);
+      return r ? isWedge(resolvedClub(r)) : false;
+    },
   );
   const dates = new Map(
     data.sessions.map((session) => [session.id, session.date]),
@@ -77,9 +87,10 @@ export function wedgePractice(
   let missingTarget = 0;
   let zeroTarget = 0;
   for (const shot of shots) {
-    const club = effectiveClub(shot);
+    const r = resolved.get(shot.id);
+    const club = r ? resolvedClub(r) : '';
     const { target } = shot.measurements;
-    const { intent } = shot.review;
+    const intent = r?.intent ?? shot.review.intent;
     if (target === null || target < 0) missingTarget++;
     if (target === 0) zeroTarget++;
     const group: Group =
@@ -111,6 +122,6 @@ export function wedgePractice(
     targeted: shots.length - missingTarget - zeroTarget,
     missingTarget,
     zeroTarget,
-    groups: ordered.map((group) => summarizeGroup(group, basis)),
+    groups: ordered.map((group) => summarizeGroup(group, basis, resolved)),
   };
 }

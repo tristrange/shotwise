@@ -1,8 +1,8 @@
 import { metricStats, selectCohort, type AnalysisQuery } from './analytics';
+import { resolvedClub, resolveShots } from './assessment';
 import {
   BASES,
   clubOrder,
-  effectiveClub,
   isUnknownClub,
   type Basis,
   type Dataset,
@@ -14,17 +14,20 @@ export function clubProgress(
   basis: Basis,
   query: AnalysisQuery,
 ) {
-  const selected = selectCohort(data.shots, data.sessions, query);
-  const clubs = [...new Set(selected.map(effectiveClub))]
+  const selected = selectCohort(data.shots, data.sessions, query, basis);
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const clubOf = (s: (typeof selected)[number]) => {
+    const r = resolved.get(s.id);
+    return r ? resolvedClub(r) : '';
+  };
+  const clubs = [...new Set(selected.map(clubOf))]
     .filter((club) => !isUnknownClub(club))
     .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
   return clubs.map((club) => ({
     club,
     sessions: data.sessions
       .filter((session) =>
-        selected.some(
-          (s) => s.sessionId === session.id && effectiveClub(s) === club,
-        ),
+        selected.some((s) => s.sessionId === session.id && clubOf(s) === club),
       )
       .toSorted(
         (a, b) =>
@@ -34,7 +37,7 @@ export function clubProgress(
       )
       .map((session) => {
         const shots = selected.filter(
-          (s) => s.sessionId === session.id && effectiveClub(s) === club,
+          (s) => s.sessionId === session.id && clubOf(s) === club,
         );
         const { n, missing, median, iqr } = metricStats(
           shots,

@@ -1,8 +1,9 @@
 import { selectCohort, type AnalysisQuery } from './analytics';
+import { resolvedClub, resolveShots } from './assessment';
 import {
   BASES,
   clubOrder,
-  effectiveClub,
+  isUnknownClub,
   type Basis,
   type Dataset,
   type MetricKey,
@@ -89,7 +90,7 @@ export function explorerPlot(data: Dataset, query: ExplorerQuery): ExplorerPlot 
     contact: query.contact,
     club: query.club,
   };
-  let shots = selectCohort(data.shots, data.sessions, analysisQuery);
+  let shots = selectCohort(data.shots, data.sessions, analysisQuery, query.basis);
   const scope = query.scope;
   if (typeof scope === 'object') {
     // A named visit uses its complete eligible population, not the Recent cap.
@@ -131,15 +132,31 @@ export function explorerPlot(data: Dataset, query: ExplorerQuery): ExplorerPlot 
   };
 }
 
-/** Effective club labels with any included shot, in club order. */
-export function explorerClubs(data: Dataset, today: string): string[] {
-  const shots = selectCohort(data.shots, data.sessions, {
-    mode: 'all',
-    today,
-    intent: 'all',
-    contact: 'all',
-  });
-  return [...new Set(shots.map(effectiveClub))].sort(
-    (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
+/** Resolved club labels with any included shot, in club order. */
+export function explorerClubs(
+  data: Dataset,
+  today: string,
+  basis: Basis = 'premium-flat',
+): string[] {
+  const shots = selectCohort(
+    data.shots,
+    data.sessions,
+    {
+      mode: 'all',
+      today,
+      intent: 'all',
+      contact: 'all',
+    },
+    basis,
   );
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  return [
+    ...new Set(
+      shots.flatMap((shot) => {
+        const r = resolved.get(shot.id);
+        const club = r ? resolvedClub(r) : '';
+        return isUnknownClub(club) ? [] : [club];
+      }),
+    ),
+  ].sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
 }

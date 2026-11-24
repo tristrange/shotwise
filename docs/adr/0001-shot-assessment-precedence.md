@@ -1,6 +1,6 @@
 # ADR-0001: Shot assessment model and automatic-vs-manual precedence
 
-Status: accepted (audit + policy; implementation follows in later PRs)
+Status: accepted and implemented (policy in PR #59; classifier `intent-contact-1` in #60; sequence inference `sequence-1` in #61; analytics wiring via `resolveShots()` in PR 10)
 Date: 2026-11-24
 Related: `docs/ROADMAP.md` §5, §9
 
@@ -81,6 +81,12 @@ UI; analytics that adopt the automatic layer use the resolved assessment.
 - PR 8+ can add automatic intent/contact assessment and sequence inference
   behind `assessment.ts` without touching persistence schemas: assessments are
   derived, not stored (initially), so backups and RLS are unaffected.
+- `resolveShots()` in `assessment.ts` is the single entry point for analytics:
+  it combines the per-shot classifier and sequence inference into a
+  `ResolvedShot` per shot and is consumed by `selectCohort`, the recap
+  cohorts, club profiles, comparison and progress. Manual review always wins;
+  suspected wrong-club shots are excluded from club-specific benchmarks and
+  never reassigned; inferred clubs are provisional.
 - If persisted assessments are later needed, add optional columns/tables with
   `provenance` + `classifierVersion`; manual review precedence is preserved by
   construction.
