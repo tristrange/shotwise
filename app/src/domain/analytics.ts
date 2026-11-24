@@ -58,6 +58,7 @@ export function metricStats(shots: Shot[], key: MetricKey) {
         : null,
     iqr: n >= 4 && q1 !== null && q3 !== null ? q3 - q1 : null,
     p10: n >= 10 ? quantile(values, 0.1) : null,
+    p80: n >= 10 ? quantile(values, 0.8) : null,
     p90: n >= 10 ? quantile(values, 0.9) : null,
   };
 }
@@ -450,6 +451,8 @@ export type ClubGap = {
   median: number;
   low: number | null;
   high: number | null;
+  /** P80 carry — the strong-strike ("distance potential") estimate (ADR-0002). */
+  potential: number | null;
   reliable: boolean;
   gap: number | null;
   flag: 'large' | 'small' | 'reversed' | null;
@@ -484,6 +487,7 @@ export function clubGaps(
         median: stats.median ?? 0,
         low: stats.p10,
         high: stats.p90,
+        potential: stats.p80,
         reliable: stats.n >= MIN_GAP_SAMPLES,
         gap: null,
         flag: null,
