@@ -13,6 +13,7 @@ import {
   type AnalysisQuery,
 } from './analytics';
 import { makeShot, makeSession, csvFixture } from './fixtures';
+import { resolveShots } from './assessment';
 import { clubOrder, emptyDataset, fullSwingCandidate } from './model';
 import type { Review } from './model';
 
@@ -279,6 +280,140 @@ describe('statistics and reproducible cohorts', () => {
       total: 2,
       mishits: 0,
     });
+  });
+
+  it('treats automatically assessed shots as typical without review (ADR-0001)', () => {
+    const early = makeSession({ id: 'early', date: '2026-11-01' });
+    const late = makeSession({ id: 'late', date: '2026-11-16' });
+    const history = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: early.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 150, speedPremium: 200 },
+      }),
+    );
+    const shots = [
+      ...history,
+      makeShot({
+        id: 'auto-typical',
+        sessionId: late.id,
+        rowIndex: 1,
+        measurements: { flatCarryPremium: 150, speedPremium: 200 },
+      }),
+      makeShot({
+        id: 'auto-mishit',
+        sessionId: late.id,
+        rowIndex: 2,
+        measurements: { flatCarryPremium: 50, speedPremium: 80 },
+      }),
+    ];
+    const base = {
+      mode: 'all',
+      today: '2026-11-16',
+      intent: 'all',
+    } satisfies Omit<AnalysisQuery, 'contact'>;
+    // Contact "typical" no longer requires manual review: the automatic
+    // assessment of the unreviewed normal shot qualifies it.
+    const typical = selectCohort(shots, [early, late], {
+      ...base,
+      contact: 'typical',
+    });
+    expect(typical.map((s) => s.id)).toContain('auto-typical');
+    expect(typical.map((s) => s.id)).not.toContain('auto-mishit');
+    // Hide-likely-mishits also drops the automatically assessed mishit.
+    const hidden = selectCohort(shots, [early, late], {
+      ...base,
+      contact: 'all',
+      hideLikelyMishits: true,
+    });
+    expect(hidden.map((s) => s.id)).not.toContain('auto-mishit');
+    expect(hidden.map((s) => s.id)).toContain('auto-typical');
+    // Manual review stays authoritative over the automatic layer.
+    const manual = [
+      ...history,
+      makeShot({
+        id: 'manual-typical',
+        sessionId: late.id,
+        rowIndex: 2,
+        measurements: { flatCarryPremium: 50, speedPremium: 80 },
+        review: { contact: 'typical' },
+      }),
+    ];
+    const typicalManual = selectCohort(manual, [early, late], {
+      ...base,
+      contact: 'typical',
+    });
+    expect(typicalManual.map((s) => s.id)).toContain('manual-typical');
+    // Coverage reports both manual review and automatic assessment.
+    const resolved = resolveShots(shots, [early, late], 'premium-flat');
+    // Assessed = manual (0) plus automatic: the two late shots and the two
+    // history shots that already had >= 10 earlier shots as their baseline.
+    expect(reviewCoverage(shots, resolved)).toMatchObject({
+      total: 14,
+      reviewed: 0,
+      assessed: 4,
+      automatic: 4,
+    });
+  });
+
+  it('groups inferred clubs and excludes suspected wrong-club shots from club views', () => {
+    const early = makeSession({ id: 'early', date: '2026-11-01' });
+    const late = makeSession({ id: 'late', date: '2026-11-16' });
+    const history = (club: string, carry: number, speed: number) =>
+      Array.from({ length: 12 }, (_, i) =>
+        makeShot({
+          sessionId: early.id,
+          rowIndex: i + 1,
+          recordedClub: club,
+          measurements: { flatCarryPremium: carry, speedPremium: speed },
+        }),
+      );
+    const shots = [
+      ...history('7i', 150, 200),
+      ...history('9i', 120, 170),
+      // Unknown label inside a 7i run: inferred as 7i, groups with 7i.
+      makeShot({
+        id: 'unknown',
+        sessionId: late.id,
+        rowIndex: 1,
+        recordedClub: '?',
+        measurements: { flatCarryPremium: 150, speedPremium: 200 },
+      }),
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          id: `late-7i-${i}`,
+          sessionId: late.id,
+          rowIndex: i + 2,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 150, speedPremium: 200 },
+        }),
+      ),
+      // A 9i-labelled run that actually matches 7i measurements: suspected.
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          id: `wrong-${i}`,
+          sessionId: late.id,
+          rowIndex: 20 + i,
+          recordedClub: '9i',
+          measurements: { flatCarryPremium: 150, speedPremium: 200 },
+        }),
+      ),
+    ];
+    const base = {
+      mode: 'all',
+      today: '2026-11-16',
+      intent: 'all',
+      contact: 'all',
+    } satisfies AnalysisQuery;
+    const club7i = selectCohort(shots, [early, late], { ...base, club: '7i' });
+    expect(club7i.map((s) => s.id)).toContain('unknown');
+    expect(club7i.map((s) => s.id)).not.toContain('wrong-3');
+    const club9i = selectCohort(shots, [early, late], { ...base, club: '9i' });
+    expect(club9i.map((s) => s.id)).not.toContain('wrong-3');
+    expect(club9i).toHaveLength(12);
+    // Without a club filter the suspected shots stay in the session-wide view.
+    expect(selectCohort(shots, [early, late], base)).toHaveLength(45);
   });
 });
 

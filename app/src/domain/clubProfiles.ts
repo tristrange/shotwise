@@ -6,6 +6,7 @@ import {
   type AnalysisQuery,
   type ClubGap,
 } from './analytics';
+import { resolveShots, type ResolvedShot } from './assessment';
 import { equipmentByCohort, type LabelEquipmentSummary } from './equipment';
 import {
   BASES,
@@ -19,7 +20,7 @@ import {
 import { clubProgress } from './progress';
 import {
   clubShotGroups,
-  recapCohorts,
+  filterCohort,
   sessionRecap,
   type ClubRecap,
 } from './recap';
@@ -103,7 +104,8 @@ export function clubProfiles(
   const key = BASES[basis].carry;
   const equipmentForShots = equipmentByCohort(data);
   const sessionMap = new Map(data.sessions.map((s) => [s.id, s]));
-  const groups = clubShotGroups(data);
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const groups = clubShotGroups(data, resolved);
 
   const clubs = [...new Set([...groups.values()].flatMap((perClub) => [...perClub.keys()]))]
     .filter((club) => !isUnknownClub(club))
@@ -127,21 +129,26 @@ export function clubProfiles(
   };
 
   return clubs.map((club) => {
-    const selected = selectCohort(data.shots, data.sessions, { ...query, club });
+    const selected = selectCohort(data.shots, data.sessions, { ...query, club }, basis);
     const windowShots = query.hideLikelyMishits
-      ? selectCohort(data.shots, data.sessions, {
-          ...query,
-          club,
-          hideLikelyMishits: false,
-        })
+      ? selectCohort(
+          data.shots,
+          data.sessions,
+          {
+            ...query,
+            club,
+            hideLikelyMishits: false,
+          },
+          basis,
+        )
       : selected;
-    const reliability = windowShots.filter(recapCohorts.reliability);
+    const reliability = filterCohort(windowShots, resolved, 'reliability');
     const broaderStats = metricStats(
-      selected.filter(recapCohorts.broader),
+      filterCohort(selected, resolved, 'broader'),
       key,
     );
     const reviewedStats = metricStats(
-      selected.filter(recapCohorts.reviewed),
+      filterCohort(selected, resolved, 'reviewed'),
       key,
     );
     const reliabilityStats = metricStats(reliability, key);
@@ -183,10 +190,14 @@ export function clubProfiles(
     for (const session of [...sessionsWithClub].reverse()) {
       const shots = groups.get(session.id)?.get(club) ?? [];
       const stats = metricStats(shots, key);
-      const coverage = reviewCoverage(shots.filter(recapCohorts.reliability));
+      const coverage = reviewCoverage(
+        filterCohort(shots, resolved, 'reliability'),
+        resolved,
+      );
       const full = coverage.fullReviewed + coverage.unassessed;
       for (const shot of shots) {
-        if (shot.review.intent === 'partial') continue;
+        const r: ResolvedShot | undefined = resolved.get(shot.id);
+        if (r?.intent === 'partial') continue;
         const value = shot.measurements[key];
         if (value === null || (best !== null && value <= best.value)) continue;
         best = {
@@ -196,7 +207,7 @@ export function clubProfiles(
           n: stats.n,
           missing: stats.missing,
           reviewedShare: full ? coverage.fullReviewed / full : null,
-          mishit: shot.review.contact === 'mishit',
+          mishit: r?.contact === 'mishit',
         };
       }
     }
@@ -227,7 +238,7 @@ export function clubProfiles(
             reliabilityStats.n >= MIN_TAIL_SHOTS ? reliabilityStats.p10 : null,
           n: reliabilityStats.n,
         },
-        contact: reviewCoverage(reliability),
+        contact: reviewCoverage(reliability, resolved),
       },
       latest,
       history: (historyByClub.get(club) ?? []).map((point) => ({

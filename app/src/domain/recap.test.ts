@@ -35,7 +35,7 @@ function series(
   return carries.map((carry, i) =>
     makeShot({
       ...options,
-      id: options.id ? options.id + '-' + i : session.id + '-' + i,
+      id: options.id ? options.id + '-' + i : session.id + '-' + i + '-' + crypto.randomUUID().slice(0, 8),
       rowIndex: (options.rowIndex ?? 1) + i,
       sessionId: session.id,
       measurements: { flatCarryPremium: carry, ...options.measurements },
@@ -442,6 +442,34 @@ describe('session recap', () => {
     expect(shots).toEqual(original);
   });
 
+  it('uses the automatic assessment for unreviewed shots, so review stays optional', () => {
+    const priors = [before(1), before(2)];
+    // Priors are reviewed full, typical swings (the oldest prior has no
+    // earlier baseline for the classifier, so it needs the manual contact).
+    const priorShots = priors.flatMap((s) =>
+      series(s, repeat(12, 100), {
+        review: { intent: 'full', contact: 'typical' },
+        measurements: { speedPremium: 200 },
+      }),
+    );
+    const currentShots = series(current, repeat(12, 150), {
+      measurements: { speedPremium: 200 },
+    });
+    const result = club([current, ...priors], [...priorShots, ...currentShots]);
+    // The unreviewed current shots are automatically assessed as full, typical
+    // swings, so the reviewed cohort is usable without any manual review.
+    expect(result.potential.preferred).toBe('reviewed');
+    expect(result.potential.reviewed.current).toMatchObject({
+      measured: 12,
+      value: 150,
+    });
+    expect(result.reliability.contact).toMatchObject({
+      reviewed: 0,
+      assessed: 12,
+      automatic: 12,
+    });
+  });
+
   it('retains severe mishits and advisory flags in reliability and reports a tighter spread with a worse lower tail', () => {
     const prior = [before(1), before(2)];
     const low = series(current, [3, 3, 3], {
@@ -623,8 +651,14 @@ describe('session recap', () => {
         'premium-flat': 160,
       }[basis];
       const shots = [
+        // Reviewed full intent: the oldest prior has no earlier baseline for
+        // the automatic classifier, and an unknown-intent share would trip the
+        // shot-mix guard for reasons unrelated to this test's basis checks.
         ...priors.flatMap((s) =>
-          series(s, repeat(12, 0), { measurements: measured }),
+          series(s, repeat(12, 0), {
+            measurements: measured,
+            review: { intent: 'full' },
+          }),
         ),
         ...series(current, repeat(12, 0), {
           measurements: { ...measured, [fields.carry]: base + 10 },

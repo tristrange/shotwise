@@ -77,7 +77,7 @@ export function BallFlightExplorer({
   const [shotPage, setShotPage] = useState(0);
 
   const today = localToday();
-  const clubs = explorerClubs(data, today);
+  const clubs = explorerClubs(data, today, settings.basis);
   const activeClub = clubs.includes(club) ? club : (clubs[0] ?? '');
   const sessionOptions = [...data.sessions]
     .filter((session) => !session.archived)

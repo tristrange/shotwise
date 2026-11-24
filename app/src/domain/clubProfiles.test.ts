@@ -36,7 +36,7 @@ function series(
   return carries.map((carry, i) =>
     makeShot({
       ...options,
-      id: options.id ? options.id + '-' + i : session.id + '-' + i,
+      id: options.id ? options.id + '-' + i : session.id + '-' + i + '-' + crypto.randomUUID().slice(0, 8),
       rowIndex: (options.rowIndex ?? 1) + i,
       sessionId: session.id,
       measurements: { flatCarryPremium: carry, ...options.measurements },

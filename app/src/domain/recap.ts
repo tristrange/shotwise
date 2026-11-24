@@ -1,9 +1,14 @@
 import { reviewCoverage } from './analytics';
 import {
+  isFullSwingResolved,
+  resolvedClub,
+  resolveShots,
+  type ResolvedShot,
+} from './assessment';
+import {
   BASES,
   clubOrder,
   effectiveClub,
-  fullSwingCandidate,
   isUnknownClub,
   shiftDate,
   venueKey,
@@ -73,6 +78,7 @@ export function observe<T>(
   { session, shots }: SessionShots,
   key: MetricKey,
   summarize: (values: number[]) => T | null,
+  resolved?: Map<string, ResolvedShot>,
 ): Observation<T> {
   const values: number[] = [];
   const shotIds: string[] = [];
@@ -83,7 +89,8 @@ export function observe<T>(
     if (value === null) continue;
     values.push(value);
     shotIds.push(shot.id);
-    if (shot.review.intent === 'unknown') unknownIntent++;
+    const intent = resolved?.get(shot.id)?.intent ?? shot.review.intent;
+    if (intent === 'unknown') unknownIntent++;
     if ((shot.measurements.target ?? 0) > 0) targeted++;
   }
   const measured = values.length;
@@ -104,9 +111,12 @@ function compareMetric<T>(
   summarize: (values: number[]) => T | null,
   aggregate: (values: T[]) => T | null,
   minPrior = 1,
+  resolved?: Map<string, ResolvedShot>,
 ) {
-  const current = observe(history.current, key, summarize);
-  const prior = history.earlier.map((visit) => observe(visit, key, summarize));
+  const current = observe(history.current, key, summarize, resolved);
+  const prior = history.earlier.map((visit) =>
+    observe(visit, key, summarize, resolved),
+  );
   const venue = venueKey(current.session);
   const differentVenue = ({ session }: Observation<T>) => {
     const other = venueKey(session);
@@ -119,7 +129,7 @@ function compareMetric<T>(
     BASELINE_SESSIONS,
   );
   const unresolved = history.unresolved
-    .map((visit) => observe(visit, key, summarize))
+    .map((visit) => observe(visit, key, summarize, resolved))
     .filter((sample) => sample.measured > 0 && !differentVenue(sample));
 
   return {
@@ -271,11 +281,15 @@ function meanShares(values: Shares[]): Shares | null {
 
 function filterHistory(
   history: History,
-  include: (shot: Shot) => boolean,
+  resolved: Map<string, ResolvedShot>,
+  include: (resolved: ResolvedShot) => boolean,
 ): History {
   const select = ({ session, shots }: SessionShots) => ({
     session,
-    shots: shots.filter(include),
+    shots: shots.filter((shot) => {
+      const r = resolved.get(shot.id);
+      return r !== undefined && include(r);
+    }),
   });
   return {
     current: select(history.current),
@@ -288,22 +302,51 @@ function filterHistory(
   };
 }
 
-/** Review cohorts shared by the recap and derived club profiles. */
+/**
+ * Assessment cohorts shared by the recap and derived club profiles, read
+ * through the resolved assessment layer (ADR-0001): manual review wins, then
+ * the automatic classifier, so cohorts are meaningful without review. Shots
+ * whose recorded club is suspected wrong stay out of these club benchmarks.
+ */
 export const recapCohorts = {
-  reliability: (shot: Shot) => fullSwingCandidate(shot),
-  broader: (shot: Shot) =>
-    fullSwingCandidate(shot) && shot.review.contact !== 'mishit',
-  reviewed: (shot: Shot) =>
-    fullSwingCandidate(shot) &&
-    shot.review.intent === 'full' &&
-    shot.review.contact === 'typical',
+  reliability: (r: ResolvedShot) =>
+    isFullSwingResolved(r) && !r.suspectedWrongClub,
+  broader: (r: ResolvedShot) =>
+    isFullSwingResolved(r) && !r.suspectedWrongClub && r.contact !== 'mishit',
+  reviewed: (r: ResolvedShot) =>
+    isFullSwingResolved(r) &&
+    !r.suspectedWrongClub &&
+    r.intent === 'full' &&
+    r.contact === 'typical',
 } satisfies Record<
   'reliability' | 'broader' | 'reviewed',
-  (shot: Shot) => boolean
+  (resolved: ResolvedShot) => boolean
 >;
 
-/** Included shots of every non-archived session, grouped by effective club. */
-export function clubShotGroups(data: Dataset) {
+export type RecapCohort = keyof typeof recapCohorts;
+
+/** Filter raw shots by a resolved recap cohort. */
+export function filterCohort(
+  shots: Shot[],
+  resolved: Map<string, ResolvedShot>,
+  cohort: RecapCohort,
+): Shot[] {
+  return shots.filter((shot) => {
+    const r = resolved.get(shot.id);
+    return r !== undefined && recapCohorts[cohort](r);
+  });
+}
+
+/**
+ * Included shots of every non-archived session, grouped by club. With a
+ * resolved map the grouping uses resolved clubs (provisional inferences
+ * included) and drops suspected wrong-club labels; without one it falls back
+ * to the manual effective club.
+ */
+export function clubShotGroups(
+  data: Dataset,
+  resolved?: Map<string, ResolvedShot>,
+) {
   const groups = new Map<string, Map<string, Shot[]>>();
   for (const session of data.sessions) {
     if (!session.archived) groups.set(session.id, new Map());
@@ -311,7 +354,9 @@ export function clubShotGroups(data: Dataset) {
   for (const shot of data.shots) {
     const perClub = groups.get(shot.sessionId);
     if (!perClub || shot.review.exclusion.kind === 'excluded') continue;
-    const club = effectiveClub(shot);
+    const r = resolved?.get(shot.id);
+    if (r?.suspectedWrongClub) continue;
+    const club = r ? resolvedClub(r) : effectiveClub(shot);
     const list = perClub.get(club) ?? [];
     list.push(shot);
     perClub.set(club, list);
@@ -324,16 +369,21 @@ export function clubShotGroups(data: Dataset) {
   return groups;
 }
 
-function clubRecap(club: string, history: History, basis: Basis) {
+function clubRecap(
+  club: string,
+  history: History,
+  basis: Basis,
+  resolved: Map<string, ResolvedShot>,
+) {
   const fields = BASES[basis];
-  const reliability = filterHistory(history, recapCohorts.reliability);
-  const broader = filterHistory(history, recapCohorts.broader);
-  const reviewed = filterHistory(history, recapCohorts.reviewed);
+  const reliability = filterHistory(history, resolved, recapCohorts.reliability);
+  const broader = filterHistory(history, resolved, recapCohorts.broader);
+  const reviewed = filterHistory(history, resolved, recapCohorts.reviewed);
   const compareCarry = (
     cohort: History,
     summarize: (values: number[]) => number | null,
     minPrior = MIN_PRIOR_PER_SESSION,
-  ) => compareMetric(cohort, fields.carry, summarize, median, minPrior);
+  ) => compareMetric(cohort, fields.carry, summarize, median, minPrior, resolved);
   const carry = (cohort: History) =>
     withFinding(compareCarry(cohort, median), 'carry');
   const reviewedCarry = carry(reviewed);
@@ -357,12 +407,12 @@ function clubRecap(club: string, history: History, basis: Basis) {
   ) {
     spread.finding = { kind: 'mixed' };
   }
-  const contact = reviewCoverage(reliability.current.shots);
+  const contact = reviewCoverage(reliability.current.shots, resolved);
   const full = contact.fullReviewed + contact.unassessed;
   const flight = (key: MetricKey) =>
-    compareMetric(reliability, key, median, median);
+    compareMetric(reliability, key, median, median, 1, resolved);
   const direction = (key: MetricKey) =>
-    compareMetric(reliability, key, directionShares, meanShares);
+    compareMetric(reliability, key, directionShares, meanShares, 1, resolved);
   const preferred: 'reviewed' | 'broader' =
     reviewedCarry.finding.kind === 'withheld' ? 'broader' : 'reviewed';
 
@@ -383,6 +433,8 @@ function clubRecap(club: string, history: History, basis: Basis) {
         mishits: contact.mishits,
         rate: contact.rate,
         reviewedShare: full ? contact.fullReviewed / full : null,
+        assessed: contact.assessed,
+        automatic: contact.automatic,
       },
     },
     flight: {
@@ -475,7 +527,8 @@ export function sessionRecap(data: Dataset, sessionId: string, basis: Basis) {
         (b.time ?? '').localeCompare(a.time ?? '') ||
         a.id.localeCompare(b.id),
     );
-  const groups = clubShotGroups(data);
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const groups = clubShotGroups(data, resolved);
   let recorded = 0;
   let includedCount = 0;
   for (const shot of data.shots) {
@@ -502,7 +555,7 @@ export function sessionRecap(data: Dataset, sessionId: string, basis: Basis) {
           shots,
         });
       }
-      return clubRecap(club, history, basis);
+      return clubRecap(club, history, basis, resolved);
     });
 
   return {

@@ -1,8 +1,9 @@
 import { directionStats, metricStats, reviewCoverage } from './analytics';
+import { resolveShots, type ResolvedShot } from './assessment';
 import { equipmentByCohort, type LabelEquipmentSummary } from './equipment';
 import {
   clubShotGroups,
-  recapCohorts,
+  filterCohort,
   SUBSTANTIAL_SHARE_CHANGE,
 } from './recap';
 import {
@@ -96,6 +97,10 @@ export type ReviewSide = {
   rate: number | null;
   /** Share of full swings with contact reviewed. */
   reviewedShare: number | null;
+  /** Full swings with contact assessed manually or automatically. */
+  assessed: number;
+  /** Of those, assessed only by the automatic layer. */
+  automatic: number;
   /** Counts are shown when coverage is thin. */
   thin: boolean;
 };
@@ -257,8 +262,11 @@ function directionComparison(
   return { reference, comparison, deltaPp };
 }
 
-function reviewSide(shots: Shot[]): ReviewSide {
-  const contact = reviewCoverage(shots);
+function reviewSide(
+  shots: Shot[],
+  resolved: Map<string, ResolvedShot>,
+): ReviewSide {
+  const contact = reviewCoverage(shots, resolved);
   const full = contact.fullReviewed + contact.unassessed;
   return {
     fullSwings: full,
@@ -267,6 +275,8 @@ function reviewSide(shots: Shot[]): ReviewSide {
     mishits: contact.mishits,
     rate: contact.rate,
     reviewedShare: full ? contact.fullReviewed / full : null,
+    assessed: contact.assessed,
+    automatic: contact.automatic,
     thin: full > 0 && contact.fullReviewed < MIN_REVIEWED_FULL,
   };
 }
@@ -274,9 +284,10 @@ function reviewSide(shots: Shot[]): ReviewSide {
 function reviewComparison(
   referenceShots: Shot[],
   comparisonShots: Shot[],
+  resolved: Map<string, ResolvedShot>,
 ): ReviewComparison {
-  const reference = reviewSide(referenceShots);
-  const comparison = reviewSide(comparisonShots);
+  const reference = reviewSide(referenceShots, resolved);
+  const comparison = reviewSide(comparisonShots, resolved);
   return {
     reference,
     comparison,
@@ -296,11 +307,12 @@ function typicalCarry(
   comparisonShots: Shot[],
   carryKey: MetricKey,
   intent: CompareIntent,
+  resolved: Map<string, ResolvedShot>,
 ): TypicalCarry {
   const reviewed = (shots: Shot[]) =>
-    metricStats(shots.filter(recapCohorts.reviewed), carryKey);
+    metricStats(filterCohort(shots, resolved, 'reviewed'), carryKey);
   const broader = (shots: Shot[]) =>
-    metricStats(shots.filter(recapCohorts.broader), carryKey);
+    metricStats(filterCohort(shots, resolved, 'broader'), carryKey);
   const reviewedReference = reviewed(referenceShots);
   const reviewedComparison = reviewed(comparisonShots);
   if (
@@ -342,14 +354,17 @@ function sideResult(
   sessionId: string,
   intent: CompareIntent,
   carryKey: MetricKey,
+  resolved: Map<string, ResolvedShot>,
 ): CompareSide {
   const session = data.sessions.find((item) => item.id === sessionId) ?? null;
   const shots = data.shots.filter((shot) => shot.sessionId === sessionId);
   const included = shots.filter(
     (shot) => shot.review.exclusion.kind === 'included',
   );
+  const intentOf = (shot: Shot) =>
+    resolved.get(shot.id)?.intent ?? shot.review.intent;
   const selected = included.filter(
-    (shot) => intent === 'all' || shot.review.intent === intent,
+    (shot) => intent === 'all' || intentOf(shot) === intent,
   );
   const intents: CompareSide['intents'] = {
     full: 0,
@@ -360,10 +375,10 @@ function sideResult(
   let unknownIntent = 0;
   let targeted = 0;
   for (const shot of selected) {
-    intents[shot.review.intent]++;
+    intents[intentOf(shot)]++;
     if (shot.measurements[carryKey] === null) continue;
     carryMeasured++;
-    if (shot.review.intent === 'unknown') unknownIntent++;
+    if (intentOf(shot) === 'unknown') unknownIntent++;
     if ((shot.measurements.target ?? 0) > 0) targeted++;
   }
   return {
@@ -406,8 +421,9 @@ export function compareSessions(
 ): SessionComparison {
   const duplicate = referenceId === comparisonId;
   const carryKey = BASES[basis].carry;
-  const reference = sideResult(data, referenceId, intent, carryKey);
-  const comparison = sideResult(data, comparisonId, intent, carryKey);
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const reference = sideResult(data, referenceId, intent, carryKey, resolved);
+  const comparison = sideResult(data, comparisonId, intent, carryKey, resolved);
   const referenceVenue = reference.session ? venueKey(reference.session) : '';
   const comparisonVenue = comparison.session
     ? venueKey(comparison.session)
@@ -446,15 +462,18 @@ export function compareSessions(
   };
   if (duplicate || !reference.available || !comparison.available) return result;
 
-  const groups = clubShotGroups({
-    ...data,
-    sessions: data.sessions.filter(
-      ({ id }) => id === referenceId || id === comparisonId,
-    ),
-  });
+  const groups = clubShotGroups(
+    {
+      ...data,
+      sessions: data.sessions.filter(
+        ({ id }) => id === referenceId || id === comparisonId,
+      ),
+    },
+    resolved,
+  );
   const fields = BASES[basis];
   const matchesIntent = (shot: Shot) =>
-    intent === 'all' || shot.review.intent === intent;
+    intent === 'all' || (resolved.get(shot.id)?.intent ?? shot.review.intent) === intent;
   const collect = (sessionId: string) => {
     const clubs = new Map<string, Shot[]>();
     for (const [club, shots] of groups.get(sessionId) ?? []) {
@@ -502,6 +521,7 @@ export function compareSessions(
           comparisonShots,
           carryKey,
           intent,
+          resolved,
         ),
         flight: {
           speed: metricComparison(
@@ -536,7 +556,7 @@ export function compareSessions(
             'fromCentre',
           ),
         },
-        review: reviewComparison(referenceShots, comparisonShots),
+        review: reviewComparison(referenceShots, comparisonShots, resolved),
       };
     });
 

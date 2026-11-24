@@ -1,4 +1,15 @@
-import { effectiveClub, isUnknownClub, type Review, type Shot } from './model';
+import { assessShots, CLASSIFIER_VERSION, type ShotAssessment } from './classify';
+import {
+  effectiveClub,
+  isPitchingWedge,
+  isUnknownClub,
+  isWedge,
+  type Basis,
+  type Review,
+  type Session,
+  type Shot,
+} from './model';
+import { assessSequences, SEQUENCE_RULE_VERSION } from './sequence';
 
 /**
  * Resolution policy for shot assessments (ADR-0001). Pure functions: the
@@ -6,8 +17,8 @@ import { effectiveClub, isUnknownClub, type Review, type Shot } from './model';
  * over an automatic assessment, which wins over the recorded default.
  */
 
-/** Version of the automatic classifier that produced an assessment. */
-export const CLASSIFIER_VERSION = 'none';
+/** Combined version of the automatic layers behind {@link resolveShots}. */
+export const ASSESSMENT_VERSION = `${CLASSIFIER_VERSION}+${SEQUENCE_RULE_VERSION}`;
 
 export type IntentAssessment = Review['intent'];
 export type ContactAssessment = Review['contact'];
@@ -63,4 +74,89 @@ export function resolveClub(shot: Shot, inferred?: string): ClubAssessment {
 /** The club to group a shot under, given the resolved assessment. */
 export function analysisClub(assessment: ClubAssessment): string {
   return assessment.club;
+}
+
+/**
+ * A shot with every assessment dimension resolved through the ADR-0001
+ * precedence chain: manual review, then the versioned automatic assessment,
+ * then the recorded default. `suspectedWrongClub` marks shots whose recorded
+ * label a sequence rule suspects is wrong; the recorded label is kept and the
+ * shot is excluded from club-specific benchmarks, never reassigned.
+ */
+export type ResolvedShot = {
+  shot: Shot;
+  intent: IntentAssessment;
+  contact: ContactAssessment;
+  club: ClubAssessment;
+  suspectedWrongClub: boolean;
+  automatic: ShotAssessment | undefined;
+  assessmentVersion: typeof ASSESSMENT_VERSION;
+};
+
+/** The club a resolved shot groups under in analytics. */
+export function resolvedClub(resolved: ResolvedShot): string {
+  return analysisClub(resolved.club);
+}
+
+/**
+ * Resolved version of `fullSwingCandidate()` (model.ts): explicit full intent
+ * wins; otherwise an unresolved intent falls back to the club heuristic, now
+ * evaluated on the resolved club so provisional inferences count.
+ */
+export function isFullSwingResolved(resolved: ResolvedShot): boolean {
+  if (resolved.intent === 'full') return true;
+  if (resolved.intent !== 'unknown') return false;
+  const club = resolvedClub(resolved);
+  return !isWedge(club) || isPitchingWedge(club);
+}
+
+type CacheEntry = {
+  sessions: Session[];
+  basis: Basis;
+  length: number;
+  resolved: Map<string, ResolvedShot>;
+};
+const resolveCache = new WeakMap<Shot[], CacheEntry>();
+
+/**
+ * Resolve every shot's intent, contact and club through the precedence chain,
+ * combining the per-shot classifier (`intent-contact-1`) with sequence-aware
+ * club inference (`sequence-1`). Results are cached per shots/sessions/basis
+ * identity — callers may invoke this freely. Assessments stay derived: the
+ * shot and its review are never modified.
+ */
+export function resolveShots(
+  shots: Shot[],
+  sessions: Session[],
+  basis: Basis = 'premium-flat',
+): Map<string, ResolvedShot> {
+  const cached = resolveCache.get(shots);
+  if (
+    cached &&
+    cached.sessions === sessions &&
+    cached.basis === basis &&
+    cached.length === shots.length
+  )
+    return cached.resolved;
+  const automatic = assessShots(shots, sessions, basis);
+  const sequences = assessSequences(shots, sessions, basis);
+  const resolved = new Map<string, ResolvedShot>();
+  for (const shot of shots) {
+    const auto = automatic.get(shot.id);
+    const sequence = sequences.get(shot.id);
+    resolved.set(shot.id, {
+      shot,
+      intent: resolveIntent(shot.review.intent, auto?.intent.value),
+      contact: resolveContact(shot.review.contact, auto?.contact.value),
+      club: resolveClub(
+        shot,
+        sequence?.kind === 'inferred-club' ? sequence.club : undefined,
+      ),
+      suspectedWrongClub: sequence?.kind === 'suspected-wrong-club',
+      automatic: auto,
+      assessmentVersion: ASSESSMENT_VERSION,
+    });
+  }
+  resolveCache.set(shots, { sessions, basis, length: shots.length, resolved });
+  return resolved;
 }

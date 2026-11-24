@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { shotShapes } from '../domain/shotShapes';
+import { resolvedClub, resolveShots } from '../domain/assessment';
 import {
   BASES,
   clubOrder,
-  effectiveClub,
   localToday,
   type Dataset,
 } from '../domain/model';
@@ -54,11 +54,23 @@ export function ShotShapes({
 }) {
   const [selected, setSelected] = useState('');
   const { basis, ...filters } = settings;
-  const { shots, points } = shotShapes(data, {
-    ...filters,
-    today: localToday(),
-  });
-  const clubs = [...new Set(shots.map(effectiveClub))].sort(
+  const { shots, points } = shotShapes(
+    data,
+    {
+      ...filters,
+      today: localToday(),
+    },
+    basis,
+  );
+  const resolved = useMemo(
+    () => resolveShots(data.shots, data.sessions, basis),
+    [data.shots, data.sessions, basis],
+  );
+  const clubOf = (shot: (typeof shots)[number]) => {
+    const r = resolved.get(shot.id);
+    return r ? resolvedClub(r) : '';
+  };
+  const clubs = [...new Set(shots.map(clubOf))].sort(
     (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
   );
   const sessionNames = new Map(
@@ -109,8 +121,8 @@ export function ShotShapes({
           <p>No shots match this view. Try All-time or import a session.</p>
         )}
         {clubs.map((club) => {
-          const group = shots.filter((s) => effectiveClub(s) === club);
-          const paired = points.filter((p) => effectiveClub(p.shot) === club);
+          const group = shots.filter((s) => clubOf(s) === club);
+          const paired = points.filter((p) => clubOf(p.shot) === club);
           const inspected = group.find((s) => s.id === selected);
           const carry = inspected?.measurements[BASES[basis].carry];
           const xLimit = Math.max(
@@ -228,7 +240,7 @@ export function ShotShapes({
                 {inspected ? (
                   <>
                     <strong>
-                      {effectiveClub(inspected)} · Row {inspected.rowIndex} ·{' '}
+                      {clubOf(inspected)} · Row {inspected.rowIndex} ·{' '}
                       {sessionNames.get(inspected.sessionId)}
                     </strong>
                     <p>

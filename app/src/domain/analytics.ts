@@ -1,10 +1,15 @@
 import { quantile } from './statistics';
+import {
+  isFullSwingResolved,
+  resolvedClub,
+  resolveShots,
+  type ResolvedShot,
+} from './assessment';
 import { assessUnusualShots } from './unusualShots';
 import {
   BASES,
   clubOrder,
   effectiveClub,
-  fullSwingCandidate,
   isUnknownClub,
   isWedge,
   shiftDate,
@@ -85,14 +90,28 @@ export function summarize(shots: Shot[], basis: Basis) {
     lateral: directionStats(shots, 'fromCentre'),
   };
 }
+/**
+ * The shared analysis cohort (ADR-0001): included shots of non-archived
+ * sessions, narrowed by the query. Intent, contact and club are read through
+ * the resolved assessment layer, so automatic classifications apply whenever
+ * the user has not reviewed a shot — review is optional. Shots whose recorded
+ * club is suspected wrong are excluded from club-specific views (query.club)
+ * but kept in session-wide views; the recorded label is never reassigned.
+ */
 export function selectCohort(
   shots: Shot[],
   sessions: Session[],
   query: AnalysisQuery,
+  basis: Basis = 'premium-flat',
 ): Shot[] {
   const sessionMap = new Map(
     sessions.filter((s) => !s.archived).map((s) => [s.id, s]),
   );
+  const resolved = resolveShots(shots, sessions, basis);
+  const clubOf = (s: Shot) => {
+    const r = resolved.get(s.id);
+    return r ? resolvedClub(r) : effectiveClub(s);
+  };
   let selected = shots.filter(
     (s) =>
       sessionMap.has(s.sessionId) && s.review.exclusion.kind === 'included',
@@ -105,7 +124,7 @@ export function selectCohort(
     });
     const perClub = new Map<string, Shot[]>();
     for (const shot of selected) {
-      const club = effectiveClub(shot);
+      const club = clubOf(shot);
       const group = perClub.get(club) ?? [];
       group.push(shot);
       perClub.set(club, group);
@@ -128,22 +147,49 @@ export function selectCohort(
     ? assessUnusualShots(shots, sessions)
     : null;
   return selected.filter((s) => {
+    const r = resolved.get(s.id);
+    if (!r) return false;
     const assessment = assessments?.get(s.id);
     return (
       (!query.hideLikelyMishits ||
-        (s.review.contact !== 'mishit' &&
+        (r.contact !== 'mishit' &&
           !(assessment?.kind === 'assessed' && assessment.unusual))) &&
-      (!query.club || effectiveClub(s) === query.club) &&
-      (query.intent === 'all' || s.review.intent === query.intent) &&
-      (query.contact === 'all' || s.review.contact === 'typical')
+      (!query.club ||
+        (clubOf(s) === query.club && !r.suspectedWrongClub)) &&
+      (query.intent === 'all' || r.intent === query.intent) &&
+      (query.contact === 'all' || r.contact === 'typical')
     );
   });
 }
-export function reviewCoverage(shots: Shot[]) {
+/**
+ * Manual review coverage of a shot set, plus how much of the rest the
+ * automatic layer assessed when a resolved map is supplied. Manual review
+ * stays the authoritative measure; `assessed`/`automatic` show that analytics
+ * no longer depend on review being complete.
+ */
+export function reviewCoverage(
+  shots: Shot[],
+  resolved?: Map<string, ResolvedShot>,
+) {
   const eligible = shots.filter((s) => s.review.exclusion.kind === 'included');
   const reviewed = eligible.filter((s) => s.review.contact !== 'uncertain');
   const full = reviewed.filter((s) => s.review.intent === 'full');
   const mishits = full.filter((s) => s.review.contact === 'mishit').length;
+  const resolvedContact = (s: Shot) => resolved?.get(s.id)?.contact;
+  const assessed = resolved
+    ? eligible.filter((s) => {
+        const contact = resolvedContact(s);
+        return contact !== undefined && contact !== 'uncertain';
+      })
+    : reviewed;
+  const automatic = resolved
+    ? eligible.filter(
+        (s) =>
+          s.review.contact === 'uncertain' &&
+          resolvedContact(s) !== undefined &&
+          resolvedContact(s) !== 'uncertain',
+      )
+    : [];
   return {
     total: eligible.length,
     reviewed: reviewed.length,
@@ -153,6 +199,8 @@ export function reviewCoverage(shots: Shot[]) {
     unassessed: eligible.filter(
       (s) => s.review.intent === 'full' && s.review.contact === 'uncertain',
     ).length,
+    assessed: assessed.length,
+    automatic: automatic.length,
   };
 }
 export type ClubFlag = {
@@ -318,8 +366,17 @@ export function mostImprovedClub(
   )[0];
   if (!latest) return null;
 
-  const recent = included.filter((s) => s.sessionId === latest.id);
-  const earlier = included.filter((s) => {
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  // Club-specific benchmark: suspected wrong-club labels stay out (ADR-0001).
+  const benchmark = included.filter(
+    (s) => resolved.get(s.id)?.suspectedWrongClub !== true,
+  );
+  const clubOf = (s: Shot) => {
+    const r = resolved.get(s.id);
+    return r ? resolvedClub(r) : effectiveClub(s);
+  };
+  const recent = benchmark.filter((s) => s.sessionId === latest.id);
+  const earlier = benchmark.filter((s) => {
     const session = sessions.get(s.sessionId);
     return (
       session !== undefined && session.id !== latest.id && session.date <= latest.date
@@ -332,14 +389,10 @@ export function mostImprovedClub(
     );
 
   let best: MostImproved | null = null;
-  for (const club of new Set(recent.map(effectiveClub))) {
+  for (const club of new Set(recent.map(clubOf))) {
     if (isUnknownClub(club)) continue;
-    const recentValues = values(
-      recent.filter((s) => effectiveClub(s) === club),
-    );
-    const baselineValues = values(
-      earlier.filter((s) => effectiveClub(s) === club),
-    );
+    const recentValues = values(recent.filter((s) => clubOf(s) === club));
+    const baselineValues = values(earlier.filter((s) => clubOf(s) === club));
     if (
       recentValues.length < MIN_RECENT_SHOTS ||
       baselineValues.length < MIN_BASELINE_SHOTS
@@ -364,19 +417,30 @@ export function mostImprovedClub(
   return best;
 }
 
-/** Shots that can be compared: known club, carry on this basis, not a known bad shot. */
+/**
+ * Shots that can be compared per club: resolved full swing, resolved
+ * non-mishit contact, a resolved known club with carry on this basis, and not
+ * a suspected wrong-club label (excluded from club benchmarks per ADR-0001).
+ */
 function eligibleShots(
   data: Dataset,
   basis: Basis,
   query: AnalysisQuery,
 ): Shot[] {
   const key = BASES[basis].carry;
-  return selectCohort(data.shots, data.sessions, query).filter(
-    (shot) =>
-      fullSwingCandidate(shot) &&
-      shot.review.contact !== 'mishit' &&
-      shot.measurements[key] !== null &&
-      !isUnknownClub(effectiveClub(shot)),
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  return selectCohort(data.shots, data.sessions, query, basis).filter(
+    (shot) => {
+      const r = resolved.get(shot.id);
+      return (
+        r !== undefined &&
+        isFullSwingResolved(r) &&
+        r.contact !== 'mishit' &&
+        !r.suspectedWrongClub &&
+        shot.measurements[key] !== null &&
+        !isUnknownClub(resolvedClub(r))
+      );
+    },
   );
 }
 
@@ -402,9 +466,12 @@ export function clubGaps(
   query: AnalysisQuery,
 ): ClubGap[] {
   const key = BASES[basis].carry;
+  const resolved = resolveShots(data.shots, data.sessions, basis);
   const groups = new Map<string, Shot[]>();
   for (const shot of eligibleShots(data, basis, query)) {
-    const club = effectiveClub(shot);
+    const r = resolved.get(shot.id);
+    if (!r) continue;
+    const club = resolvedClub(r);
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
 
@@ -515,19 +582,28 @@ export function practiceInsights(
   );
   const visits = new Map<string, Map<string, Shot[]>>();
   const carryClubs = new Set<string>();
+  const resolved = resolveShots(data.shots, data.sessions, basis);
 
   // Use the review filters without the rolling chart's per-club shot cap.
-  for (const shot of selectCohort(data.shots, data.sessions, {
-    ...query,
-    mode: 'all',
-  })) {
+  for (const shot of selectCohort(
+    data.shots,
+    data.sessions,
+    {
+      ...query,
+      mode: 'all',
+    },
+    basis,
+  )) {
+    const r = resolved.get(shot.id);
     if (
+      !r ||
       !sessions.has(shot.sessionId) ||
-      !fullSwingCandidate(shot) ||
-      shot.review.contact === 'mishit'
+      !isFullSwingResolved(r) ||
+      r.contact === 'mishit' ||
+      r.suspectedWrongClub
     )
       continue;
-    const club = effectiveClub(shot);
+    const club = resolvedClub(r);
     if (isUnknownClub(club)) continue;
     const groups = visits.get(shot.sessionId) ?? new Map<string, Shot[]>();
     const group = groups.get(club) ?? [];

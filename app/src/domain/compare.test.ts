@@ -40,7 +40,7 @@ function series(
   return carries.map((carry, i) =>
     makeShot({
       ...options,
-      id: `${session.id}-${i}`,
+      id: `${session.id}-${i}-${crypto.randomUUID().slice(0, 8)}`,
       rowIndex: (options.rowIndex ?? 1) + i,
       sessionId: session.id,
       measurements: { flatCarryPremium: carry, ...options.measurements },
@@ -409,7 +409,7 @@ describe('comparison details', () => {
   function detailSeries(session: Session, rows: DetailRow[]) {
     return rows.map((row, i) =>
       makeShot({
-        id: `${session.id}-d${i}`,
+        id: `${session.id}-d${i}-${crypto.randomUUID().slice(0, 8)}`,
         rowIndex: i + 1,
         sessionId: session.id,
         measurements: {
