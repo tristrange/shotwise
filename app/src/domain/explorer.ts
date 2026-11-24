@@ -89,13 +89,11 @@ export function explorerPlot(data: Dataset, query: ExplorerQuery): ExplorerPlot 
     intent: query.intent,
     contact: query.contact,
     club: query.club,
+    // A named visit uses its complete eligible population, not the Recent
+    // cap, and strong-strike thresholds are computed within that visit.
+    scopeSessionId: typeof query.scope === 'object' ? query.scope.session : undefined,
   };
   let shots = selectCohort(data.shots, data.sessions, analysisQuery, query.basis);
-  const scope = query.scope;
-  if (typeof scope === 'object') {
-    // A named visit uses its complete eligible population, not the Recent cap.
-    shots = shots.filter((shot) => shot.sessionId === scope.session);
-  }
   const dates = new Map(data.sessions.map((s) => [s.id, s.date]));
   shots = shots.toSorted(
     (a, b) =>

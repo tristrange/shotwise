@@ -34,6 +34,13 @@ export type AnalysisQuery = {
   contact: 'all' | 'typical' | 'strong';
   club?: string;
   hideLikelyMishits?: boolean;
+  /**
+   * Optional single-visit scope (e.g. the Explorer's named session): applied
+   * before strong-strike thresholds are computed, so P80 and the minimum
+   * sample come from the scoped visit's own population. Assessment resolution
+   * still sees the full history.
+   */
+  scopeSessionId?: string;
 };
 export type AnalysisSettings = Pick<
   AnalysisQuery,
@@ -159,12 +166,15 @@ export function selectCohort(
       );
     });
   }
+  if (query.scopeSessionId)
+    selected = selected.filter((s) => s.sessionId === query.scopeSessionId);
   const assessments = query.hideLikelyMishits
     ? assessUnusualShots(shots, sessions)
     : null;
   // Strong-strike mode: per-club P80 thresholds over the typical full-swing
-  // population of the current selection; clubs below the minimum sample have
-  // no threshold and drop out of this view (marked unreliable elsewhere).
+  // population of the current selection (after any visit scope, so thresholds
+  // come from the scoped visit); clubs below the minimum sample have no
+  // threshold and drop out of this view (marked unreliable elsewhere).
   const strongThresholds =
     query.contact === 'strong'
       ? strongStrikeThresholds(selected, resolved, clubOf, basis)

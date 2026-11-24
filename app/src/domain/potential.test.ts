@@ -10,6 +10,7 @@ import {
   strongStrikePopulation,
   MIN_POTENTIAL_SAMPLES,
 } from './potential';
+import { clubProfiles } from './clubProfiles';
 import { makeSession, makeShot } from './fixtures';
 import { emptyDataset, type Dataset, type Session, type Shot } from './model';
 import { quantile } from './statistics';
@@ -304,5 +305,53 @@ describe('strong performance mode in selectCohort (roadmap §6.1)', () => {
     );
     expect(threshold).toBe(115.2);
     expect(strong).toHaveLength(4);
+  });
+
+  it('computes strong-strike thresholds within a scoped visit, not across all history', () => {
+    const older = makeSession({ id: 'older', date: '2026-11-01' });
+    // An older visit with much longer carries must not raise the threshold
+    // for the scoped visit.
+    const olderShots = Array.from({ length: 20 }, (_, i) =>
+      makeShot({
+        id: `old-${i}`,
+        sessionId: older.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 190 + i, speedPremium: 230 },
+      }),
+    );
+    const scoped = selectCohort([...olderShots, ...shots], [older, session], {
+      ...base,
+      contact: 'strong',
+      scopeSessionId: session.id,
+    });
+    // Threshold is P80 of the scoped visit (100..119 -> 115.2), not ~206.
+    expect(scoped.map((s) => s.id).sort()).toEqual([
+      's-7i-16',
+      's-7i-17',
+      's-7i-18',
+      's-7i-19',
+    ]);
+    // Without the scope, the same query is dominated by the older visit.
+    const unscoped = selectCohort([...olderShots, ...shots], [older, session], {
+      ...base,
+      contact: 'strong',
+    });
+    expect(unscoped.every((s) => s.sessionId === 'older')).toBe(true);
+  });
+
+  it('keeps club-profile reliability on the broader cohort in strong mode', () => {
+    const profiles = clubProfiles(data, 'premium-flat', {
+      ...base,
+      contact: 'strong',
+    });
+    const seven = profiles.find((p) => p.club === '7i')!;
+    // Spread/lower tail/coverage use the full population including the
+    // mishit (21 measured carries), not the 4 strong strikes.
+    expect(seven.recent.spread.n).toBe(21);
+    expect(seven.recent.lowerTail.n).toBe(21);
+    expect(seven.recent.contact.total).toBe(21);
+    // The typical (performance) metric follows the strong filter.
+    expect(seven.recent.typical.n).toBeLessThanOrEqual(4);
   });
 });
