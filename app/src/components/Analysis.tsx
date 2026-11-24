@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
   BASES,
   clubOrder,
@@ -53,14 +55,27 @@ export function Analysis({
   const clubs = [...new Set(selected.map(effectiveClub))]
     .filter((club) => !isUnknownClub(club))
     .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleClub = (name: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   const rows = clubs.map((name) => {
     const clubShots = selected.filter((s) => effectiveClub(s) === name);
-    const stats = metricStats(clubShots, BASES[basis].carry);
+    const fields = BASES[basis];
+    const stats = metricStats(clubShots, fields.carry);
     return {
       name,
       median: stats.median,
       low: stats.p10,
       high: stats.p90,
+      iqr: stats.iqr,
+      speed: metricStats(clubShots, fields.speed),
+      launch: metricStats(clubShots, fields.launch),
+      apex: metricStats(clubShots, fields.apex),
       total: clubShots.length,
       n: stats.n,
       missing: stats.missing,
@@ -141,53 +156,122 @@ export function Analysis({
               {rows.map((row) => {
                 const low = row.low ?? row.median ?? 0;
                 const high = row.high ?? row.median ?? 0;
+                const open = expanded.has(row.name);
+                const detailId = `club-detail-${row.name.replace(/\W+/g, '-')}`;
                 return (
-                  <div
-                    className={`gap-row${row.reliable ? '' : ' low'}`}
-                    key={row.name}
-                    role="listitem"
-                  >
-                    <span className="gap-club">
-                      <a href={clubHref(row.name)}>{row.name}</a>
-                    </span>
-                    <div className="gap-carry">
-                      {row.median === null ? (
-                        <div className="gap-stats">
-                          <small>No carry recorded on this basis</small>
-                        </div>
-                      ) : (
-                        <>
+                  <div className="gap-item" key={row.name} role="listitem">
+                    <div className={`gap-row${row.reliable ? '' : ' low'}`}>
+                      <span className="gap-club">
+                        <a href={clubHref(row.name)}>{row.name}</a>
+                        <button
+                          type="button"
+                          className="expand-toggle"
+                          aria-expanded={open}
+                          aria-controls={detailId}
+                          aria-label={`${open ? 'Hide' : 'Show'} details for ${row.name}`}
+                          onClick={() => toggleClub(row.name)}
+                        >
+                          <ChevronDown
+                            size={13}
+                            className={open ? 'open' : ''}
+                            aria-hidden="true"
+                          />
+                          Details
+                        </button>
+                      </span>
+                      <div className="gap-carry">
+                        {row.median === null ? (
                           <div className="gap-stats">
-                            <small>
-                              {row.low !== null && row.high !== null
-                                ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
-                                : 'Spread needs 10 shots'}
-                            </small>
+                            <small>No carry recorded on this basis</small>
                           </div>
-                          <div className="gap-track" aria-hidden="true">
-                            <span
-                              className="gap-band"
-                              style={{
-                                left: `${(low / scale) * 100}%`,
-                                width: `${((high - low) / scale) * 100}%`,
-                              }}
-                            />
-                            <span
-                              className="gap-dot"
-                              style={{ left: `${(row.median / scale) * 100}%` }}
-                            />
-                          </div>
-                        </>
-                      )}
+                        ) : (
+                          <>
+                            <div className="gap-stats">
+                              <small>
+                                {row.low !== null && row.high !== null
+                                  ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
+                                  : 'Spread needs 10 shots'}
+                              </small>
+                            </div>
+                            <div className="gap-track" aria-hidden="true">
+                              <span
+                                className="gap-band"
+                                style={{
+                                  left: `${(low / scale) * 100}%`,
+                                  width: `${((high - low) / scale) * 100}%`,
+                                }}
+                              />
+                              <span
+                                className="gap-dot"
+                                style={{ left: `${(row.median / scale) * 100}%` }}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <span className="gap-n">
+                        {row.n}
+                        <small>{row.n === 1 ? 'shot' : 'shots'}</small>
+                      </span>
+                      <span className="gap-value">
+                        {row.median === null ? '—' : `${row.median.toFixed(0)} m`}
+                        {!row.reliable && <small>few shots</small>}
+                      </span>
                     </div>
-                    <span className="gap-n">
-                      {row.n}
-                      <small>{row.n === 1 ? 'shot' : 'shots'}</small>
-                    </span>
-                    <span className="gap-value">
-                      {row.median === null ? '—' : `${row.median.toFixed(0)} m`}
-                      {!row.reliable && <small>few shots</small>}
-                    </span>
+                    {open && (
+                      <div className="gap-detail" id={detailId}>
+                        <div className="detail-grid">
+                          <div className="detail-stat">
+                            <span className="detail-label">Ball speed</span>
+                            <span className="detail-value">
+                              {row.speed.median === null
+                                ? '—'
+                                : `${row.speed.median.toFixed(0)} kph`}
+                            </span>
+                            <span className="detail-sub">
+                              {row.speed.n} of {row.total} measured
+                            </span>
+                          </div>
+                          <div className="detail-stat">
+                            <span className="detail-label">Launch</span>
+                            <span className="detail-value">
+                              {row.launch.median === null
+                                ? '—'
+                                : `${row.launch.median.toFixed(1)}°`}
+                            </span>
+                            <span className="detail-sub">
+                              {row.launch.n} of {row.total} measured
+                            </span>
+                          </div>
+                          <div className="detail-stat">
+                            <span className="detail-label">Apex</span>
+                            <span className="detail-value">
+                              {row.apex.median === null
+                                ? '—'
+                                : `${row.apex.median.toFixed(0)} m`}
+                            </span>
+                            <span className="detail-sub">
+                              {row.apex.n} of {row.total} measured
+                            </span>
+                          </div>
+                          <div className="detail-stat">
+                            <span className="detail-label">Carry spread (IQR)</span>
+                            <span className="detail-value">
+                              {row.iqr === null ? '—' : `${row.iqr.toFixed(0)} m`}
+                            </span>
+                            <span className="detail-sub">
+                              {!row.reliable && (
+                                <span className="pill">Sample limited</span>
+                              )}
+                              {row.reliable && `${row.n} of ${row.total} shots measured`}
+                            </span>
+                          </div>
+                        </div>
+                        <a className="text-button" href={clubHref(row.name)}>
+                          Full club profile →
+                        </a>
+                      </div>
+                    )}
                   </div>
                 );
               })}
