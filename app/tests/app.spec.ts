@@ -672,6 +672,61 @@ test('expands overview club summaries inline with per-club measurements', async 
     .toBeLessThanOrEqual(1);
 });
 
+test('shows non-authoritative automatic assessment badges in review', async ({
+  page,
+  account,
+}) => {
+  const rows = [
+    ...Array.from({ length: 12 }, () => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '160',
+      'Ball Speed (kph) Premium': '150',
+    })),
+    {
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '90',
+      'Ball Speed (kph) Premium': '100',
+    },
+    ...Array.from({ length: 12 }, () => ({
+      Club: 'SW',
+      'Flat Carry Dist. Premium (m)': '100',
+      'Ball Speed (kph) Premium': '90',
+    })),
+    {
+      Club: 'SW',
+      'Flat Carry Dist. Premium (m)': '45',
+      'Ball Speed (kph) Premium': '55',
+    },
+  ];
+  await account.repository.importCsv({
+    filename: 'auto-assess.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  await login(page, account);
+  await nav(page, 'Review');
+  // Summary pill: one likely mishit (short+slow 7i) and one likely partial (short SW).
+  await expect(page.getByText(/auto: 1 likely mishits · 1 likely partials/)).toBeVisible();
+  await page.getByRole('button', { name: 'All shots', exact: true }).click();
+  await expect(page.getByText('auto: likely mishit').first()).toBeVisible();
+  await expect(page.getByText('auto: likely partial').first()).toBeVisible();
+
+  // Saving a manual contact decision makes the automatic badge defer to it.
+  const mishitShot = page.locator('.shot', { hasText: '90 m' }).last();
+  await mishitShot.getByRole('checkbox').check();
+  await page
+    .getByRole('combobox', { name: /^Set contact/ })
+    .selectOption('typical');
+  await page.getByRole('button', { name: 'Save review', exact: true }).click();
+  await expect(page.getByText(/auto: 0 likely mishits · 1 likely partials/)).toBeVisible();
+  await expect(mishitShot.getByText('auto: likely mishit')).toHaveCount(0);
+});
+
 test('uses theme colours for carry bands and labels', async ({
   page,
   account,

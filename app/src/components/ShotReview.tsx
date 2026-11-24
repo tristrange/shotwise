@@ -9,6 +9,11 @@ import {
 } from '../domain/clubCorrection';
 import { assessUnusualShots } from '../domain/unusualShots';
 import {
+  assessShots,
+  CLASSIFIER_VERSION,
+  type ShotAssessment,
+} from '../domain/classify';
+import {
   effectiveClub,
   FIELD_HEADERS,
   type Dataset,
@@ -19,6 +24,24 @@ import {
 import type { Repository, RevisionInput } from '../data/contracts';
 
 type Filter = 'flags' | 'reviewed' | 'all';
+
+/**
+ * Non-authoritative automatic labels for dimensions the user has not manually
+ * reviewed (ADR-0001: manual review always wins). Returns nothing when the
+ * classifier abstained or the dimension was reviewed.
+ */
+function autoBadges(
+  shot: Shot,
+  auto: ShotAssessment | undefined,
+): { label: string; reason: string }[] {
+  if (!auto) return [];
+  const badges: { label: string; reason: string }[] = [];
+  if (shot.review.contact === 'uncertain' && auto.contact.value === 'mishit')
+    badges.push({ label: 'auto: likely mishit', reason: auto.contact.reason });
+  if (shot.review.intent === 'unknown' && auto.intent.value === 'partial')
+    badges.push({ label: 'auto: likely partial', reason: auto.intent.reason });
+  return badges;
+}
 
 export function ShotReview({
   data,
@@ -40,6 +63,10 @@ export function ShotReview({
 }) {
   const assessments = useMemo(
     () => assessUnusualShots(data.shots, data.sessions),
+    [data.shots, data.sessions],
+  );
+  const autoAssessments = useMemo(
+    () => assessShots(data.shots, data.sessions, 'premium-flat'),
     [data.shots, data.sessions],
   );
   const flags = clubFlags(data.shots, data.sessions);
@@ -110,6 +137,12 @@ export function ShotReview({
       ? [focus, ...shots]
       : shots;
   const flagCount = scoped.filter((shot) => flagged.has(shot.id)).length;
+  const autoMishits = scoped.filter(
+    (shot) => autoBadges(shot, autoAssessments.get(shot.id)).some((b) => b.label.includes('mishit')),
+  ).length;
+  const autoPartials = scoped.filter(
+    (shot) => autoBadges(shot, autoAssessments.get(shot.id)).some((b) => b.label.includes('partial')),
+  ).length;
   const chosen = shown.filter((shot) => selected.includes(shot.id));
   const previewRows = useMemo(
     () =>
@@ -378,11 +411,21 @@ export function ShotReview({
           )}
         </div>
         <span className="pill">{flagCount} flagged</span>
+        {autoMishits + autoPartials > 0 && (
+          <span
+            className="pill"
+            title={`Automatic assessment ${CLASSIFIER_VERSION} — informational only; saved reviews always win.`}
+          >
+            auto: {autoMishits} likely mishits · {autoPartials} likely partials
+          </span>
+        )}
       </div>
       <p>
         Club-label flags and likely-mishit flags are separate suggestions. Saved
         shots and contact decisions stay unchanged. Use “Hide likely mishits” in
         stats to compare the effect. Leave contact uncertain if you do not know.
+        Automatic labels ({CLASSIFIER_VERSION}) are provisional and never
+        override a saved review.
       </p>
       <details>
         <summary>How unusual-shot flags work (experimental)</summary>
@@ -796,6 +839,15 @@ export function ShotReview({
                     {s.review.exclusion.kind === 'excluded' &&
                       `: ${s.review.exclusion.reason}`}
                   </span>
+                  {autoBadges(s, autoAssessments.get(s.id)).map((badge) => (
+                    <span
+                      key={badge.label}
+                      className="pill"
+                      title={`${badge.reason} (${CLASSIFIER_VERSION}; saved reviews win)`}
+                    >
+                      {badge.label}
+                    </span>
+                  ))}
                 </div>
                 {flag && (
                   <p className="flag">
