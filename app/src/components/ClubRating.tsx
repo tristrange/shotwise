@@ -1,4 +1,11 @@
-import { RATINGS_VERSION, RATING_BASIS, RATING_WEIGHTS, type ClubRating } from '../domain/ratings';
+import {
+  RATINGS_VERSION,
+  RATING_BASIS,
+  RATING_WEIGHTS,
+  weakestEvidence,
+  type ClubRating,
+} from '../domain/ratings';
+import { REFERENCE_STATISTIC_LABEL } from '../domain/benchmarks';
 
 /** Lowercase labels for the three distinct reference concepts (ADR-0005 §4.5). */
 type RatingReferenceType = NonNullable<ClubRating['distancePotential']['reference']>['type'];
@@ -27,17 +34,28 @@ export function RatingChip({ rating }: { rating: ClubRating | null }) {
       </span>
     );
   const { value, provisional, coverage } = rating.composite;
+  // Evidence strength is shown independently of category coverage: a full
+  // 4/4 composite built from early (small-sample, few-visit) evidence is
+  // tagged so it is never read as well-supported.
+  const weakest = weakestEvidence(
+    [rating.distancePotential, rating.consistency, rating.directionalControl, rating.reliability]
+      .filter((cat) => cat.score !== null)
+      .map((cat) => cat.evidence),
+  );
+  const early = weakest === 'early';
   return (
     <span
-      className={`rating-chip${provisional ? ' provisional' : ''}`}
+      className={`rating-chip${provisional ? ' provisional' : ''}${early ? ' early' : ''}`}
       title={
-        provisional
-          ? `Provisional composite — ${coverage} of 4 categories rated (${RATINGS_VERSION})`
-          : `Overall rating — all 4 categories (${RATINGS_VERSION})`
+        (provisional
+          ? `Provisional composite — ${coverage} of 4 categories rated`
+          : `Overall rating — all 4 categories`) +
+        ` · weakest evidence: ${EVIDENCE_LABEL[weakest ?? 'none'] ?? weakest} (${RATINGS_VERSION})`
       }
     >
       {scoreText(value)}
       {provisional && <small>prov {coverage}/4</small>}
+      {early && <small>early</small>}
     </span>
   );
 }
@@ -79,7 +97,11 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
         d.p80 !== null
           ? `P80 ${decimal.format(d.p80)} m` +
             (d.reference
-              ? ` vs ${REFERENCE_LABEL[d.reference.type]} ${decimal.format(d.reference.valueM)} m${d.reference.match === 'family' ? ' (family-level basis)' : ''}`
+              ? ` vs ${REFERENCE_LABEL[d.reference.type]} ${decimal.format(d.reference.valueM)} m` +
+                (d.reference.statistic && d.reference.statistic !== 'other'
+                  ? ` ${REFERENCE_STATISTIC_LABEL[d.reference.statistic]}`
+                  : '') +
+                (d.reference.match === 'family' ? ' (family-level basis)' : '')
               : ' · no compatible reference — rating withheld')
           : 'no measured carries on the rating basis',
       meta: meta(d.n, d.visits, d.evidence),
@@ -98,7 +120,7 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
       score: dir.score,
       sub:
         dir.measurementBasis === 'lateral'
-          ? `P80 offline ${percent.format(dir.relLatP80 ?? 0)} of carry · corridor ${percent.format(dir.corridorSuccess ?? 0)}`
+          ? `P80 offline ${dir.relLatP80 === null ? '—' : percent.format(dir.relLatP80)} of carry · corridor ${dir.corridorSuccess === null ? '—' : percent.format(dir.corridorSuccess)}`
           : dir.measurementBasis === 'launch'
             ? `no finishing-position data — launch ${scoreText(dir.launchScore)} shown separately, not in the composite`
             : 'direction not measured',

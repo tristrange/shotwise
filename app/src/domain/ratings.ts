@@ -1,6 +1,7 @@
 import { metricStats, selectCohort, type AnalysisQuery } from './analytics';
 import { isFullSwingResolved, resolveShots, resolvedClub, type ResolvedShot } from './assessment';
 import { referenceBasisCompatible } from './benchmarks';
+import { assignmentStatus } from './equipment';
 import {
   BASES,
   clubOrder,
@@ -9,6 +10,8 @@ import {
   type Basis,
   type Dataset,
   type ReferenceBasis,
+  type ReferenceStatistic,
+  type Shot,
   type UserReferenceValueRecord,
 } from './model';
 import { MIN_POTENTIAL_SAMPLES, potentialCarry } from './potential';
@@ -234,6 +237,20 @@ export function evidenceLevel(n: number, visits: number): EvidenceLevel {
   return visits >= 3 ? 'supported' : 'provisional-high-sample';
 }
 
+const EVIDENCE_RANK: Record<EvidenceLevel, number> = {
+  none: 0,
+  early: 1,
+  provisional: 2,
+  'provisional-high-sample': 3,
+  supported: 4,
+};
+
+/** Weakest evidence level among the given categories (null when none rated). */
+export function weakestEvidence(levels: EvidenceLevel[]): EvidenceLevel | null {
+  if (!levels.length) return null;
+  return levels.reduce((a, b) => (EVIDENCE_RANK[a] <= EVIDENCE_RANK[b] ? a : b));
+}
+
 // ---------------------------------------------------------------------------
 // References (ADR-0005 §4.5) — the three reference concepts stay distinct
 // ---------------------------------------------------------------------------
@@ -249,6 +266,10 @@ export type RatingReference = {
   basis: ReferenceBasis;
   /** 'exact' when the reference basis equals the rating basis, 'family' for a family-level match. */
   match: 'exact' | 'family';
+  /** The statistic the reference number represents, when recorded — kept visible so a median goal is never read as a P80 goal. */
+  statistic: ReferenceStatistic | null;
+  /** ISO date the reference was recorded on, when known (display only). */
+  recordedOn: string | null;
   label: string;
 };
 
@@ -301,14 +322,20 @@ export function historicalPersonalPotential(
   const start = shiftDate(query.today, -365);
   const resolved = resolveShots(data.shots, data.sessions, RATING_BASIS);
   const key = BASES[RATING_BASIS].carry;
+  // Group included shots by session once — scanning the full shot list per
+  // session makes this O(sessions × shots) per club.
+  const shotsBySession = new Map<string, Shot[]>();
+  for (const shot of data.shots) {
+    if (shot.review.exclusion.kind !== 'included') continue;
+    const group = shotsBySession.get(shot.sessionId) ?? [];
+    group.push(shot);
+    shotsBySession.set(shot.sessionId, group);
+  }
   const perVisitP80: number[] = [];
   for (const session of data.sessions) {
     if (session.archived || excluded.has(session.id)) continue;
     if (session.date < start || session.date > query.today) continue;
-    const sessionShots = data.shots.filter(
-      (s) =>
-        s.sessionId === session.id && s.review.exclusion.kind === 'included',
-    );
+    const sessionShots = shotsBySession.get(session.id) ?? [];
     const broader = filterCohort(sessionShots, resolved, 'broader').filter(
       (s) => resolvedClub(resolved.get(s.id)!) === club,
     );
@@ -324,12 +351,51 @@ export function historicalPersonalPotential(
 }
 
 /**
+ * Equipment identity of a club's evaluated window: the physical clubs with a
+ * CURRENT assignment on that club's shots in the window. A reference tagged
+ * with an `equipmentId` applies only when that equipment is what the rated
+ * shots were hit with — a reference measured with different equipment is
+ * never silently applied. Returns null when nothing is currently assigned, in
+ * which case an equipment-tagged reference cannot be verified and is skipped.
+ */
+function currentEquipmentIdsForClub(
+  data: Dataset,
+  query: AnalysisQuery,
+  club: string,
+): Set<string> | null {
+  const windowShots = selectCohort(
+    data.shots,
+    data.sessions,
+    ratingQuery(query, club),
+    RATING_BASIS,
+  );
+  const assignmentByShot = new Map(
+    data.equipmentAssignments.map((a) => [a.shotId, a]),
+  );
+  const ids = new Set<string>();
+  for (const shot of windowShots) {
+    const assignment = assignmentByShot.get(shot.id);
+    if (assignment && assignmentStatus(shot, assignment) === 'current')
+      ids.add(assignment.equipmentId);
+  }
+  return ids.size ? ids : null;
+}
+
+/**
  * Resolve the distance reference for a club, in priority order (ADR-0005
  * §4.5): (1) basis-compatible personal goal; (2) automatic historical personal
  * potential; (3) external benchmark (link-only today, so usually absent).
  * Reference types are never mixed and ratings based on different reference
  * concepts are never presented as directly equivalent. No reference → null
  * (the distance category is withheld; measured P80 is still reported).
+ *
+ * The record's rating metadata is respected, not just stored: only `goal`
+ * records are a personal reference ('observed' and 'historical-potential'
+ * records are distinct concepts — the automatic historical potential below is
+ * the governed path for that concept), a basis-incompatible or `unknown`-basis
+ * record never applies, and an `equipmentId`-tagged record applies only when
+ * that equipment is currently assigned to the club's window shots. The
+ * statistic and recorded-on date are carried through so the UI can label them.
  */
 export function resolveRatingReference(
   club: string,
@@ -337,8 +403,20 @@ export function resolveRatingReference(
   query: AnalysisQuery,
   references: UserReferenceValueRecord[] = data.userReferenceValues,
 ): RatingReference | null {
+  let currentEquipment: Set<string> | null | undefined;
+  const equipmentMatches = (equipmentId: string | null): boolean => {
+    if (equipmentId === null) return true;
+    if (currentEquipment === undefined)
+      currentEquipment = currentEquipmentIdsForClub(data, query, club);
+    return currentEquipment !== null && currentEquipment.has(equipmentId);
+  };
   const personal = references.find(
-    (r) => r.club === club && r.metric === 'carry' && ratingReferenceMatch(r.basis) !== null,
+    (r) =>
+      r.club === club &&
+      r.metric === 'carry' &&
+      r.referenceType === 'goal' &&
+      ratingReferenceMatch(r.basis) !== null &&
+      equipmentMatches(r.equipmentId),
   );
   if (personal) {
     const match = ratingReferenceMatch(personal.basis)!;
@@ -347,6 +425,8 @@ export function resolveRatingReference(
       valueM: personal.valueM,
       basis: personal.basis,
       match,
+      statistic: personal.statistic,
+      recordedOn: personal.recordedOn,
       label:
         match === 'exact'
           ? 'Personal goal'
@@ -360,6 +440,8 @@ export function resolveRatingReference(
       valueM: historical,
       basis: RATING_BASIS,
       match: 'exact',
+      statistic: 'p80',
+      recordedOn: null,
       label: 'Historical personal potential',
     };
   }
@@ -371,6 +453,24 @@ export function resolveRatingReference(
 // ---------------------------------------------------------------------------
 // Per-club ratings on the fixed rating basis
 // ---------------------------------------------------------------------------
+
+/**
+ * The rating cohort follows the selected time window (mode + today) only.
+ * Intent, contact, mishit and single-visit scope are display filters, never
+ * rating filters: pinning them here keeps ratings identical across screens
+ * and filter combinations, so a future intent filter cannot silently change
+ * the rating population.
+ */
+function ratingQuery(query: AnalysisQuery, club?: string): AnalysisQuery {
+  return {
+    mode: query.mode,
+    today: query.today,
+    intent: 'all',
+    contact: 'all',
+    hideLikelyMishits: false,
+    club,
+  };
+}
 
 export type CategoryRating = {
   score: number | null;
@@ -442,7 +542,7 @@ export function clubRating(
   const selected = selectCohort(
     data.shots,
     data.sessions,
-    { ...query, club, contact: 'all', hideLikelyMishits: false },
+    ratingQuery(query, club),
     RATING_BASIS,
   );
   const reliabilityShots = filterCohort(selected, resolved, 'reliability');
@@ -627,7 +727,7 @@ export function clubRatings(
   const selected = selectCohort(
     data.shots,
     data.sessions,
-    { ...query, contact: 'all', hideLikelyMishits: false },
+    ratingQuery(query),
     RATING_BASIS,
   );
   const clubs = new Set(

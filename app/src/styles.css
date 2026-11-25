@@ -556,6 +556,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .rating-chip small { font: 400 10px/1 var(--mono); color: var(--mute); }
 .rating-chip.none { color: var(--mute); font-weight: 400; }
 .rating-chip.provisional { outline: 1px dashed var(--mute); outline-offset: 2px; border-radius: 2px; }
+.rating-chip.early { outline: 1px dotted var(--mute); outline-offset: 2px; border-radius: 2px; }
 .rating-breakdown { margin: 14px 0; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .rating-overall { margin: 0 0 8px; font-size: 13px; }
 .rating-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 36px; gap: 4px 10px; align-items: center; padding: 5px 0; }
