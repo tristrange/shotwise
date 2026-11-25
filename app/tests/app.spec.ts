@@ -2946,7 +2946,13 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(methodology.locator('summary')).toHaveText('How these are scored');
   await methodology.locator('summary').click();
   await expect(methodology).toContainText('category-scores-1');
-  await expect(methodology).toContainText('No composite 0–100 score');
+  await expect(methodology).toContainText('no composite 0–100 overall score');
+
+  // Within-bag standing (ADR-0004): 5i has too few shots for a potential
+  // score, so 7i stands 1st of 1 eligible club on distance potential.
+  await expect(
+    scores.locator('ul.profile-stats li').filter({ hasText: 'Distance potential' }),
+  ).toContainText('1st of 1 clubs in your bag');
 
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });

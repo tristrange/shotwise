@@ -8,11 +8,12 @@ import {
 import {
   CATEGORY_SCORES_VERSION,
   CATEGORY_SCORE_DEFINITIONS,
+  CATEGORY_SCORE_ORDER,
   categoryScores,
   type CategoryScore,
-  type CategoryScoreId,
   type CategoryScores,
 } from '../domain/scores';
+import { bagStandings, ordinal, type BagStandings } from '../domain/standings';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Basis, type Dataset } from '../domain/model';
@@ -96,12 +97,7 @@ function BenchmarkReferences({ club, basis }: { club: string; basis: Basis }) {
   );
 }
 
-const CATEGORY_ORDER: CategoryScoreId[] = [
-  'distancePotential',
-  'consistency',
-  'directionalControl',
-  'reliability',
-];
+const CATEGORY_ORDER = CATEGORY_SCORE_ORDER;
 
 function formatScore(score: CategoryScore) {
   if (score.value === null) return 'not enough data';
@@ -114,12 +110,19 @@ function formatScore(score: CategoryScore) {
  * metrics from the golfer's own shots — no composite score (roadmap §8.3).
  * Insufficient categories show "not enough data" with the reason in a pill.
  */
-function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
+function CategoryScoresSection({
+  scores,
+  standings,
+}: {
+  scores: CategoryScores;
+  standings: BagStandings[string];
+}) {
   return (
     <div className="category-scores">
       <ul className="profile-stats">
         {CATEGORY_ORDER.map((id) => {
           const score = scores[id];
+          const standing = standings[id];
           return (
             <li key={id}>
               <strong>{score.label}</strong> {formatScore(score)} · from{' '}
@@ -129,6 +132,12 @@ function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
                 : score.unit === 'deg'
                   ? 'shots with launch direction'
                   : 'assessed full swings'}
+              {standing && (
+                <span>
+                  {' '}
+                  · {ordinal(standing.rank)} of {standing.of} clubs in your bag
+                </span>
+              )}
               {score.note && <span className="pill"> {score.note}</span>}
               {score.aux
                 ?.filter((a) => a.value !== null)
@@ -162,8 +171,11 @@ function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
         <p className="context">
           Scores are raw measurements from your own shots on the selected
           basis, each with its sample size; categories with too little data show
-          “not enough data” rather than a guess. No composite 0–100 score is
-          shown (roadmap §8.3). Methodology version {CATEGORY_SCORES_VERSION}.
+          “not enough data” rather than a guess. There is no composite 0–100
+          overall score — carry, direction and mishit share cannot be combined
+          meaningfully — so each category instead shows your standing within
+          your own bag (ADR-0004). Methodology version{' '}
+          {CATEGORY_SCORES_VERSION}.
         </p>
       </details>
     </div>
@@ -176,12 +188,14 @@ function ProfileCard({
   bagCount,
   basis,
   scores,
+  standings,
 }: {
   profile: ClubProfile;
   focus: boolean;
   bagCount: number;
   basis: Basis;
   scores: CategoryScores;
+  standings: BagStandings[string];
 }) {
   const {
     club,
@@ -324,7 +338,7 @@ function ProfileCard({
         <p>No measured carry on this basis for {club} yet.</p>
       )}
       {gapText && <p>{gapText}.</p>}
-      <CategoryScoresSection scores={scores} />
+      <CategoryScoresSection scores={scores} standings={standings} />
       <BenchmarkReferences club={club} basis={basis} />
       <div className="table-wrap">
         <table aria-label={`${club} history across sessions`}>
@@ -386,6 +400,15 @@ export function ClubProfiles({
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
   const profiles = clubProfiles(data, basis, query);
+  // Scores reuse the profiles computed above; within-bag standings are
+  // derived once for the whole bag (ADR-0004).
+  const scoresByClub = profiles.map((profile) => ({
+    profile,
+    scores: categoryScores(data, basis, query, profile.club, profile),
+  }));
+  const standings = bagStandings(
+    scoresByClub.map(({ profile, scores }) => ({ club: profile.club, scores })),
+  );
   return (
     <>
       <div className="section-heading">
@@ -438,14 +461,15 @@ export function ClubProfiles({
             them.
           </p>
         )}
-        {profiles.map((profile) => (
+        {scoresByClub.map(({ profile, scores }) => (
           <ProfileCard
             key={profile.club}
             profile={profile}
             focus={focusClub === profile.club}
             bagCount={data.equipment.length}
             basis={basis}
-            scores={categoryScores(data, basis, query, profile.club, profile)}
+            scores={scores}
+            standings={standings[profile.club]!}
           />
         ))}
       </section>
