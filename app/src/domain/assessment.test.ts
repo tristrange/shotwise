@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSession, makeShot } from './fixtures';
+import { selectCohort } from './analytics';
 import { initialReview, type Review, type Session, type Shot } from './model';
 import {
   analysisClub,
@@ -175,6 +176,67 @@ describe('resolveShots (PR 10 analytics wiring)', () => {
     expect(wrong?.suspectedWrongClub).toBe(true);
     // The recorded label is kept, never reassigned.
     expect(wrong?.club).toMatchObject({ kind: 'recorded', club: '9i' });
+  });
+
+  it('keeps manually confirmed or corrected clubs eligible despite a suspected switch', () => {
+    // Twelve labelled shots so the run survives one corrected row at the end.
+    const wrongBlock = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        id: `wrong-${i}`,
+        sessionId: late.id,
+        rowIndex: 20 + i,
+        recordedClub: '9i',
+        measurements: { flatCarryPremium: 140, speedPremium: 190 },
+        review:
+          i === 3
+            ? { club: { kind: 'confirmed' } }
+            : i === 11
+              ? { club: { kind: 'corrected', club: '8i' } }
+              : undefined,
+      }),
+    );
+    const shots: Shot[] = [
+      ...history('8i', 140, 190),
+      ...history('9i', 120, 170),
+      ...wrongBlock,
+    ];
+    const resolved = resolveShots(shots, sessions, 'premium-flat');
+    // Unreviewed rows in the suspected block are excluded from benchmarks.
+    expect(resolved.get('wrong-0')?.suspectedWrongClub).toBe(true);
+    expect(resolved.get('wrong-0')?.suspicion?.suspectedClub).toBe('8i');
+    // A manual confirmation is authoritative: the shot stays eligible and the
+    // automatic observation is preserved for diagnostics.
+    const confirmed = resolved.get('wrong-3')!;
+    expect(confirmed.suspectedWrongClub).toBe(false);
+    expect(confirmed.suspicion?.suspectedClub).toBe('8i');
+    expect(confirmed.club).toEqual({
+      kind: 'confirmed',
+      club: '9i',
+      provenance: 'manual',
+    });
+    const corrected = resolved.get('wrong-11')!;
+    expect(corrected.suspectedWrongClub).toBe(false);
+    expect(corrected.club).toEqual({
+      kind: 'confirmed',
+      club: '8i',
+      provenance: 'manual',
+    });
+    // Through the actual club cohort: confirmed stays in, suspected stays out.
+    const cohort = selectCohort(
+      shots,
+      sessions,
+      {
+        mode: 'all',
+        today: '2026-11-16',
+        intent: 'all',
+        contact: 'all',
+        club: '9i',
+      },
+      'premium-flat',
+    );
+    const ids = new Set(cohort.map((s) => s.id));
+    expect(ids.has('wrong-3')).toBe(true);
+    expect(ids.has('wrong-0')).toBe(false);
   });
 
   it('abstains without enough history and falls back to the recorded defaults', () => {

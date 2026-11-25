@@ -855,18 +855,23 @@ export function ShotReview({
                   ))}
                   {(() => {
                     const seq = sequenceAssessments.get(s.id);
-                    if (
-                      seq?.kind === 'suspected-wrong-club' &&
-                      s.review.club.kind === 'unreviewed'
-                    )
+                    if (seq?.kind === 'suspected-wrong-club') {
+                      // The badge stays visible on reviewed rows too: a manual
+                      // confirm/correct clears the exclusion, but the golfer
+                      // should still see the automatic observation.
+                      const manual =
+                        s.review.club.kind !== 'unreviewed'
+                          ? '; manual club decision wins'
+                          : '';
                       return (
                         <span
                           className="pill"
-                          title={`${seq.reason} (${SEQUENCE_RULE_VERSION}; recorded label kept)`}
+                          title={`${seq.reason} (${SEQUENCE_RULE_VERSION}; recorded label kept${manual})`}
                         >
                           auto: possible wrong club ({seq.suspectedClub}?)
                         </span>
                       );
+                    }
                     return null;
                   })()}
                 </div>
