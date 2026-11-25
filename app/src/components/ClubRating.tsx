@@ -46,7 +46,20 @@ type Row = {
   label: string;
   score: number | null;
   sub: string;
+  /** Sample support: contributing shots, visits and the evidence level. */
+  meta: string;
 };
+
+const EVIDENCE_LABEL: Record<string, string> = {
+  none: 'too few shots',
+  early: 'early estimate',
+  provisional: 'provisional',
+  'provisional-high-sample': 'provisional · high sample',
+  supported: 'well supported',
+};
+
+const meta = (n: number, visits: number, evidence: string) =>
+  `${n} shots · ${visits} ${visits === 1 ? 'visit' : 'visits'} · ${EVIDENCE_LABEL[evidence] ?? evidence}`;
 
 /**
  * Expandable four-category breakdown with compact bars, the measurements
@@ -69,6 +82,7 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
               ? ` vs ${REFERENCE_LABEL[d.reference.type]} ${decimal.format(d.reference.valueM)} m${d.reference.match === 'family' ? ' (family-level basis)' : ''}`
               : ' · no compatible reference — rating withheld')
           : 'no measured carries on the rating basis',
+      meta: meta(d.n, d.visits, d.evidence),
     },
     {
       label: 'Consistency',
@@ -77,6 +91,7 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
         c.iqr !== null && c.median !== null
           ? `IQR ${decimal.format(c.iqr)} m · ${percent.format(c.relIqr ?? 0)} of median ${decimal.format(c.median)} m`
           : 'not enough measured carries',
+      meta: meta(c.n, c.visits, c.evidence),
     },
     {
       label: 'Direction',
@@ -87,14 +102,22 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
           : dir.measurementBasis === 'launch'
             ? `no finishing-position data — launch ${scoreText(dir.launchScore)} shown separately, not in the composite`
             : 'direction not measured',
+      meta: meta(dir.n, dir.visits, dir.evidence),
     },
     {
       label: 'Reliability',
       score: rel.score,
       sub:
         rel.mishitShare !== null
-          ? `mishit ${percent.format(rel.mishitShare)} · ${rel.assessed} assessed${rel.unassessed ? `, ${rel.unassessed} unassessed` : ''}`
+          ? `mishit ${percent.format(rel.mishitShare)} · ${rel.assessed} assessed${rel.unassessed ? `, ${rel.unassessed} unassessed` : ''}` +
+            (rel.wilson
+              ? ` · Wilson 95% ${percent.format(rel.wilson[0])}–${percent.format(rel.wilson[1])} (sampling only)`
+              : '') +
+            (rel.sensitivity && rel.sensitivity.allUnassessedMishit !== rel.sensitivity.allUnassessedClean
+              ? ` · if unassessed were mishits: down to ${scoreText(rel.sensitivity.allUnassessedMishit)}`
+              : '')
           : 'not enough assessed swings',
+      meta: meta(rel.n, rel.visits, rel.evidence),
     },
   ];
   return (
@@ -120,7 +143,9 @@ export function RatingBreakdown({ rating }: { rating: ClubRating }) {
             )}
           </span>
           <span className="rating-score">{scoreText(row.score)}</span>
-          <span className="rating-sub">{row.sub}</span>
+          <span className="rating-sub">
+            {row.sub} · {row.meta}
+          </span>
         </div>
       ))}
       <details>
