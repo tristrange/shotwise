@@ -1,0 +1,175 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  BENCHMARK_MODEL_VERSION,
+  BENCHMARK_SOURCES,
+  attributionFor,
+  benchmarkHygieneProblems,
+  benchmarkReferencesForClub,
+  normalizeBenchmarkClub,
+  validateUserReferenceValue,
+} from './benchmarks';
+
+describe('normalizeBenchmarkClub', () => {
+  it('maps driver aliases to the registry key', () => {
+    expect(normalizeBenchmarkClub('D')).toBe('driver');
+    expect(normalizeBenchmarkClub('DR')).toBe('driver');
+    expect(normalizeBenchmarkClub('1w')).toBe('driver');
+    expect(normalizeBenchmarkClub('Driver')).toBe('driver');
+  });
+
+  it('normalizes irons, woods, hybrids and wedges', () => {
+    expect(normalizeBenchmarkClub('7i')).toBe('7i');
+    expect(normalizeBenchmarkClub('7I')).toBe('7i');
+    expect(normalizeBenchmarkClub('3-wood')).toBe('3-wood');
+    expect(normalizeBenchmarkClub('hybrid')).toBe('hybrid');
+    expect(normalizeBenchmarkClub('PW')).toBe('pw');
+  });
+
+  it('maps recorded numbered wood and hybrid labels to registry keys', () => {
+    expect(normalizeBenchmarkClub('3w')).toBe('3-wood');
+    expect(normalizeBenchmarkClub('5W')).toBe('5-wood');
+    expect(normalizeBenchmarkClub('4h')).toBe('hybrid');
+    expect(normalizeBenchmarkClub('4H')).toBe('hybrid');
+    expect(normalizeBenchmarkClub('hy')).toBe('hybrid');
+  });
+});
+
+describe('benchmark registry hygiene', () => {
+  it('has no hygiene problems', () => {
+    expect(benchmarkHygieneProblems()).toEqual([]);
+  });
+
+  it('keeps every entry link-only — no embedded datasets without a license', () => {
+    expect(BENCHMARK_SOURCES.length).toBeGreaterThan(0);
+    for (const source of BENCHMARK_SOURCES) {
+      expect(source.license).toBe('link-only');
+      expect(source.licenseEvidence).toBeUndefined();
+    }
+  });
+
+  it('flags embedded-with-license entries that lack license evidence', () => {
+    const problems = benchmarkHygieneProblems([
+      {
+        id: 'x',
+        name: 'X',
+        publisher: 'X',
+        url: 'https://example.com/x',
+        publicationDate: null,
+        license: 'embedded-with-license',
+        metric: 'carry',
+        venue: 'range',
+        audience: 'amateur',
+        population: 'n/a',
+        clubs: ['driver'],
+        retrievedAt: '2026-11-25',
+      },
+    ]);
+    expect(problems).toContain(
+      'x: embedded-with-license requires licenseEvidence',
+    );
+  });
+
+  it('uses https URLs and unique ids', () => {
+    const ids = BENCHMARK_SOURCES.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const source of BENCHMARK_SOURCES) {
+      expect(source.url.startsWith('https://')).toBe(true);
+    }
+  });
+});
+
+describe('attributionFor', () => {
+  it('includes name, publisher, metric, venue, population and license status', () => {
+    const found = BENCHMARK_SOURCES.find((s) => s.id === 'arccos-ddr-2026');
+    expect(found).toBeDefined();
+    const source = found!;
+    const text = attributionFor(source);
+    expect(text).toContain(source.name);
+    expect(text).toContain(source.publisher);
+    expect(text).toContain(source.population);
+    expect(text).toContain('link-only');
+    expect(text).toContain('total distance');
+  });
+});
+
+describe('benchmarkReferencesForClub', () => {
+  it('returns the amateur on-course driver reference for D/DR/1w', () => {
+    for (const label of ['D', 'DR', '1w']) {
+      const refs = benchmarkReferencesForClub(label);
+      expect(refs.length).toBeGreaterThan(0);
+      const arccos = refs.find((r) => r.sourceId === 'arccos-ddr-2026');
+      expect(arccos).toBeDefined();
+      // On-course totals must carry the comparison caveat, never presented as range carry.
+      expect(arccos!.caveat).toContain('total');
+      expect(arccos!.audience).toBe('amateur');
+    }
+  });
+
+  it('flags professional references so the UI can badge them', () => {
+    const refs = benchmarkReferencesForClub('driver');
+    const pro = refs.filter((r) => r.audience === 'professional');
+    expect(pro.length).toBeGreaterThan(0);
+    for (const ref of pro) {
+      expect(['trackman-tour-averages', 'pgatour-stats-driving']).toContain(
+        ref.sourceId,
+      );
+    }
+  });
+
+  it('returns no references for unknown club labels', () => {
+    expect(benchmarkReferencesForClub('unknown')).toEqual([]);
+  });
+
+  it('returns references for iron labels covered by the registry', () => {
+    const refs = benchmarkReferencesForClub('7i');
+    expect(refs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+  });
+
+  it('returns references for recorded wood and hybrid labels', () => {
+    for (const label of ['3w', '5w']) {
+      const refs = benchmarkReferencesForClub(label);
+      expect(refs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+      expect(refs.every((r) => r.club.endsWith('-wood'))).toBe(true);
+    }
+    const hybridRefs = benchmarkReferencesForClub('4h');
+    expect(hybridRefs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+    expect(hybridRefs.every((r) => r.club === 'hybrid')).toBe(true);
+  });
+});
+
+describe('validateUserReferenceValue', () => {
+  it('accepts a valid carry reference', () => {
+    expect(
+      validateUserReferenceValue({ club: '7i', metric: 'carry', valueM: 142 }),
+    ).toBeNull();
+  });
+
+  it('rejects unknown clubs, non-positive and implausible values', () => {
+    expect(
+      validateUserReferenceValue({ club: 'unknown', metric: 'carry', valueM: 100 }),
+    ).toBe('Club label is unknown');
+    expect(
+      validateUserReferenceValue({ club: '7i', metric: 'carry', valueM: 0 }),
+    ).toBe('Reference must be a positive distance in metres');
+    expect(
+      validateUserReferenceValue({ club: '7i', metric: 'total', valueM: 600 }),
+    ).toBe('Reference looks implausible (> 500 m)');
+  });
+
+  it('rejects unknown metrics', () => {
+    expect(
+      validateUserReferenceValue({
+        club: '7i',
+        metric: 'launch' as never,
+        valueM: 100,
+      }),
+    ).toBe('Unknown metric');
+  });
+});
+
+describe('model version', () => {
+  it('is pinned', () => {
+    expect(BENCHMARK_MODEL_VERSION).toBe('benchmark-1');
+  });
+});
