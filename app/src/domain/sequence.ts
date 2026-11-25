@@ -66,6 +66,95 @@ const RECENT_DAYS = 60;
 
 type Profile = { n: number; carryMedian: number; speedMedian: number };
 
+type ClubMeasurements = { id: string; carry: number; speed: number }[];
+/** A club group with its carry/speed values pre-sorted, for O(group) median lookups. */
+type SortedClubGroup = {
+  carries: { v: number; id: string }[];
+  speeds: { v: number; id: string }[];
+};
+
+/**
+ * Group the shots of a date window by club, applying the same eligibility
+ * predicates as profiles(). Built once per visit so that every per-run and
+ * per-block reference below is an O(club group) derivation instead of a fresh
+ * O(window) scan — switch detection stays near-linear as history grows.
+ */
+function groupMeasurements(
+  shots: Shot[],
+  sessionMap: Map<string, Session>,
+): Map<string, ClubMeasurements> {
+  const out = new Map<string, ClubMeasurements>();
+  for (const shot of shots) {
+    const session = sessionMap.get(shot.sessionId);
+    if (!session || session.archived) continue;
+    if (shot.review.exclusion.kind !== 'included') continue;
+    // Reviewed mishits and partials never train reference profiles.
+    if (shot.review.contact === 'mishit' || shot.review.intent === 'partial') continue;
+    const club = effectiveClub(shot);
+    if (isUnknownClub(club)) continue;
+    const carry = assessmentMeasurement(shot, 'carry');
+    const speed = assessmentMeasurement(shot, 'speed');
+    if (carry === null || speed === null || carry <= 0 || speed <= 0) continue;
+    const group = out.get(club) ?? [];
+    group.push({ id: shot.id, carry, speed });
+    out.set(club, group);
+  }
+  return out;
+}
+
+function sortGroups(
+  groups: Map<string, ClubMeasurements>,
+): Map<string, SortedClubGroup> {
+  const out = new Map<string, SortedClubGroup>();
+  for (const [club, group] of groups) {
+    const carries = group
+      .map((m) => ({ v: m.carry, id: m.id }))
+      .sort((a, b) => a.v - b.v);
+    const speeds = group
+      .map((m) => ({ v: m.speed, id: m.id }))
+      .sort((a, b) => a.v - b.v);
+    out.set(club, { carries, speeds });
+  }
+  return out;
+}
+
+/** Median of an already-sorted array — identical to quantile(values, 0.5). */
+function sortedMedian(sorted: number[]): number {
+  const offset = (sorted.length - 1) * 0.5;
+  const left = sorted[Math.floor(offset)]!;
+  const right = sorted[Math.ceil(offset)]!;
+  return left + (right - left) * (offset % 1);
+}
+
+/** Profile of a sorted club group, optionally excluding specific shots (e.g. the run under test). */
+function profileFromGroup(
+  group: SortedClubGroup | undefined,
+  exclude?: Set<string>,
+): Profile | undefined {
+  if (!group) return undefined;
+  const carries: number[] = [];
+  const speeds: number[] = [];
+  for (const c of group.carries) if (!exclude?.has(c.id)) carries.push(c.v);
+  for (const s of group.speeds) if (!exclude?.has(s.id)) speeds.push(s.v);
+  if (!carries.length) return undefined;
+  return {
+    n: carries.length,
+    carryMedian: sortedMedian(carries),
+    speedMedian: sortedMedian(speeds),
+  };
+}
+
+function profilesFromGroups(
+  groups: Map<string, SortedClubGroup>,
+): Map<string, Profile> {
+  const out = new Map<string, Profile>();
+  for (const [club, group] of groups) {
+    const profile = profileFromGroup(group);
+    if (profile) out.set(club, profile);
+  }
+  return out;
+}
+
 function profiles(
   shots: Shot[],
   sessionMap: Map<string, Session>,
@@ -147,6 +236,10 @@ export function assessSequences(
   const out = new Map<string, SequenceAssessment>();
 
   const bySession = new Map<string, Shot[]>();
+  // Shots of non-archived sessions indexed by session date once, so each
+  // visit's reference window is a contiguous slice located by binary search
+  // rather than a full scan of the history per visit.
+  const datedShots: { shot: Shot; date: string }[] = [];
   for (const shot of shots) {
     const session = sessionMap.get(shot.sessionId);
     if (!session || session.archived) continue;
@@ -154,21 +247,44 @@ export function assessSequences(
     const group = bySession.get(shot.sessionId) ?? [];
     group.push(shot);
     bySession.set(shot.sessionId, group);
+    datedShots.push({ shot, date: session.date });
   }
+  datedShots.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const windowDates = datedShots.map((d) => d.date);
+  // First index with windowDates[i] >= date / > date (dates are ISO, so
+  // lexicographic order is chronological order).
+  const lowerBound = (date: string) => {
+    let lo = 0;
+    let hi = windowDates.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (windowDates[mid]! < date) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const upperBound = (date: string) => {
+    let lo = 0;
+    let hi = windowDates.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (windowDates[mid]! <= date) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
 
   for (const [sessionId, sessionShots] of bySession) {
     const session = sessionMap.get(sessionId)!;
     const cutoff = shiftDate(session.date, -RECENT_DAYS);
-    const windowShots = shots.filter((s) => {
-      const sess = sessionMap.get(s.sessionId);
-      return (
-        sess !== undefined &&
-        !sess.archived &&
-        sess.date >= cutoff &&
-        sess.date <= session.date
-      );
-    });
-    const referenceProfiles = profiles(windowShots, sessionMap);
+    // The reference window is grouped by club once per visit; the per-run and
+    // per-block references below derive from these groups, so the window is
+    // scanned once per visit, not once per run.
+    const windowShots = datedShots
+      .slice(lowerBound(cutoff), upperBound(session.date))
+      .map((d) => d.shot);
+    const windowGroups = sortGroups(groupMeasurements(windowShots, sessionMap));
+    const referenceProfiles = profilesFromGroups(windowGroups);
     const ordered = [...sessionShots].sort((a, b) => a.rowIndex - b.rowIndex);
     const sessionProfiles = profiles(ordered, sessionMap, sessionId);
     // The minimum sample is enforced on whichever source actually supplies the
@@ -319,10 +435,7 @@ export function assessSequences(
       // be O(history) per candidate. When the club has no history outside the
       // run, fall back to excluding just the candidate block.
       const runIds = new Set(run.shots.map((s) => s.id));
-      const ownRun = profiles(
-        windowShots.filter((s) => !runIds.has(s.id)),
-        sessionMap,
-      ).get(run.club);
+      const ownRun = profileFromGroup(windowGroups.get(run.club), runIds);
       for (const [candidate, profile] of others) {
         const mask = run.shots.map((s) => compatible(s, profile));
         // Maximal contiguous candidate-compatible blocks.
@@ -339,11 +452,7 @@ export function assessSequences(
         for (const block of blocks) {
           const blockIds = new Set(block.map((s) => s.id));
           const own =
-            ownRun ??
-            profiles(
-              windowShots.filter((s) => !blockIds.has(s.id)),
-              sessionMap,
-            ).get(run.club);
+            ownRun ?? profileFromGroup(windowGroups.get(run.club), blockIds);
           if (!own || own.n < MIN_PROFILE) continue;
           // Split out shots that also fit the recorded club: an overlapping
           // genuine shot must not drag its whole block out of the suspect set.
