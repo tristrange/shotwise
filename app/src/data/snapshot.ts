@@ -6,7 +6,8 @@ type Table =
   | 'imports'
   | 'events'
   | 'equipment'
-  | 'equipmentAssignments';
+  | 'equipmentAssignments'
+  | 'userReferenceValues';
 export async function loadConsistent(source: {
   version(): Promise<number>;
   page(table: Table, offset: number, limit: number): Promise<unknown[]>;
@@ -23,15 +24,23 @@ export async function loadConsistent(source: {
         if (page.length < pageSize) return rows;
       }
     };
-    const [sessions, shots, imports, events, equipment, equipmentAssignments] =
-      await Promise.all([
-        read('sessions'),
-        read('shots'),
-        read('imports'),
-        read('events'),
-        read('equipment'),
-        read('equipmentAssignments'),
-      ]);
+    const [
+      sessions,
+      shots,
+      imports,
+      events,
+      equipment,
+      equipmentAssignments,
+      userReferenceValues,
+    ] = await Promise.all([
+      read('sessions'),
+      read('shots'),
+      read('imports'),
+      read('events'),
+      read('equipment'),
+      read('equipmentAssignments'),
+      read('userReferenceValues'),
+    ]);
     const after = await source.version();
     if (version === after)
       return datasetSchema.parse({
@@ -42,6 +51,7 @@ export async function loadConsistent(source: {
         events,
         equipment,
         equipmentAssignments,
+        userReferenceValues,
       });
   }
   throw new Error(

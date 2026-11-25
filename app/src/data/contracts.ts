@@ -8,6 +8,8 @@ import type {
   EquipmentSaveInput,
   Review,
   Session,
+  UserReferenceValueRecord,
+  UserReferenceValueSaveInput,
 } from '../domain/model';
 
 export type ImportInput = {
@@ -36,6 +38,10 @@ export interface Repository {
   updateSession(session: Session): Promise<void>;
   saveEquipment(input: EquipmentSaveInput): Promise<Equipment>;
   assignEquipment(input: EquipmentAssignmentPreview): Promise<void>;
+  saveUserReferenceValue(
+    input: UserReferenceValueSaveInput,
+  ): Promise<UserReferenceValueRecord>;
+  deleteUserReferenceValue(id: string): Promise<void>;
   restore(dataset: Dataset): Promise<void>;
 }
 export type Backend =

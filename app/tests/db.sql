@@ -265,11 +265,71 @@ do $$ declare club jsonb; v0 bigint; begin
  if public.dataset_version()<>v0 or public.dataset_page('equipment',0,1)->0 is distinct from club then raise exception 'revision limit write mutated data'; end if;
 end $$;
 
+-- User-entered reference values (roadmap §7.5 personal references): owner-scoped,
+-- revisioned, one per club+metric (case-insensitive club), separate from shots.
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+select pg_temp.assert_true(public.dataset_page('userReferenceValues',0,100)='[]'::jsonb,'fresh account has no reference values');
+do $$ declare v0 bigint; r jsonb; rev integer; begin
+ v0:=public.dataset_version();
+ r:=public.save_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000001','club','7i','metric','carry','valueM',142,'note','Fitting session','revision',null));
+ if public.dataset_version()<>v0+1 then raise exception 'reference create version'; end if;
+ if r->>'revision'<>'0' then raise exception 'reference create revision'; end if;
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000002','club','7i','metric','carry','valueM',0,'note',null,'revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000002','club','7i','metric','launch','valueM',10,'note',null,'revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000002','club','7i','metric','carry','valueM',600,'note',null,'revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','not-a-uuid','club','7i','metric','carry','valueM',142,'note',null,'revision',null)),'Invalid reference value');
+ if public.dataset_version()<>v0+1 then raise exception 'invalid reference bumped version'; end if;
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000002','club','7I','metric','carry','valueM',140,'note',null,'revision',null)),'Reference value conflict');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_set(r,'{revision}','null')),'Reference value conflict');
+ perform public.save_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000003','club','7i','metric','total','valueM',165,'note',null,'revision',null));
+ rev:=(r->>'revision')::integer;
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id',r->>'id','club','7i','metric','carry','valueM',150,'note',null,'revision',rev+5)),'Reference value conflict');
+ v0:=public.dataset_version();
+ r:=public.save_reference_value(jsonb_build_object('id',r->>'id','club','7i','metric','carry','valueM',150,'note','Updated','revision',rev));
+ if public.dataset_version()<>v0+1 then raise exception 'reference update version'; end if;
+ if (r->>'revision')::integer<>rev+1 or r->>'valueM'<>'150' or r->>'note'<>'Updated' then raise exception 'reference update fields'; end if;
+ if jsonb_array_length(public.dataset_page('userReferenceValues',0,100))<>2 then raise exception 'reference count'; end if;
+ if (public.dataset_page('userReferenceValues',0,1)||public.dataset_page('userReferenceValues',1,1)) is distinct from public.dataset_page('userReferenceValues',0,100) then raise exception 'reference paging not deterministic'; end if;
+ v0:=public.dataset_version();
+ perform public.delete_reference_value((r->>'id')::uuid);
+ if public.dataset_version()<>v0+1 then raise exception 'reference delete version'; end if;
+ if jsonb_array_length(public.dataset_page('userReferenceValues',0,100))<>1 then raise exception 'reference delete count'; end if;
+ perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid)',r->>'id'),'Reference value conflict');
+end $$;
+
+-- Owner isolation: another owner sees none of it and cannot write or delete it.
+select set_config('request.jwt.claim.sub','33333333-3333-4333-8333-333333333333',true);
+select pg_temp.assert_true(public.dataset_page('userReferenceValues',0,100)='[]'::jsonb,'reference owner isolation');
+do $$ begin perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid)','bbbbbbbb-0000-4000-8000-000000000003'),'Reference value conflict'); end $$;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+do $$ begin begin insert into public.user_reference_values values(gen_random_uuid(),auth.uid(),'{}'); raise exception 'direct reference write allowed'; exception when insufficient_privilege then null; end; end $$;
+
+-- Restore: v2 datasets without the key still restore; a dataset with reference values round-trips.
+select set_config('request.jwt.claim.sub','88888888-8888-4888-8888-888888888888',true);
+select public.restore_backup(v2) from eq_backup;
+select pg_temp.assert_true(public.dataset_page('userReferenceValues',0,100)='[]'::jsonb,'v2 restore reference values empty');
+-- Invalid reference payloads are rejected on an empty account before anything is written.
+select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',true);
+do $$ declare b jsonb; v0 bigint; begin
+ select jsonb_build_object('version',0,'sessions',public.dataset_page('sessions',0,100),'shots',public.dataset_page('shots',0,100),'imports',public.dataset_page('imports',0,100),'events',public.dataset_page('events',0,100),'equipment',public.dataset_page('equipment',0,100),'equipmentAssignments',public.dataset_page('equipmentAssignments',0,100),'userReferenceValues',jsonb_build_array(jsonb_build_object('id','cccccccc-0000-4000-8000-000000000001','club','7i','metric','carry','valueM',142,'note',null,'revision',0))) into b from eq_backup limit 1;
+ v0:=public.dataset_version();
+ perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',jsonb_set(b,'{userReferenceValues,0,valueM}','600')),'Invalid backup reference value');
+ perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',jsonb_set(b,'{userReferenceValues}',jsonb_build_array(jsonb_build_object('id','cccccccc-0000-4000-8000-000000000002','club','7I','metric','carry','valueM',140,'note',null,'revision',0),jsonb_build_object('id','cccccccc-0000-4000-8000-000000000001','club','7i','metric','carry','valueM',142,'note',null,'revision',0)))),'Invalid backup reference value');
+ perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',jsonb_set(b,'{userReferenceValues}',jsonb_build_array(jsonb_build_object('id','cccccccc-0000-4000-8000-000000000002','club','7i','metric','carry','valueM',142,'note',null,'revision',0),jsonb_build_object('id','cccccccc-0000-4000-8000-000000000001','club','7i','metric','carry','valueM',142,'note',null,'revision',0)))),'Invalid backup reference value');
+ if public.dataset_version()<>v0 then raise exception 'rejected restore bumped version'; end if;
+ perform public.restore_backup(b);
+ perform pg_temp.assert_true(jsonb_array_length(public.dataset_page('userReferenceValues',0,100))=1,'restore reference values count');
+ perform pg_temp.assert_true((public.dataset_page('userReferenceValues',0,100)->0->>'valueM')='142','restore reference value fields');
+ perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',b),'Restore requires empty dataset');
+end $$;
+
 set local role authenticated;
 set local role anon;
 do $$ begin begin perform public.dataset_version(); raise exception 'anon allowed'; exception when insufficient_privilege then null; end; end $$;
 do $$ begin
  begin perform public.save_equipment('{}'::jsonb); raise exception 'anon equipment write allowed'; exception when insufficient_privilege then null; end;
  begin perform public.assign_equipment('{}'::jsonb); raise exception 'anon assignment write allowed'; exception when insufficient_privilege then null; end;
+ begin perform public.save_reference_value('{}'::jsonb); raise exception 'anon reference write allowed'; exception when insufficient_privilege then null; end;
+ begin perform public.delete_reference_value(gen_random_uuid()); raise exception 'anon reference delete allowed'; exception when insufficient_privilege then null; end;
 end $$;
 rollback;
