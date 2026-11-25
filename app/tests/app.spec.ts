@@ -2930,6 +2930,24 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(refs).toContainText('Linked sources only');
   await expect(refs).toContainText('TrackMan');
 
+  // Category scores (ADR-0003): four raw-metric categories with sample sizes,
+  // plus the methodology disclosure. The fixture has no launch direction, so
+  // directional control must say not enough data rather than invent a number.
+  const scores = card.locator('.category-scores');
+  await expect(scores).toContainText('Distance potential');
+  await expect(scores).toContainText('Consistency');
+  await expect(scores).toContainText('Directional control');
+  await expect(scores).toContainText('Reliability');
+  await expect(scores).toContainText('from 25 measured shots');
+  await expect(
+    scores.locator('ul.profile-stats li').filter({ hasText: 'Directional control' }),
+  ).toContainText('not enough data');
+  const methodology = scores.locator('details');
+  await expect(methodology.locator('summary')).toHaveText('How these are scored');
+  await methodology.locator('summary').click();
+  await expect(methodology).toContainText('category-scores-1');
+  await expect(methodology).toContainText('No composite 0–100 score');
+
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
   await expect(latestLine).toContainText('typical carry 122 m from 13 measured shots');
