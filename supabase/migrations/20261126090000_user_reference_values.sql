@@ -3,7 +3,9 @@
 -- (case-insensitive club), revisioned like equipment. Kept strictly separate
 -- from imported measurements; never mixed into analytics cohorts.
 create table public.user_reference_values (id uuid not null, owner_id uuid not null, data jsonb not null, primary key(owner_id,id));
-create unique index user_reference_values_owner_metric_club on public.user_reference_values(owner_id,(data->>'metric'),lower(data->>'club'));
+-- Club labels are stored trimmed; uniqueness compares trimmed, lowercased labels
+-- so '7i', ' 7i ' and '7I' are the same reference slot (the zod schema trims too).
+create unique index user_reference_values_owner_metric_club on public.user_reference_values(owner_id,(data->>'metric'),lower(private.js_trim(data->>'club')));
 do $$ begin
  execute format('alter table public.user_reference_values enable row level security');
  execute format('revoke all on public.user_reference_values from public, anon, authenticated');
@@ -19,14 +21,14 @@ create function private.save_reference_value(p_value jsonb) returns jsonb langua
  if p_value->'revision'='null'::jsonb then
   if not private.valid_reference_value(jsonb_set(p_value,'{revision}','0'::jsonb)) then raise exception 'Invalid reference value'; end if;
   if exists(select 1 from public.user_reference_values where owner_id=u and id=(p_value->>'id')::uuid) then raise exception 'Reference value conflict'; end if;
-  if exists(select 1 from public.user_reference_values where owner_id=u and (data->>'metric')=p_value->>'metric' and lower(data->>'club')=lower(p_value->>'club')) then raise exception 'Reference value conflict'; end if;
-  saved:=p_value || jsonb_build_object('id',(p_value->>'id')::uuid,'revision',0);
+  if exists(select 1 from public.user_reference_values where owner_id=u and (data->>'metric')=p_value->>'metric' and lower(private.js_trim(data->>'club'))=lower(private.js_trim(p_value->>'club'))) then raise exception 'Reference value conflict'; end if;
+  saved:=jsonb_set(p_value || jsonb_build_object('id',(p_value->>'id')::uuid,'revision',0),'{club}',to_jsonb(private.js_trim(p_value->>'club')));
   insert into public.user_reference_values values((p_value->>'id')::uuid,u,saved);
  elsif (p_value->>'revision') ~ '^[0-9]+$' and private.valid_reference_value(p_value) then
   select * into existing from public.user_reference_values where owner_id=u and id=(p_value->>'id')::uuid for update;
   if not found or existing.data->>'revision'<>p_value->>'revision' then raise exception 'Reference value conflict'; end if;
   if (p_value->>'revision')::integer=2147483647 then raise exception 'Reference value revision limit reached'; end if;
-  saved:=p_value || jsonb_build_object('id',existing.id,'revision',(p_value->>'revision')::integer+1);
+  saved:=jsonb_set(p_value || jsonb_build_object('id',existing.id,'revision',(p_value->>'revision')::integer+1),'{club}',to_jsonb(private.js_trim(p_value->>'club')));
   update public.user_reference_values set data=saved where owner_id=u and id=existing.id;
  else raise exception 'Invalid reference value'; end if;
  perform private.bump(u);
@@ -60,8 +62,8 @@ create or replace function private.restore_backup(p_dataset jsonb) returns void 
  end if;
  if p_dataset ? 'userReferenceValues' then
   if (select count(*) from jsonb_array_elements(p_dataset->'userReferenceValues'))<>(select count(distinct value->>'id') from jsonb_array_elements(p_dataset->'userReferenceValues')) then raise exception 'Invalid backup reference value'; end if;
-  if (select count(*) from jsonb_array_elements(p_dataset->'userReferenceValues'))<>(select count(distinct (lower(value->>'club'),value->>'metric')) from jsonb_array_elements(p_dataset->'userReferenceValues')) then raise exception 'Invalid backup reference value'; end if;
-  for x in select value from jsonb_array_elements(p_dataset->'userReferenceValues') loop if not private.valid_reference_value(x) then raise exception 'Invalid backup reference value'; end if; insert into public.user_reference_values values((x->>'id')::uuid,u,jsonb_set(x,'{id}',to_jsonb((x->>'id')::uuid))); end loop;
+  if (select count(*) from jsonb_array_elements(p_dataset->'userReferenceValues'))<>(select count(distinct (lower(private.js_trim(value->>'club')),value->>'metric')) from jsonb_array_elements(p_dataset->'userReferenceValues')) then raise exception 'Invalid backup reference value'; end if;
+  for x in select value from jsonb_array_elements(p_dataset->'userReferenceValues') loop if not private.valid_reference_value(x) then raise exception 'Invalid backup reference value'; end if; insert into public.user_reference_values values((x->>'id')::uuid,u,jsonb_set(jsonb_set(x,'{id}',to_jsonb((x->>'id')::uuid)),'{club}',to_jsonb(private.js_trim(x->>'club')))); end loop;
  end if;
  for imp in select * from public.imports where owner_id=u loop
  select count(*),jsonb_build_object('headers',(select jsonb_agg(k) from jsonb_object_keys((select payload->'raw' from public.shots where owner_id=u and session_id=imp.session_id order by (payload->>'rowIndex')::integer limit 1)) k),'shots',jsonb_agg(payload order by (payload->>'rowIndex')::integer)) into shot_count,canonical from public.shots where owner_id=u and session_id=imp.session_id;
