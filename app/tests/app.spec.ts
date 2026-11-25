@@ -2954,6 +2954,29 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     scores.locator('ul.profile-stats li').filter({ hasText: 'Distance potential' }),
   ).toContainText('1st of 1 clubs in your bag');
 
+  // Personal reference (user-entered): add with validation, persist, edit.
+  const personal = card.locator('.personal-reference');
+  await expect(personal).toContainText('No personal reference for 7i yet');
+  await personal.getByRole('button', { name: 'Add personal reference' }).click();
+  await personal.getByLabel(/Value \(m\)/).fill('0');
+  await personal.getByRole('button', { name: 'Save' }).click();
+  await expect(personal.locator('.error')).toContainText(
+    'positive distance in metres',
+  );
+  await personal.getByLabel(/Value \(m\)/).fill('142');
+  await personal.getByLabel(/Note/).fill('Fitting session');
+  await personal.getByRole('button', { name: 'Save' }).click();
+  await expect(personal).toContainText(
+    'Personal reference (user-entered): 142 m carry',
+  );
+  await expect(personal).toContainText('Fitting session');
+  await personal.getByRole('button', { name: 'Edit' }).click();
+  await personal.getByLabel(/Value \(m\)/).fill('145');
+  await personal.getByRole('button', { name: 'Save' }).click();
+  await expect(personal).toContainText(
+    'Personal reference (user-entered): 145 m carry',
+  );
+
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
   await expect(latestLine).toContainText('typical carry 122 m from 13 measured shots');

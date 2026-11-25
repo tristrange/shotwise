@@ -358,6 +358,8 @@ export default function App() {
                 settings={analysisSettings}
                 onSettingsChange={setAnalysisSettings}
                 focusClub={club}
+                repository={repository}
+                refresh={refresh}
                 onManageBag={() => {
                   pendingBagFocus.current = true;
                   window.location.hash = 'settings';
