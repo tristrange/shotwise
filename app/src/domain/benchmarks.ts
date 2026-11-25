@@ -218,7 +218,13 @@ export function referenceBasisCompatible(
   basis: Basis,
 ): boolean {
   if (referenceBasis === 'unknown') return false;
-  return referenceBasis === (isRangeBallBasis(basis) ? 'range' : 'premium');
+  // Exact basis match; a family-level reference ('range'/'premium', e.g. from
+  // older rows) matches either member of its family, but flat and unadjusted
+  // variants are never mixed.
+  if (referenceBasis === basis) return true;
+  if (referenceBasis === 'range') return isRangeBallBasis(basis);
+  if (referenceBasis === 'premium') return !isRangeBallBasis(basis);
+  return false;
 }
 
 export type ReferenceComparisonRow = {

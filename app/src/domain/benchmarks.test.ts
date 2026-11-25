@@ -217,6 +217,16 @@ describe('reference comparisons (C2)', () => {
     expect(referenceBasisCompatible('premium', 'range-flat')).toBe(false);
   });
 
+  it('keeps flat and unadjusted bases distinct', () => {
+    expect(referenceBasisCompatible('range-flat', 'range-flat')).toBe(true);
+    expect(referenceBasisCompatible('range-flat', 'range')).toBe(false);
+    expect(referenceBasisCompatible('premium-flat', 'premium-flat')).toBe(true);
+    expect(referenceBasisCompatible('premium-flat', 'premium')).toBe(false);
+    // Family-level references match either member of their family.
+    expect(referenceBasisCompatible('range', 'range-flat')).toBe(true);
+    expect(referenceBasisCompatible('premium', 'premium-flat')).toBe(true);
+  });
+
   it('never silently compares an unknown-basis (legacy) reference', () => {
     const c = compareWithReference(
       ref({ basis: 'unknown' }),
