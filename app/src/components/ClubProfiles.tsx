@@ -13,6 +13,9 @@ import {
   BENCHMARK_SOURCES,
   attributionFor,
   benchmarkReferencesForClub,
+  compareWithReference,
+  type ReferenceComparison,
+  type ReferenceComparisonRow,
 } from '../domain/benchmarks';
 import {
   CATEGORY_SCORES_VERSION,
@@ -191,6 +194,48 @@ function CategoryScoresSection({
   );
 }
 
+/** Compact comparison bars: measured value vs the personal reference. */
+function ReferenceComparisonBars({
+  comparison,
+}: {
+  comparison: ReferenceComparison;
+}) {
+  const rows: [string, ReferenceComparisonRow][] = [
+    ['Typical carry', comparison.typical],
+    ['Strong-strike (P80)', comparison.strong],
+  ];
+  return (
+    <div className="reference-compare">
+      {rows.map(([label, row]) => (
+        <p key={label} className="reference-compare-row">
+          <span className="reference-compare-label">{label}</span>
+          {row.value === null || row.pct === null ? (
+            <span className="context">no measured value on this basis</span>
+          ) : (
+            <>
+              <span
+                className="reference-compare-bar"
+                role="img"
+                aria-label={`${label} ${decimal.format(row.value)} m, ${percent.format(row.pct)} of reference, ${row.delta! >= 0 ? '+' : ''}${decimal.format(row.delta!)} m`}
+              >
+                <span
+                  className="reference-compare-fill"
+                  style={{ width: `${Math.min(100, row.pct * 100)}%` }}
+                />
+              </span>
+              <span>
+                {decimal.format(row.value)} m · {percent.format(row.pct)} of ref ·{' '}
+                {row.delta! >= 0 ? '+' : ''}
+                {decimal.format(row.delta!)} m
+              </span>
+            </>
+          )}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The golfer's own user-entered reference for a club (e.g. from a fitting
  * session), labelled as such and never mixed into analytics cohorts or
@@ -200,12 +245,18 @@ function CategoryScoresSection({
 function PersonalReference({
   club,
   values,
+  basis,
+  typicalCarry,
+  strongCarry,
   onSave,
   onDelete,
   error,
 }: {
   club: string;
   values: UserReferenceValueRecord[];
+  basis: Basis;
+  typicalCarry: number | null;
+  strongCarry: number | null;
   onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDelete: (id: string, expectedRevision: number) => Promise<void>;
   error: string;
@@ -214,7 +265,7 @@ function PersonalReference({
   const [metric, setMetric] = useState<ReferenceMetric>('carry');
   const [valueM, setValueM] = useState('');
   const [note, setNote] = useState('');
-  const [basis, setBasis] = useState<ReferenceBasis>('unknown');
+  const [refBasis, setRefBasis] = useState<ReferenceBasis>('unknown');
   const [source, setSource] = useState<ReferenceSource>('manual');
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -233,7 +284,7 @@ function PersonalReference({
     setMetric(m);
     setValueM(existing ? String(existing.valueM) : '');
     setNote(existing?.note ?? '');
-    setBasis(existing?.basis ?? 'unknown');
+    setRefBasis(existing?.basis ?? 'unknown');
     setSource(existing?.source ?? 'manual');
     setBaseline(
       existing ? { id: existing.id, revision: existing.revision } : null,
@@ -249,7 +300,7 @@ function PersonalReference({
       metric,
       valueM: Number(valueM),
       note: note.trim() ? note.trim() : null,
-      basis,
+      basis: refBasis,
       source,
       revision: baseline?.revision ?? null,
     };
@@ -275,22 +326,48 @@ function PersonalReference({
     <div className="personal-reference">
       {own.length > 0 &&
         !editing &&
-        own.map((v) => (
-          <p key={v.metric}>
-            Personal reference (user-entered):{' '}
-            <strong>
-              {decimal.format(v.valueM)} m {v.metric}
-            </strong>
-            {v.note ? ` · ${v.note}` : ''} · basis {v.basis} · {v.source} ·{' '}
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => startEdit(v.metric)}
-            >
-              Edit
-            </button>
-          </p>
-        ))}
+        own.map((v) => {
+          // A carry reference compares with carry stats on a compatible
+          // basis; a total reference is shown but never compared with carry.
+          const comparison =
+            v.metric === 'carry'
+              ? compareWithReference(
+                  v,
+                  { typical: typicalCarry, strong: strongCarry },
+                  basis,
+                )
+              : null;
+          return (
+            <div key={v.metric}>
+              <p>
+                Personal reference (user-entered):{' '}
+                <strong>
+                  {decimal.format(v.valueM)} m {v.metric}
+                </strong>
+                {v.note ? ` · ${v.note}` : ''} · basis {v.basis} · {v.source}{' '}
+                ·{' '}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => startEdit(v.metric)}
+                >
+                  Edit
+                </button>
+              </p>
+              {comparison && !comparison.compatible && (
+                <p className="context">Not compared: {comparison.reason}.</p>
+              )}
+              {comparison?.compatible && (
+                <ReferenceComparisonBars comparison={comparison} />
+              )}
+              {v.metric === 'total' && (
+                <p className="context">
+                  Total-distance reference — not compared with carry numbers.
+                </p>
+              )}
+            </div>
+          );
+        })}
       {!editing && own.length === 0 && (
         <p>
           No personal reference for {club} yet.{' '}
@@ -332,8 +409,8 @@ function PersonalReference({
           <label>
             Basis{' '}
             <select
-              value={basis}
-              onChange={(e) => setBasis(e.target.value as ReferenceBasis)}
+              value={refBasis}
+              onChange={(e) => setRefBasis(e.target.value as ReferenceBasis)}
               title="Which measurement basis this reference was recorded on — comparisons never mix bases silently"
             >
               <option value="unknown">unknown</option>
@@ -575,6 +652,9 @@ function ProfileCard({
       <PersonalReference
         club={club}
         values={referenceValues}
+        basis={basis}
+        typicalCarry={recent.typical.median}
+        strongCarry={recent.potential.value}
         onSave={onSaveReference}
         onDelete={onDeleteReference}
         error={referenceError}

@@ -6,10 +6,15 @@ import {
   attributionFor,
   benchmarkHygieneProblems,
   benchmarkReferencesForClub,
+  compareWithReference,
   normalizeBenchmarkClub,
+  referenceBasisCompatible,
   validateUserReferenceValue,
 } from './benchmarks';
-import { userReferenceValueSchema } from './model';
+import {
+  userReferenceValueSchema,
+  type UserReferenceValueRecord,
+} from './model';
 
 describe('normalizeBenchmarkClub', () => {
   it('maps driver aliases to the registry key', () => {
@@ -178,6 +183,80 @@ describe('validateUserReferenceValue', () => {
         valueM: 100,
       }),
     ).toBe('Unknown metric');
+  });
+});
+
+describe('reference comparisons (C2)', () => {
+  const ref = (overrides: Partial<UserReferenceValueRecord>): UserReferenceValueRecord =>
+    userReferenceValueSchema.parse({
+      id: crypto.randomUUID(),
+      club: '7i',
+      metric: 'carry',
+      valueM: 150,
+      note: null,
+      revision: 0,
+      ...overrides,
+    });
+
+  it('compares typical and strong values with delta and percent on a matching basis', () => {
+    const c = compareWithReference(
+      ref({ basis: 'premium' }),
+      { typical: 140, strong: 158 },
+      'premium-flat',
+    );
+    expect(c.compatible).toBe(true);
+    expect(c.typical).toEqual({ value: 140, delta: -10, pct: 140 / 150 });
+    expect(c.strong).toEqual({ value: 158, delta: 8, pct: 158 / 150 });
+  });
+
+  it('matches range references with range bases only', () => {
+    expect(referenceBasisCompatible('range', 'range-flat')).toBe(true);
+    expect(referenceBasisCompatible('range', 'range')).toBe(true);
+    expect(referenceBasisCompatible('range', 'premium-flat')).toBe(false);
+    expect(referenceBasisCompatible('premium', 'premium')).toBe(true);
+    expect(referenceBasisCompatible('premium', 'range-flat')).toBe(false);
+  });
+
+  it('keeps flat and unadjusted bases distinct', () => {
+    expect(referenceBasisCompatible('range-flat', 'range-flat')).toBe(true);
+    expect(referenceBasisCompatible('range-flat', 'range')).toBe(false);
+    expect(referenceBasisCompatible('premium-flat', 'premium-flat')).toBe(true);
+    expect(referenceBasisCompatible('premium-flat', 'premium')).toBe(false);
+    // Family-level references match either member of their family.
+    expect(referenceBasisCompatible('range', 'range-flat')).toBe(true);
+    expect(referenceBasisCompatible('premium', 'premium-flat')).toBe(true);
+  });
+
+  it('never silently compares an unknown-basis (legacy) reference', () => {
+    const c = compareWithReference(
+      ref({ basis: 'unknown' }),
+      { typical: 140, strong: 158 },
+      'premium-flat',
+    );
+    expect(c.compatible).toBe(false);
+    expect(c.reason).toMatch(/unknown/i);
+    expect(c.typical.value).toBeNull();
+    expect(c.strong.value).toBeNull();
+  });
+
+  it('never silently compares a range reference on a premium view', () => {
+    const c = compareWithReference(
+      ref({ basis: 'range' }),
+      { typical: 140, strong: 158 },
+      'premium-flat',
+    );
+    expect(c.compatible).toBe(false);
+    expect(c.reason).toMatch(/range/);
+  });
+
+  it('handles missing measured values without inventing numbers', () => {
+    const c = compareWithReference(
+      ref({ basis: 'premium' }),
+      { typical: null, strong: null },
+      'premium-flat',
+    );
+    expect(c.compatible).toBe(true);
+    expect(c.typical).toEqual({ value: null, delta: null, pct: null });
   });
 });
 
