@@ -81,7 +81,10 @@ export function analysisClub(assessment: ClubAssessment): string {
  * precedence chain: manual review, then the versioned automatic assessment,
  * then the recorded default. `suspectedWrongClub` marks shots whose recorded
  * label a sequence rule suspects is wrong; the recorded label is kept and the
- * shot is excluded from club-specific benchmarks, never reassigned.
+ * shot is excluded from club-specific benchmarks, never reassigned. A manual
+ * club confirmation or correction is authoritative: it clears
+ * `suspectedWrongClub` for eligibility, while the automatic observation stays
+ * available as `suspicion` for diagnostics.
  */
 export type ResolvedShot = {
   shot: Shot;
@@ -89,6 +92,8 @@ export type ResolvedShot = {
   contact: ContactAssessment;
   club: ClubAssessment;
   suspectedWrongClub: boolean;
+  /** The automatic wrong-club observation, kept even when manual review wins. */
+  suspicion: { suspectedClub: string; evidence: number; reason: string } | null;
   automatic: ShotAssessment | undefined;
   assessmentVersion: typeof ASSESSMENT_VERSION;
 };
@@ -144,6 +149,17 @@ export function resolveShots(
   for (const shot of shots) {
     const auto = automatic.get(shot.id);
     const sequence = sequences.get(shot.id);
+    const suspicion =
+      sequence?.kind === 'suspected-wrong-club'
+        ? {
+            suspectedClub: sequence.suspectedClub,
+            evidence: sequence.evidence,
+            reason: sequence.reason,
+          }
+        : null;
+    // ADR-0001: a manual club confirm/correct wins over the automatic
+    // suspicion — the shot stays eligible for club benchmarks.
+    const manualClubDecision = shot.review.club.kind !== 'unreviewed';
     resolved.set(shot.id, {
       shot,
       intent: resolveIntent(shot.review.intent, auto?.intent.value),
@@ -152,7 +168,8 @@ export function resolveShots(
         shot,
         sequence?.kind === 'inferred-club' ? sequence.club : undefined,
       ),
-      suspectedWrongClub: sequence?.kind === 'suspected-wrong-club',
+      suspectedWrongClub: suspicion !== null && !manualClubDecision,
+      suspicion,
       automatic: auto,
       assessmentVersion: ASSESSMENT_VERSION,
     });
