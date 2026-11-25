@@ -205,6 +205,7 @@ export function selectCohort(
       !r.suspectedWrongClub &&
       !isUnknownClub(club) &&
       carry !== null &&
+      carry > 0 &&
       threshold <= carry;
     return (
       (!hideMishits ||
@@ -270,10 +271,10 @@ function strongStrikeThresholds(
       r.contact === 'mishit' ||
       r.suspectedWrongClub ||
       isUnknownClub(club) ||
-      carry === null
+      (carry ?? 0) <= 0
     )
       continue;
-    byClub.set(club, [...(byClub.get(club) ?? []), carry]);
+    byClub.set(club, [...(byClub.get(club) ?? []), carry!]);
   }
   const thresholds = new Map<string, number>();
   for (const [club, values] of byClub) {
@@ -570,7 +571,7 @@ function eligibleShots(
         isFullSwingResolved(r) &&
         r.contact !== 'mishit' &&
         !r.suspectedWrongClub &&
-        shot.measurements[key] !== null &&
+        (shot.measurements[key] ?? 0) > 0 &&
         !isUnknownClub(resolvedClub(r))
       );
     },
@@ -623,9 +624,9 @@ export function clubGaps(
     const r = resolved.get(shot.id);
     if (!r) continue;
     const carry = shot.measurements[key];
-    if (carry === null) continue;
+    if ((carry ?? 0) <= 0) continue; // zero/negative carries are missing, not distances
     const club = resolvedClub(r);
-    potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry]);
+    potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry!]);
     bandGroups.set(club, [...(bandGroups.get(club) ?? []), shot]);
   }
 
@@ -766,7 +767,7 @@ export function practiceInsights(
     group.push(shot);
     groups.set(club, group);
     visits.set(shot.sessionId, groups);
-    if (shot.measurements[key] !== null) carryClubs.add(club);
+    if ((shot.measurements[key] ?? 0) > 0) carryClubs.add(club);
   }
 
   const order = [...carryClubs].sort(
@@ -810,7 +811,7 @@ export function practiceInsights(
         carry.iqr !== null
       ) {
         const shotIds = shots
-          .filter((shot) => shot.measurements[key] !== null)
+          .filter((shot) => (shot.measurements[key] ?? 0) > 0)
           .map(({ id }) => id);
         const measured = {
           club,

@@ -385,6 +385,41 @@ describe('strong performance mode in selectCohort (roadmap §6.1)', () => {
     expect(seven.recent.potential.reliable).toBe(true);
   });
 
+  it('treats a zero carry as missing in every P80 consumer, not just the profile', () => {
+    // Nine positive reviewed full/typical carries plus one zero carry: the
+    // club must read as 9 measured everywhere — potential withheld, strong
+    // mode disabled — instead of some screens counting the zero as a distance.
+    const shots: Shot[] = [
+      ...Array.from({ length: 9 }, (_, i) =>
+        makeShot({
+          id: `ok-${i}`,
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 120 + i, speedPremium: 200 },
+          review: { intent: 'full', contact: 'typical' },
+        }),
+      ),
+      makeShot({
+        id: 'zero',
+        sessionId: session.id,
+        rowIndex: 20,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 0, speedPremium: 200 },
+        review: { intent: 'full', contact: 'typical' },
+      }),
+    ];
+    const data2 = dataset([session], shots);
+    const strong = selectCohort(shots, [session], { ...base, contact: 'strong' });
+    expect(strong).toHaveLength(0); // below the 10-measured minimum
+    const gap = clubGaps(data2, 'premium-flat', { ...base, contact: 'all' }).find(
+      (r) => r.club === '7i',
+    )!;
+    expect(gap.n).toBe(9);
+    expect(gap.reliable).toBe(false);
+    expect(gap.potential).toBeNull();
+  });
+
   it('counts missing and zero carries over the pre-filter strong-strike population', () => {
     const shots: Shot[] = [
       ...Array.from({ length: 12 }, (_, i) =>
