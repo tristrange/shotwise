@@ -77,7 +77,13 @@ export function ClubGaps({
           <div className="gap-list">
             <div className="gap-head">
               <span>Club</span>
-              <span>Typical carry · spread</span>
+              <span>
+                {settings.contact === 'strong'
+                  ? 'Strong-strike median · broader spread'
+                  : settings.contact === 'typical'
+                    ? 'Typical carry · spread'
+                    : 'Median carry · spread'}
+              </span>
               <span>Shots</span>
               <span>Gap</span>
             </div>

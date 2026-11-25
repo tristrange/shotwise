@@ -144,6 +144,32 @@ describe('strong-strike population (ADR-0002)', () => {
       expect(gaps.get(row.club)?.potential).toBe(row.potential);
     }
   });
+
+  it('keeps gapping P80 invariant across performance modes', () => {
+    const session = makeSession({ date: TODAY });
+    // 50 eligible carries 101..150 m: full-cohort P80 is ~140.2 m; P80 of the
+    // strong-filtered subset would be higher (~148 m) and must not be reported.
+    const shots = run(
+      session,
+      1,
+      Array.from({ length: 50 }, (_, i) => ({
+        id: `s${i}`,
+        carry: 101 + i,
+        speed: 200,
+      })),
+    );
+    const ds = dataset([session], shots);
+    const expected = quantile(
+      Array.from({ length: 50 }, (_, i) => 101 + i),
+      0.8,
+    );
+    for (const contact of ['all', 'typical', 'strong'] as const) {
+      const row = clubGaps(ds, 'premium-flat', { ...query, contact }).find(
+        (r) => r.club === '7i',
+      );
+      expect(row?.potential).toBeCloseTo(expected!, 5);
+    }
+  });
 });
 
 describe('strong-strike estimator investigation (roadmap §6.2)', () => {

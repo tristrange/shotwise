@@ -145,14 +145,23 @@ export function selectCohort(
       const date = sessionMap.get(s.sessionId)?.date;
       return date !== undefined && date >= start && date <= query.today;
     });
+    // The per-club recency cap runs over benchmark-eligible shots only, so a
+    // suspected wrong-club row cannot displace valid older rows inside the
+    // window; suspected rows stay in session-wide views with their label.
     const perClub = new Map<string, Shot[]>();
+    const suspected: Shot[] = [];
     for (const shot of selected) {
+      const r = resolved.get(shot.id);
+      if (r?.suspectedWrongClub) {
+        suspected.push(shot);
+        continue;
+      }
       const club = clubOf(shot);
       const group = perClub.get(club) ?? [];
       group.push(shot);
       perClub.set(club, group);
     }
-    selected = [...perClub.values()].flatMap((group) => {
+    const capped = [...perClub.values()].flatMap((group) => {
       const sorted = [...group].sort((a, b) =>
         (sessionMap.get(b.sessionId)?.date ?? '').localeCompare(
           sessionMap.get(a.sessionId)?.date ?? '',
@@ -165,6 +174,7 @@ export function selectCohort(
         (s) => (sessionMap.get(s.sessionId)?.date ?? '') >= cutoff,
       );
     });
+    selected = [...capped, ...suspected];
   }
   if (query.scopeSessionId)
     selected = selected.filter((s) => s.sessionId === query.scopeSessionId);
@@ -206,6 +216,33 @@ export function selectCohort(
         (query.contact === 'strong' && strong))
     );
   });
+}
+
+/**
+ * Shared club-benchmark eligibility (ADR-0001): a resolved shot enters
+ * club-specific benchmarks only with a known resolved club and no
+ * exclusion-grade wrong-club suspicion. Session-wide views keep suspected
+ * rows under their recorded label.
+ */
+export function clubBenchmarkEligible(r: ResolvedShot): boolean {
+  return !r.suspectedWrongClub && !isUnknownClub(resolvedClub(r));
+}
+
+/** Group selected shots by resolved club for club benchmarks, dropping suspected and unknown rows. */
+export function benchmarkClubGroups(
+  shots: Shot[],
+  resolved: Map<string, ResolvedShot>,
+): Map<string, Shot[]> {
+  const groups = new Map<string, Shot[]>();
+  for (const shot of shots) {
+    const r = resolved.get(shot.id);
+    if (!r || !clubBenchmarkEligible(r)) continue;
+    const club = resolvedClub(r);
+    const group = groups.get(club) ?? [];
+    group.push(shot);
+    groups.set(club, group);
+  }
+  return groups;
 }
 
 /**
@@ -558,18 +595,38 @@ export function clubGaps(
     const club = resolvedClub(r);
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
+  // P80 (distance potential) and the spread band (P10–P90) are computed once
+  // per club from the mode-invariant eligible cohort — never from the
+  // strong-filtered subset — so neither changes with the selected performance
+  // mode (ADR-0002). The median still follows the selected mode.
+  const potentialCarries = new Map<string, number[]>();
+  const bandGroups = new Map<string, Shot[]>();
+  for (const shot of eligibleShots(data, basis, {
+    ...query,
+    contact: 'all',
+    hideLikelyMishits: false,
+  })) {
+    const r = resolved.get(shot.id);
+    if (!r) continue;
+    const carry = shot.measurements[key];
+    if (carry === null) continue;
+    const club = resolvedClub(r);
+    potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry]);
+    bandGroups.set(club, [...(bandGroups.get(club) ?? []), shot]);
+  }
 
   const rows: ClubGap[] = [...groups]
     .map(([club, shots]) => {
       const stats = metricStats(shots, key);
+      const band = metricStats(bandGroups.get(club) ?? [], key);
       return {
         club,
         n: stats.n,
         median: stats.median ?? 0,
-        low: stats.p10,
-        high: stats.p90,
-        potential: stats.p80,
-        reliable: stats.n >= MIN_GAP_SAMPLES,
+        low: band.p10,
+        high: band.p90,
+        potential: potentialCarry(potentialCarries.get(club) ?? []),
+        reliable: band.n >= MIN_GAP_SAMPLES,
         gap: null,
         flag: null,
       };

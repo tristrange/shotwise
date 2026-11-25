@@ -2,6 +2,7 @@ import { quantile } from './statistics';
 import { describe, expect, it } from 'vitest';
 import { parseCsv, suggestDate, toBase64, fromBase64 } from './csv';
 import {
+  benchmarkClubGroups,
   clubGaps,
   summarize,
   selectCohort,
@@ -51,6 +52,41 @@ describe('gapping analysis windows', () => {
       n: 40,
     });
     expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
+  });
+
+  it('reads the gapping spread band from the broader cohort in strong-strike mode', () => {
+    const session = makeSession({ date: '2026-11-16' });
+    // 20 typical carries 100..119 plus 4 strong 160s: in strong mode the
+    // median follows the strong subset, but the P10-P90 band must still
+    // describe the broader eligible population.
+    const shots = [
+      ...Array.from({ length: 20 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 100 + i, speedPremium: 150 },
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: 30 + i,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 160, speedPremium: 210 },
+        }),
+      ),
+    ];
+    const data = { ...emptyDataset, sessions: [session], shots };
+    const strong = clubGaps(data, 'premium-flat', {
+      ...allTimeQuery,
+      contact: 'strong',
+    })[0]!;
+    const all = clubGaps(data, 'premium-flat', allTimeQuery)[0]!;
+    expect(strong.median).toBe(160); // strong-strike median
+    expect(strong.low).toBe(all.low); // broader band, mode-invariant
+    expect(strong.high).toBe(all.high);
+    expect(strong.potential).toBe(all.potential);
   });
 
   it('applies review filters after the cutoff date without backfilling older shots', () => {
@@ -244,6 +280,70 @@ describe('statistics and reproducible cohorts', () => {
         contact: 'all',
       }),
     ).toHaveLength(0);
+  });
+  it('applies one club-benchmark eligibility rule and keeps suspected rows out of the Recent cap', () => {
+    // Genuine 9i history across two dates, then a driver block plus a 10-shot
+    // 9i-labelled block at driver distances — a strong forgotten-switch flag.
+    const a1 = makeSession({ id: 'a1', date: '2026-10-01' });
+    const a2 = makeSession({ id: 'a2', date: '2026-11-01' });
+    const b = makeSession({ id: 'b', date: '2026-11-16' });
+    const nineIron = (session: typeof a1, count: number, startRow: number) =>
+      Array.from({ length: count }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: startRow + i,
+          recordedClub: '9i',
+          measurements: { flatCarryPremium: 120, speedPremium: 118 },
+        }),
+      );
+    const shots = [
+      ...nineIron(a1, 10, 1),
+      ...nineIron(a2, 45, 1),
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeShot({
+          sessionId: b.id,
+          rowIndex: i + 1,
+          recordedClub: 'D',
+          measurements: { flatCarryPremium: 240, speedPremium: 210 },
+        }),
+      ),
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          id: `wrong-${i}`,
+          sessionId: b.id,
+          rowIndex: 20 + i,
+          recordedClub: '9i',
+          measurements: { flatCarryPremium: 235, speedPremium: 205 },
+        }),
+      ),
+    ];
+    const sessions = [a1, a2, b];
+    const resolved = resolveShots(shots, sessions, 'premium-flat');
+    // The shared rule: flagged rows are out of every club group.
+    const groups = benchmarkClubGroups(shots, resolved);
+    expect(groups.get('9i')).toHaveLength(55);
+    expect(groups.get('D')).toHaveLength(12);
+    for (const g of groups.values())
+      expect(g.some((s) => s.id.startsWith('wrong-'))).toBe(false);
+    // Recent mode: the cap runs over eligible shots only, so the 10 suspected
+    // rows (newest) cannot displace older valid 9i rows in the club cohort.
+    const clubCohort = selectCohort(shots, sessions, {
+      mode: 'recent',
+      today: '2026-11-16',
+      intent: 'all',
+      contact: 'all',
+      club: '9i',
+    });
+    expect(clubCohort).toHaveLength(55);
+    expect(clubCohort.every((s) => s.sessionId !== b.id)).toBe(true);
+    // Session-wide Recent keeps the suspected rows with their recorded label.
+    const sessionWide = selectCohort(shots, sessions, {
+      mode: 'recent',
+      today: '2026-11-16',
+      intent: 'all',
+      contact: 'all',
+    });
+    expect(sessionWide.filter((s) => s.id.startsWith('wrong-'))).toHaveLength(10);
   });
   it('uses effective clubs, exclusions, archived sessions and only reviewed typical shots', () => {
     const session = makeSession();
