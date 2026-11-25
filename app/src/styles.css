@@ -239,6 +239,7 @@ td { color: var(--ink); }
 tbody tr:hover { background: var(--panel); }
 details { margin-top: 18px; font-size: .9rem; color: var(--ink2); }
 summary { cursor: pointer; font-weight: 600; font-family: 'Instrument Sans', sans-serif; }
+.category-scores { margin-top: 18px; }
 .benchmark-refs ul { margin: 8px 0; padding-left: 18px; }
 .benchmark-refs li { margin-block: 8px; }
 .benchmark-refs li p { margin: 4px 0 0; }

@@ -5,6 +5,14 @@ import {
   attributionFor,
   benchmarkReferencesForClub,
 } from '../domain/benchmarks';
+import {
+  CATEGORY_SCORES_VERSION,
+  CATEGORY_SCORE_DEFINITIONS,
+  categoryScores,
+  type CategoryScore,
+  type CategoryScoreId,
+  type CategoryScores,
+} from '../domain/scores';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Basis, type Dataset } from '../domain/model';
@@ -88,16 +96,91 @@ function BenchmarkReferences({ club, basis }: { club: string; basis: Basis }) {
   );
 }
 
+const CATEGORY_ORDER: CategoryScoreId[] = [
+  'distancePotential',
+  'consistency',
+  'directionalControl',
+  'reliability',
+];
+
+function formatScore(score: CategoryScore) {
+  if (score.value === null) return 'not enough data';
+  if (score.unit === 'share') return percent.format(score.value);
+  return `${decimal.format(score.value)} ${score.unit}`;
+}
+
+/**
+ * The four category scores from ADR-0003 / `category-scores-1`, shown as raw
+ * metrics from the golfer's own shots — no composite score (roadmap §8.3).
+ * Insufficient categories show "not enough data" with the reason in a pill.
+ */
+function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
+  return (
+    <div className="category-scores">
+      <ul className="profile-stats">
+        {CATEGORY_ORDER.map((id) => {
+          const score = scores[id];
+          return (
+            <li key={id}>
+              <strong>{score.label}</strong> {formatScore(score)} · from{' '}
+              {score.n}{' '}
+              {score.unit === 'm'
+                ? 'measured shots'
+                : score.unit === 'deg'
+                  ? 'shots with launch direction'
+                  : 'assessed full swings'}
+              {score.note && <span className="pill"> {score.note}</span>}
+              {score.aux
+                ?.filter((a) => a.value !== null)
+                .map((a) => (
+                  <span key={a.label}>
+                    {' '}
+                    · {a.label.toLowerCase()}{' '}
+                    {a.unit === 'share'
+                      ? percent.format(a.value!)
+                      : `${decimal.format(a.value!)} ${a.unit}`}
+                  </span>
+                ))}
+            </li>
+          );
+        })}
+      </ul>
+      <details>
+        <summary>How these are scored</summary>
+        <ul>
+          {CATEGORY_ORDER.map((id) => {
+            const def = CATEGORY_SCORE_DEFINITIONS[id];
+            return (
+              <li key={id}>
+                <strong>{def.label}.</strong> {def.description} Population:{' '}
+                {def.population} Estimator: {def.estimator}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="context">
+          Scores are raw measurements from your own shots on the selected
+          basis, each with its sample size; categories with too little data show
+          “not enough data” rather than a guess. No composite 0–100 score is
+          shown (roadmap §8.3). Methodology version {CATEGORY_SCORES_VERSION}.
+        </p>
+      </details>
+    </div>
+  );
+}
+
 function ProfileCard({
   profile,
   focus,
   bagCount,
   basis,
+  scores,
 }: {
   profile: ClubProfile;
   focus: boolean;
   bagCount: number;
   basis: Basis;
+  scores: CategoryScores;
 }) {
   const {
     club,
@@ -240,6 +323,7 @@ function ProfileCard({
         <p>No measured carry on this basis for {club} yet.</p>
       )}
       {gapText && <p>{gapText}.</p>}
+      <CategoryScoresSection scores={scores} />
       <BenchmarkReferences club={club} basis={basis} />
       <div className="table-wrap">
         <table aria-label={`${club} history across sessions`}>
@@ -360,6 +444,7 @@ export function ClubProfiles({
             focus={focusClub === profile.club}
             bagCount={data.equipment.length}
             basis={basis}
+            scores={categoryScores(data, basis, query, profile.club)}
           />
         ))}
       </section>
