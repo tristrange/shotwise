@@ -118,6 +118,23 @@ describe('category score definitions (PR 18)', () => {
     expect(result.consistency.note).toContain('Needs 4');
   });
 
+  it('reports a smaller independent sample size for the from-centre aux', () => {
+    // 8 launch-direction readings but only 2 from-centre readings: the aux
+    // must carry n = 2, not the row's n = 8.
+    const shots = [
+      ...series(current, Array.from({ length: 6 }, () => 120), {
+        measurements: { launchDirection: 2 },
+      }),
+      ...series(current, [120, 121], {
+        measurements: { launchDirection: 2, fromCentre: 5 },
+      }),
+    ];
+    const result = scores([current], shots);
+    expect(result.directionalControl.n).toBe(8);
+    expect(result.directionalControl.aux?.[0]?.value).toBe(5);
+    expect(result.directionalControl.aux?.[0]?.n).toBe(2);
+  });
+
   it('scores directional control from launch direction, not from curvature alone', () => {
     const shots = series(current, Array.from({ length: 8 }, () => 120), {
       measurements: { launchDirection: 2, fromCentre: 5, curve: 8 },
@@ -127,6 +144,8 @@ describe('category score definitions (PR 18)', () => {
     expect(result.directionalControl.value).toBe(2);
     expect(result.directionalControl.unit).toBe('deg');
     expect(result.directionalControl.aux?.[0]?.value).toBe(5);
+    // The aux measurement carries its own independent sample size.
+    expect(result.directionalControl.aux?.[0]?.n).toBe(8);
 
     // Curve present but no launch direction: not sufficient, never inferred.
     const curveOnly = series(current, Array.from({ length: 8 }, () => 120), {

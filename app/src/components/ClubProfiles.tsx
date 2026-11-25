@@ -138,7 +138,8 @@ function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
                     · {a.label.toLowerCase()}{' '}
                     {a.unit === 'share'
                       ? percent.format(a.value!)
-                      : `${decimal.format(a.value!)} ${a.unit}`}
+                      : `${decimal.format(a.value!)} ${a.unit}`}{' '}
+                    (n = {a.n})
                   </span>
                 ))}
             </li>
@@ -444,7 +445,7 @@ export function ClubProfiles({
             focus={focusClub === profile.club}
             bagCount={data.equipment.length}
             basis={basis}
-            scores={categoryScores(data, basis, query, profile.club)}
+            scores={categoryScores(data, basis, query, profile.club, profile)}
           />
         ))}
       </section>

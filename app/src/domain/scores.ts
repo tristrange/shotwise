@@ -1,6 +1,6 @@
 import { selectCohort, type AnalysisQuery } from './analytics';
 import { resolveShots } from './assessment';
-import { clubProfiles } from './clubProfiles';
+import { clubProfiles, type ClubProfile } from './clubProfiles';
 import { BASES, type Basis, type Dataset } from './model';
 import { MIN_POTENTIAL_SAMPLES } from './potential';
 import { filterCohort } from './recap';
@@ -40,6 +40,8 @@ export type CategoryScoreAux = {
   label: string;
   value: number | null;
   unit: ScoreUnit;
+  /** Independent sample size of this aux measurement (may differ from the row's n). */
+  n: number;
 };
 
 export type CategoryScore = {
@@ -110,14 +112,19 @@ const medianAbs = (values: number[]) => {
  * profile's existing numbers are reused verbatim (typical/potential/spread/
  * tail/contact come from `clubProfiles`); directional control and the
  * reliability rate are computed here from the same reliability cohort.
+ *
+ * Pass the already-computed `profile` when the caller has one (the profiles
+ * screen computes every club's profile once) — otherwise it is derived here,
+ * which runs the whole-bag profile calculation.
  */
 export function categoryScores(
   data: Dataset,
   basis: Basis,
   query: AnalysisQuery,
   club: string,
+  profile?: ClubProfile,
 ): CategoryScores {
-  const profile = clubProfiles(data, basis, query).find(
+  profile ??= clubProfiles(data, basis, query).find(
     (p) => p.club === club,
   );
   const resolved = resolveShots(data.shots, data.sessions, basis);
@@ -167,6 +174,7 @@ export function categoryScores(
         label: 'Lower carry tail (P10)',
         value: lowerTail?.p10 ?? null,
         unit: 'm',
+        n: lowerTail?.n ?? 0,
       },
     ],
   };
@@ -202,6 +210,7 @@ export function categoryScores(
         label: 'Median |from centre|',
         value: medianAbs(fromCentreValues),
         unit: 'm',
+        n: fromCentreValues.length,
       },
     ],
   };
@@ -243,6 +252,7 @@ export function categoryScores(
           ? assessedFull / reliabilityShots.length
           : null,
         unit: 'share',
+        n: reliabilityShots.length,
       },
     ],
   };
