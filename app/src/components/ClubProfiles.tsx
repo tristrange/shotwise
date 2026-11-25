@@ -25,7 +25,7 @@ import {
   type CategoryScore,
   type CategoryScores,
 } from '../domain/scores';
-import { bagStandings, ordinal, type BagStandings } from '../domain/standings';
+import { clubRatings, type ClubRating } from '../domain/ratings';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Basis, type Dataset } from '../domain/model';
@@ -36,6 +36,7 @@ import {
   ViewToggle,
 } from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
+import { RatingBreakdown, RatingChip } from './ClubRating';
 
 const decimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat(undefined, { style: 'percent' });
@@ -118,23 +119,19 @@ function formatScore(score: CategoryScore) {
 }
 
 /**
- * The four category scores from ADR-0003 / `category-scores-1`, shown as raw
- * metrics from the golfer's own shots — no composite score (roadmap §8.3).
+ * The four category measurements from ADR-0003 / `category-scores-1`, shown
+ * as raw metrics from the golfer's own shots. The within-bag raw-metric
+ * standings of ADR-0004 were removed with ADR-0005 (decision 2): raw carry
+ * ranks the driver first by construction and absolute IQR favours short
+ * clubs. Normalized 0–100 ratings live in `RatingBreakdown` above.
  * Insufficient categories show "not enough data" with the reason in a pill.
  */
-function CategoryScoresSection({
-  scores,
-  standings,
-}: {
-  scores: CategoryScores;
-  standings: BagStandings[string];
-}) {
+function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
   return (
     <div className="category-scores">
       <ul className="profile-stats">
         {CATEGORY_ORDER.map((id) => {
           const score = scores[id];
-          const standing = standings[id];
           return (
             <li key={id}>
               <strong>{score.label}</strong> {formatScore(score)} · from{' '}
@@ -144,12 +141,6 @@ function CategoryScoresSection({
                 : score.unit === 'deg'
                   ? 'shots with launch direction'
                   : 'assessed full swings'}
-              {standing && (
-                <span>
-                  {' '}
-                  · {ordinal(standing.rank)} of {standing.of} clubs in your bag
-                </span>
-              )}
               {score.note && <span className="pill"> {score.note}</span>}
               {score.aux
                 ?.filter((a) => a.value !== null)
@@ -494,7 +485,7 @@ function ProfileCard({
   bagCount,
   basis,
   scores,
-  standings,
+  rating,
   referenceValues,
   onSaveReference,
   onDeleteReference,
@@ -505,7 +496,7 @@ function ProfileCard({
   bagCount: number;
   basis: Basis;
   scores: CategoryScores;
-  standings: BagStandings[string];
+  rating: ClubRating | null;
   referenceValues: UserReferenceValueRecord[];
   onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDeleteReference: (id: string, expectedRevision: number) => Promise<void>;
@@ -543,9 +534,12 @@ function ProfileCard({
   const gapText = gapNote(gap);
   return (
     <section className="club-profile" aria-labelledby={`club-${club}`}>
-      <h3 id={`club-${club}`} tabIndex={-1} ref={heading}>
-        {club}
-      </h3>
+      <div className="club-profile-head">
+        <h3 id={`club-${club}`} tabIndex={-1} ref={heading}>
+          {club}
+        </h3>
+        <RatingChip rating={rating} />
+      </div>
       <p className="context">
         {basisLabel} · {windowText} · {range.sessions}{' '}
         {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
@@ -654,7 +648,8 @@ function ProfileCard({
         <p>No measured carry on this basis for {club} yet.</p>
       )}
       {gapText && <p>{gapText}.</p>}
-      <CategoryScoresSection scores={scores} standings={standings} />
+      {rating && <RatingBreakdown rating={rating} />}
+      <CategoryScoresSection scores={scores} />
       <BenchmarkReferences club={club} basis={basis} />
       <PersonalReference
         club={club}
@@ -759,15 +754,13 @@ export function ClubProfiles({
       throw e;
     }
   };
-  // Scores reuse the profiles computed above; within-bag standings are
-  // derived once for the whole bag (ADR-0004).
+  // Scores reuse the profiles computed above; ratings come from the shared
+  // ratings-2 module on the fixed premium-flat rating basis (ADR-0005).
+  const ratingsByClub = new Map(clubRatings(data, query).map((r) => [r.club, r]));
   const scoresByClub = profiles.map((profile) => ({
     profile,
     scores: categoryScores(data, basis, query, profile.club, profile),
   }));
-  const standings = bagStandings(
-    scoresByClub.map(({ profile, scores }) => ({ club: profile.club, scores })),
-  );
   return (
     <>
       <div className="section-heading">
@@ -828,7 +821,7 @@ export function ClubProfiles({
             bagCount={data.equipment.length}
             basis={basis}
             scores={scores}
-            standings={standings[profile.club]!}
+            rating={ratingsByClub.get(profile.club) ?? null}
             referenceValues={data.userReferenceValues}
             onSaveReference={saveReference}
             onDeleteReference={deleteReference}

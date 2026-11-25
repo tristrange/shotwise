@@ -36,6 +36,10 @@ function ref(overrides: Partial<UserReferenceValueRecord> = {}): UserReferenceVa
     note: null,
     basis: 'premium-flat',
     source: 'manual',
+    referenceType: 'goal',
+    statistic: 'other',
+    recordedOn: null,
+    equipmentId: null,
     revision: 0,
     ...overrides,
   };
