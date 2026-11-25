@@ -2951,11 +2951,17 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(methodology).toContainText('category-scores-1');
   await expect(methodology).toContainText('no composite 0–100 overall score');
 
-  // Within-bag standing (ADR-0004): 5i has too few shots for a potential
-  // score, so 7i stands 1st of 1 eligible club on distance potential.
-  await expect(
-    scores.locator('ul.profile-stats li').filter({ hasText: 'Distance potential' }),
-  ).toContainText('1st of 1 clubs in your bag');
+  // Normalized ratings (ADR-0005, ratings-2): the breakdown shows the overall
+  // composite and the four category bars; the ADR-0004 raw-metric within-bag
+  // standings are removed.
+  const rating = card.locator('.rating-breakdown');
+  await expect(rating.locator('.rating-overall')).toContainText('Overall');
+  await expect(rating.locator('.rating-row').first()).toContainText('Distance');
+  await expect(rating.locator('.rating-row')).toHaveCount(4);
+  await expect(scores).not.toContainText('clubs in your bag');
+  const ratingMethodology = rating.locator('details');
+  await ratingMethodology.locator('summary').click();
+  await expect(ratingMethodology).toContainText('ratings-2');
 
   // Personal reference (user-entered): add with validation, persist, edit.
   const personal = card.locator('.personal-reference');

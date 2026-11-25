@@ -534,9 +534,12 @@ function ProfileCard({
   const gapText = gapNote(gap);
   return (
     <section className="club-profile" aria-labelledby={`club-${club}`}>
-      <h3 id={`club-${club}`} tabIndex={-1} ref={heading}>
-        {club} <RatingChip rating={rating} />
-      </h3>
+      <div className="club-profile-head">
+        <h3 id={`club-${club}`} tabIndex={-1} ref={heading}>
+          {club}
+        </h3>
+        <RatingChip rating={rating} />
+      </div>
       <p className="context">
         {basisLabel} · {windowText} · {range.sessions}{' '}
         {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
