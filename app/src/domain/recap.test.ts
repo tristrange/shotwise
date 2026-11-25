@@ -505,11 +505,14 @@ describe('session recap', () => {
       unusual: true,
     });
     const result = club([current, ...prior], shots);
+    // The canonical range-preferred assessment basis reads the flagged shot's
+    // directly measured 4 m / 20 kph and classifies it as an automatic mishit,
+    // so it leaves the potential cohort but stays in reliability.
     expect(result.potential.broader.current).toMatchObject({
-      measured: 21,
+      measured: 20,
       value: 110,
     });
-    expect(result.potential.broader.current.shotIds).toContain(flagged.id);
+    expect(result.potential.broader.current.shotIds).not.toContain(flagged.id);
     expect(result.reliability).toMatchObject({
       spread: {
         current: { measured: 24, value: 0 },

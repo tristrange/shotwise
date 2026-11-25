@@ -1,6 +1,6 @@
 import { quantile } from './statistics';
 import {
-  BASES,
+  assessmentMeasurement,
   clubOrder,
   effectiveClub,
   isUnknownClub,
@@ -69,11 +69,8 @@ type Profile = { n: number; carryMedian: number; speedMedian: number };
 function profiles(
   shots: Shot[],
   sessionMap: Map<string, Session>,
-  basis: Basis,
   sessionId?: string,
 ): Map<string, Profile> {
-  const carryKey = BASES[basis].carry;
-  const speedKey = BASES[basis].speed;
   const out = new Map<string, Profile>();
   const byClub = new Map<string, Shot[]>();
   for (const shot of shots) {
@@ -85,16 +82,16 @@ function profiles(
     if (shot.review.contact === 'mishit' || shot.review.intent === 'partial') continue;
     const club = effectiveClub(shot);
     if (isUnknownClub(club)) continue;
-    const carry = shot.measurements[carryKey];
-    const speed = shot.measurements[speedKey];
+    const carry = assessmentMeasurement(shot, 'carry');
+    const speed = assessmentMeasurement(shot, 'speed');
     if (carry === null || speed === null || carry <= 0 || speed <= 0) continue;
     const group = byClub.get(club) ?? [];
     group.push(shot);
     byClub.set(club, group);
   }
   for (const [club, group] of byClub) {
-    const carries = group.flatMap((s) => s.measurements[BASES[basis].carry] ?? []);
-    const speeds = group.flatMap((s) => s.measurements[BASES[basis].speed] ?? []);
+    const carries = group.flatMap((s) => assessmentMeasurement(s, 'carry') ?? []);
+    const speeds = group.flatMap((s) => assessmentMeasurement(s, 'speed') ?? []);
     const carryMedian = quantile(carries, 0.5);
     const speedMedian = quantile(speeds, 0.5);
     if (carryMedian === null || speedMedian === null) continue;
@@ -103,13 +100,9 @@ function profiles(
   return out;
 }
 
-function compatible(
-  shot: Shot,
-  profile: Profile,
-  basis: Basis,
-): boolean {
-  const carry = shot.measurements[BASES[basis].carry];
-  const speed = shot.measurements[BASES[basis].speed];
+function compatible(shot: Shot, profile: Profile): boolean {
+  const carry = assessmentMeasurement(shot, 'carry');
+  const speed = assessmentMeasurement(shot, 'speed');
   if (carry === null || speed === null || carry <= 0 || speed <= 0) return false;
   const carryTol = Math.max(MIN_CARRY_TOL_M, CARRY_TOLERANCE * profile.carryMedian);
   const speedTol = Math.max(MIN_SPEED_TOL_KPH, SPEED_TOLERANCE * profile.speedMedian);
@@ -119,9 +112,9 @@ function compatible(
   );
 }
 
-function distance(shot: Shot, profile: Profile, basis: Basis): number {
-  const carry = shot.measurements[BASES[basis].carry];
-  const speed = shot.measurements[BASES[basis].speed];
+function distance(shot: Shot, profile: Profile): number {
+  const carry = assessmentMeasurement(shot, 'carry');
+  const speed = assessmentMeasurement(shot, 'speed');
   if (carry === null || speed === null) return Number.POSITIVE_INFINITY;
   const carryTol = Math.max(MIN_CARRY_TOL_M, CARRY_TOLERANCE * profile.carryMedian);
   const speedTol = Math.max(MIN_SPEED_TOL_KPH, SPEED_TOLERANCE * profile.speedMedian);
@@ -145,8 +138,11 @@ function distance(shot: Shot, profile: Profile, basis: Basis): number {
 export function assessSequences(
   shots: Shot[],
   sessions: Session[],
-  basis: Basis = 'premium-flat',
+  _basis: Basis = 'premium-flat',
 ): Map<string, SequenceAssessment> {
+  // _basis is the caller's display basis; sequence inference uses the canonical
+  // per-shot assessment policy (assessmentMeasurement), so it never changes
+  // when the display basis changes.
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const out = new Map<string, SequenceAssessment>();
 
@@ -172,9 +168,9 @@ export function assessSequences(
         sess.date <= session.date
       );
     });
-    const referenceProfiles = profiles(windowShots, sessionMap, basis);
+    const referenceProfiles = profiles(windowShots, sessionMap);
     const ordered = [...sessionShots].sort((a, b) => a.rowIndex - b.rowIndex);
-    const sessionProfiles = profiles(ordered, sessionMap, basis, sessionId);
+    const sessionProfiles = profiles(ordered, sessionMap, sessionId);
     // The minimum sample is enforced on whichever source actually supplies the
     // profile — a one-shot reference fallback is never enough.
     const profileFor = (club: string) => {
@@ -222,10 +218,10 @@ export function assessSequences(
           return {
             candidate,
             found,
-            distance: found ? distance(shot, found.profile, basis) : Number.POSITIVE_INFINITY,
+            distance: found ? distance(shot, found.profile) : Number.POSITIVE_INFINITY,
           };
         })
-        .filter((s) => s.found && compatible(shot, s.found!.profile, basis))
+        .filter((s) => s.found && compatible(shot, s.found!.profile))
         .sort((a, b) => a.distance - b.distance);
       if (!scored.length) {
         // Poor-strike context: when both labelled neighbours agree on one club
@@ -237,8 +233,8 @@ export function assessSequences(
             ? effectiveClub(prev)
             : undefined;
         const neighbourProfile = neighbourClub ? profileFor(neighbourClub) : null;
-        const carry = shot.measurements[BASES[basis].carry];
-        const speed = shot.measurements[BASES[basis].speed];
+        const carry = assessmentMeasurement(shot, 'carry');
+        const speed = assessmentMeasurement(shot, 'speed');
         const lowOutput =
           neighbourProfile !== null &&
           ((carry !== null &&
@@ -326,10 +322,9 @@ export function assessSequences(
       const ownRun = profiles(
         windowShots.filter((s) => !runIds.has(s.id)),
         sessionMap,
-        basis,
       ).get(run.club);
       for (const [candidate, profile] of others) {
-        const mask = run.shots.map((s) => compatible(s, profile, basis));
+        const mask = run.shots.map((s) => compatible(s, profile));
         // Maximal contiguous candidate-compatible blocks.
         let start = -1;
         const blocks: Shot[][] = [];
@@ -348,14 +343,13 @@ export function assessSequences(
             profiles(
               windowShots.filter((s) => !blockIds.has(s.id)),
               sessionMap,
-              basis,
             ).get(run.club);
           if (!own || own.n < MIN_PROFILE) continue;
           // Split out shots that also fit the recorded club: an overlapping
           // genuine shot must not drag its whole block out of the suspect set.
           // Suspects stay contiguous in the original run order.
           const suspectIdx = block
-            .map((s, i) => (compatible(s, own, basis) ? -1 : i))
+            .map((s, i) => (compatible(s, own) ? -1 : i))
             .filter((i) => i >= 0);
           const subs: Shot[][] = [];
           let subStart = -1;
@@ -377,9 +371,9 @@ export function assessSequences(
           }
           for (const sub of subs) {
             const ownDistance =
-              sub.reduce((sum, s) => sum + distance(s, own, basis), 0) / sub.length;
+              sub.reduce((sum, s) => sum + distance(s, own), 0) / sub.length;
             const otherDistance =
-              sub.reduce((sum, s) => sum + distance(s, profile, basis), 0) / sub.length;
+              sub.reduce((sum, s) => sum + distance(s, profile), 0) / sub.length;
             if (!(otherDistance < SWITCH_CLOSENESS * ownDistance && otherDistance < 2)) continue;
             for (const shot of sub) {
               const current = best.get(shot.id);
@@ -396,7 +390,7 @@ export function assessSequences(
         for (const [candidate, profile] of others) {
           if (candidate === b.candidate) continue;
           const d =
-            b.block.reduce((sum, s) => sum + distance(s, profile, basis), 0) / b.block.length;
+            b.block.reduce((sum, s) => sum + distance(s, profile), 0) / b.block.length;
           const cur = alternatives.get(shotId);
           if (cur === undefined || d < cur) alternatives.set(shotId, d);
         }

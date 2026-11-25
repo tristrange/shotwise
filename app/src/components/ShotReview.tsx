@@ -64,7 +64,10 @@ export function ShotReview({
     [data.shots, data.sessions],
   );
   // One resolved pass feeds both the automatic badges and the suspicion badge,
-  // instead of running both classifiers separately.
+  // instead of running both classifiers separately. Classification runs on the
+  // canonical assessment basis (range measurements preferred over premium
+  // estimates), so the basis argument here is display-only and never changes
+  // club identity, intent or contact.
   const resolvedAssessments = useMemo(
     () => resolveShots(data.shots, data.sessions, 'premium-flat'),
     [data.shots, data.sessions],

@@ -270,6 +270,33 @@ export const BASES: Record<
     apex: 'apexRange',
   },
 };
+/**
+ * Canonical assessment-basis policy (owner decision, roadmap §13.6 item 3).
+ * Automatic classification never depends on the selected display basis: each
+ * signal prefers the directly measured range-ball (flat) value and falls back
+ * to the premium-ball estimate per shot, a deterministic per-shot policy for
+ * missing measurements. Switching the display basis therefore never silently
+ * reclassifies a shot.
+ */
+export const ASSESSMENT_FIELDS = {
+  carry: ['flatCarryRange', 'flatCarryPremium'],
+  speed: ['speedRange', 'speedPremium'],
+  launch: ['launchRange', 'launchPremium'],
+  apex: ['apexRange', 'apexPremium'],
+  total: ['flatTotalRange', 'flatTotalPremium'],
+} as const satisfies Record<string, [MetricKey, MetricKey]>;
+
+export type AssessmentField = keyof typeof ASSESSMENT_FIELDS;
+
+/** Canonical classification value for one signal of one shot. */
+export function assessmentMeasurement(
+  shot: Shot,
+  field: AssessmentField,
+): number | null {
+  const [rangeKey, premiumKey] = ASSESSMENT_FIELDS[field];
+  return shot.measurements[rangeKey] ?? shot.measurements[premiumKey];
+}
+
 export function effectiveClub(shot: Shot): string {
   return shot.review.club.kind === 'corrected'
     ? shot.review.club.club

@@ -61,7 +61,7 @@ const PERFORMANCE_OPTIONS: {
   {
     value: 'typical',
     label: 'Typical',
-    title: 'Typical-contact full swings — expected carry and gapping',
+    title: 'Shots with typical contact, full or partial — expected carry and gapping',
   },
   {
     value: 'strong',
@@ -86,7 +86,16 @@ export function PerformanceToggle({
           className={settings.contact === option.value ? 'active' : ''}
           aria-pressed={settings.contact === option.value}
           title={option.title}
-          onClick={() => onChange({ ...settings, contact: option.value })}
+          onClick={() =>
+            onChange({
+              ...settings,
+              contact: option.value,
+              // Strong-strike view is about strike strength only; the mishit
+              // filter is normalized off so auto-flagged unusual shots are not
+              // silently dropped from it (mirrors selectCohort).
+              ...(option.value === 'strong' ? { hideLikelyMishits: false } : {}),
+            })
+          }
         >
           {option.label}
         </button>
