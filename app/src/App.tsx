@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   ClipboardCheck,
@@ -28,6 +28,15 @@ import { ShotShapes } from './components/ShotShapes';
 import { BallFlightExplorer } from './components/BallFlightExplorer';
 import type { AnalysisSettings } from './domain/analytics';
 import { useScrollReveal } from './reveal';
+
+/**
+ * Dev-only component showcase. The `import.meta.env.DEV` ternary is replaced
+ * with `false` at build time, so production builds drop the lazy import and
+ * never emit the showcase chunk (guarded by src/showcase/fixtures.test.ts).
+ */
+const Showcase = import.meta.env.DEV
+  ? lazy(() => import('./showcase/Showcase'))
+  : null;
 
 const initialAnalysisSettings: AnalysisSettings = {
   mode: 'recent',
@@ -206,6 +215,18 @@ export default function App() {
       manageBagHeading.current?.scrollIntoView({ block: 'start' });
     }
   }, [page]);
+  if (import.meta.env.DEV && window.location.hash.startsWith('#showcase'))
+    return (
+      <Suspense
+        fallback={
+          <div className="auth-shell">
+            <p role="status">Loading showcase…</p>
+          </div>
+        }
+      >
+        {Showcase ? <Showcase /> : null}
+      </Suspense>
+    );
   if (backend.kind === 'unconfigured')
     return (
       <div className="auth-shell">

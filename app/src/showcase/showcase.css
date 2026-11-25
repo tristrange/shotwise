@@ -1,0 +1,37 @@
+/* Dev-only showcase layout. Imported by the lazily loaded showcase module, so
+   it is bundled into the dev-only chunk and never reaches production builds. */
+
+.showcase {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) var(--space-8);
+}
+.showcase > header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3) 0 var(--space-5);
+}
+.showcase h1 { font-size: var(--text-lg); margin: 0; }
+.showcase section { margin-top: var(--space-7); }
+.showcase section > h2 { margin-bottom: var(--space-1); }
+.showcase .section-note { color: var(--text-3); font-size: var(--text-xs); margin: 0 0 var(--space-4); }
+.showcase-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.showcase-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.showcase-stack { display: grid; gap: var(--space-3); justify-items: start; }
+
+.swatch-grid { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.swatch { border: 1px solid var(--border); border-radius: var(--radius-m); overflow: hidden; background: var(--surface); }
+.swatch-chip { height: 44px; border-bottom: 1px solid var(--border); }
+.swatch-meta { padding: var(--space-2); display: grid; gap: 1px; }
+.swatch-meta code { font-size: 11px; }
+.swatch-meta span { font-size: 10px; color: var(--text-3); font-family: var(--font-mono); }
+
+.type-sample { display: grid; gap: var(--space-2); }
+.type-row { display: flex; align-items: baseline; gap: var(--space-3); border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+.type-row .type-name { flex: none; width: 76px; font-size: 10px; color: var(--text-3); font-family: var(--font-mono); }
+
+.space-bar { height: 12px; border-radius: 3px; background: var(--data); }
+
+.showcase .club-card-list { display: grid; gap: var(--space-2); }
+
+.shot-note { font-size: var(--text-xs); color: var(--text-3); margin-top: var(--space-2); }
