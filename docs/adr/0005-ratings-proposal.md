@@ -47,11 +47,14 @@ Linear ramps between a "good" and a "poor" anchor, clamped to [0, 100]:
 
 **Reference for distance potential**, in priority order (each clearly
 labelled in the UI, never mixed): (1) a basis-compatible personal reference
-value (`basis` must match the display basis family; `unknown` is never
-silently compared — C1/C2 gating); (2) automatically derived historical
-personal potential = the best per-visit P80 (n ≥ 10) in the trailing 12
-months — this measures attainment of previously demonstrated ability, not a
-comparison with other golfers; (3) no reference → category withheld.
+value — compatibility is checked against the **canonical assessment basis the
+P80 is scored on** (range-preferred per shot), never against the display
+selection, so switching the display basis cannot silently change the rating;
+`unknown` is never silently compared (C1/C2 gating); (2) automatically
+derived historical personal potential = the best per-visit P80 (n ≥ 10) in
+the trailing 12 months — this measures attainment of previously demonstrated
+ability, not a comparison with other golfers; (3) no reference → category
+withheld.
 
 Correlated-metric check: distance potential uses the strong-strike subset
 while consistency/reliability use the full population, so a single mishit
@@ -95,7 +98,10 @@ shot:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D  | 253.0 | 0.065 | 0.073 | 0.00 | 100 | 53 | 58 | 100 | **75.8** |
 | 7i | 151.0 | 0.041 | 0.041 | 0.00 | 100 | 72 | 85 | 100 | **88.4** |
-| PW | 122.0 | 0.070 | 0.044 | 0.08 | 100 | 43 | 95 | 92 | **82.1** |
+| PW | 122.0 | 0.070 | 0.044 | 0.08 | 100 | 43 | 95 | 68 | **76.2** |
+
+(PW reliability uses the declared ramp: 100 × (0.25 − 0.08) / 0.25 = 68, so
+composite = 0.20·100 + 0.25·43 + 0.30·95 + 0.25·68 ≈ 76.2.)
 
 Reading: the driver's distance does not rescue its direction/consistency
 (75.8 < 88.4), the balanced iron scores highest, and the wedge's partials and
