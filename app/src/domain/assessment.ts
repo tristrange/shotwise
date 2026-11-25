@@ -125,7 +125,6 @@ export function isFullSwingResolved(resolved: ResolvedShot): boolean {
 
 type CacheEntry = {
   sessions: Session[];
-  basis: Basis;
   length: number;
   resolved: Map<string, ResolvedShot>;
 };
@@ -134,9 +133,11 @@ const resolveCache = new WeakMap<Shot[], CacheEntry>();
 /**
  * Resolve every shot's intent, contact and club through the precedence chain,
  * combining the per-shot classifier (`intent-contact-3`) with sequence-aware
- * club inference (`sequence-2`). Results are cached per shots/sessions/basis
- * identity — callers may invoke this freely. Assessments stay derived: the
- * shot and its review are never modified.
+ * club inference (`sequence-2`). Results are cached per shots/sessions
+ * identity — callers may invoke this freely. The basis argument is display
+ * context only: classification runs on the canonical assessment basis, so the
+ * cache deliberately ignores it and alternating display bases never thrash.
+ * Assessments stay derived: the shot and its review are never modified.
  */
 export function resolveShots(
   shots: Shot[],
@@ -144,12 +145,7 @@ export function resolveShots(
   basis: Basis = 'premium-flat',
 ): Map<string, ResolvedShot> {
   const cached = resolveCache.get(shots);
-  if (
-    cached &&
-    cached.sessions === sessions &&
-    cached.basis === basis &&
-    cached.length === shots.length
-  )
+  if (cached && cached.sessions === sessions && cached.length === shots.length)
     return cached.resolved;
   // Sequence inference runs first so provisional club identities can feed the
   // per-shot intent/contact assessment (intent-contact-3). Manual decisions
@@ -191,6 +187,6 @@ export function resolveShots(
       assessmentVersion: ASSESSMENT_VERSION,
     });
   }
-  resolveCache.set(shots, { sessions, basis, length: shots.length, resolved });
+  resolveCache.set(shots, { sessions, length: shots.length, resolved });
   return resolved;
 }
