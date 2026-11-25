@@ -564,6 +564,62 @@ describe('clubRating on the fixed premium-flat rating basis', () => {
     expect(untagged.distancePotential.reference?.type).toBe('personal-goal');
   });
 
+  it('equipment eligibility comes from the distance population, not every window shot', () => {
+    const data = clubDataset({
+      partials: 3,
+      fromCentre: [3],
+      launchDirection: [2],
+    });
+    const fitted = makeEquipment({
+      id: 'cccccccc-0000-4000-8000-000000000001',
+      inrangeLabel: '7i',
+      name: 'Fitted 7i',
+    });
+    const other = makeEquipment({
+      id: 'dddddddd-0000-4000-8000-000000000002',
+      inrangeLabel: '7i',
+      name: 'Other 7i',
+    });
+    data.equipment.push(fitted, other);
+    // Full-swing distance shots were hit with `fitted`; the partial shots are
+    // tagged `other` and contribute nothing to the distance rating.
+    for (const shot of data.shots) {
+      data.equipmentAssignments.push({
+        shotId: shot.id,
+        equipmentId: shot.review.intent === 'partial' ? other.id : fitted.id,
+        clubLabel: '7i',
+      });
+    }
+    // The partial-only `other` assignment must not authorize an other-tagged reference.
+    const wrong = clubRating(data, query, '7i', [ref({ equipmentId: other.id })])!;
+    expect(wrong.distancePotential.reference).toBeNull();
+    const right = clubRating(data, query, '7i', [ref({ equipmentId: fitted.id })])!;
+    expect(right.distancePotential.reference?.type).toBe('personal-goal');
+  });
+
+  it('a mixed distance population withholds equipment-tagged references', () => {
+    const data = clubDataset({ fromCentre: [3], launchDirection: [2] });
+    const a = makeEquipment({
+      id: 'cccccccc-0000-4000-8000-000000000001',
+      inrangeLabel: '7i',
+    });
+    const b = makeEquipment({
+      id: 'dddddddd-0000-4000-8000-000000000002',
+      inrangeLabel: '7i',
+    });
+    data.equipment.push(a, b);
+    data.shots.forEach((shot, i) => {
+      data.equipmentAssignments.push({
+        shotId: shot.id,
+        equipmentId: i % 2 ? a.id : b.id,
+        clubLabel: '7i',
+      });
+    });
+    // Two physical clubs in the distance population: unverifiable, withheld.
+    const r = clubRating(data, query, '7i', [ref({ equipmentId: a.id })])!;
+    expect(r.distancePotential.reference).toBeNull();
+  });
+
   it('weakestEvidence ranks evidence levels across rated categories', () => {
     expect(weakestEvidence([])).toBeNull();
     expect(weakestEvidence(['supported', 'early', 'provisional'])).toBe('early');

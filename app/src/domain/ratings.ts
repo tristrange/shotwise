@@ -351,34 +351,56 @@ export function historicalPersonalPotential(
 }
 
 /**
- * Equipment identity of a club's evaluated window: the physical clubs with a
- * CURRENT assignment on that club's shots in the window. A reference tagged
- * with an `equipmentId` applies only when that equipment is what the rated
- * shots were hit with — a reference measured with different equipment is
- * never silently applied. Returns null when nothing is currently assigned, in
- * which case an equipment-tagged reference cannot be verified and is skipped.
+ * The shots that actually contribute to the distance rating: the broader
+ * full-swing cohort of the club's window with a positive measured carry on
+ * the rating basis — the same population the P80 is computed from.
  */
-function currentEquipmentIdsForClub(
+function distancePopulationShots(
   data: Dataset,
   query: AnalysisQuery,
   club: string,
-): Set<string> | null {
-  const windowShots = selectCohort(
+): Shot[] {
+  const resolved = resolveShots(data.shots, data.sessions, RATING_BASIS);
+  const selected = selectCohort(
     data.shots,
     data.sessions,
     ratingQuery(query, club),
     RATING_BASIS,
   );
+  const key = BASES[RATING_BASIS].carry;
+  return filterCohort(selected, resolved, 'broader').filter(
+    (s) => (s.measurements[key] ?? 0) > 0,
+  );
+}
+
+/**
+ * Equipment identity of the club's DISTANCE population: the single physical
+ * club with a CURRENT assignment on the shots that contribute to the distance
+ * rating. A reference tagged with an `equipmentId` applies only when that
+ * equipment is what those shots were hit with — a shot that contributes
+ * nothing to the distance rating (e.g. a partial) can never authorize a
+ * reference measured with different equipment. Returns null when the
+ * population is mixed (more than one physical club) or unverifiable (none
+ * currently assigned); an equipment-tagged reference is then withheld, never
+ * silently applied.
+ */
+function distanceEquipmentId(
+  data: Dataset,
+  query: AnalysisQuery,
+  club: string,
+  distanceShots?: Shot[],
+): string | null {
+  const shots = distanceShots ?? distancePopulationShots(data, query, club);
   const assignmentByShot = new Map(
     data.equipmentAssignments.map((a) => [a.shotId, a]),
   );
   const ids = new Set<string>();
-  for (const shot of windowShots) {
+  for (const shot of shots) {
     const assignment = assignmentByShot.get(shot.id);
     if (assignment && assignmentStatus(shot, assignment) === 'current')
       ids.add(assignment.equipmentId);
   }
-  return ids.size ? ids : null;
+  return ids.size === 1 ? [...ids][0]! : null;
 }
 
 /**
@@ -394,21 +416,24 @@ function currentEquipmentIdsForClub(
  * records are distinct concepts — the automatic historical potential below is
  * the governed path for that concept), a basis-incompatible or `unknown`-basis
  * record never applies, and an `equipmentId`-tagged record applies only when
- * that equipment is currently assigned to the club's window shots. The
- * statistic and recorded-on date are carried through so the UI can label them.
+ * that equipment is the single current assignment of the club's DISTANCE
+ * population (the full swings with measured carries that the P80 comes
+ * from) — mixed or unverifiable populations withhold it. The statistic and
+ * recorded-on date are carried through so the UI can label them.
  */
 export function resolveRatingReference(
   club: string,
   data: Dataset,
   query: AnalysisQuery,
   references: UserReferenceValueRecord[] = data.userReferenceValues,
+  distanceShots?: Shot[],
 ): RatingReference | null {
-  let currentEquipment: Set<string> | null | undefined;
+  let distanceEquipment: string | null | undefined;
   const equipmentMatches = (equipmentId: string | null): boolean => {
     if (equipmentId === null) return true;
-    if (currentEquipment === undefined)
-      currentEquipment = currentEquipmentIdsForClub(data, query, club);
-    return currentEquipment !== null && currentEquipment.has(equipmentId);
+    if (distanceEquipment === undefined)
+      distanceEquipment = distanceEquipmentId(data, query, club, distanceShots);
+    return distanceEquipment === equipmentId;
   };
   const personal = references.find(
     (r) =>
@@ -561,7 +586,14 @@ export function clubRating(
   const strongShots = broader.filter((s) => (s.measurements[key] ?? 0) > 0);
   const strongCarries = strongShots.map((s) => s.measurements[key] as number);
   const p80 = potentialCarry(strongCarries);
-  const reference = resolveRatingReference(club, data, query, references);
+  // Equipment identity is validated against the very shots that set the P80.
+  const reference = resolveRatingReference(
+    club,
+    data,
+    query,
+    references,
+    strongShots,
+  );
   const distanceVisits = visitsOf(strongShots);
   const distance: ClubRating['distancePotential'] = {
     score: distanceScore(p80, reference?.valueM ?? null),
