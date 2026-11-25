@@ -112,6 +112,59 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     expect(out2.get(dud.id)!.contact.value).toBe('mishit');
   });
 
+  it('does not infer partial intent from target agreement at full-swing distance', () => {
+    const baseline = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'PW',
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: 110, speedPremium: 150 },
+      }),
+    );
+    // A successful full swing whose carry equals the recorded target.
+    const full = makeShot({
+      sessionId: session.id,
+      recordedClub: 'PW',
+      rowIndex: 20,
+      measurements: { flatCarryPremium: 110, speedPremium: 150, target: 110 },
+    });
+    const out = assessShots([...baseline, full], [session]);
+    expect(out.get(full.id)!.intent.value).toBe('full');
+    expect(out.get(full.id)!.contact.value).toBe('typical');
+  });
+
+  it('keeps a corroborated dud near the recorded target a mishit', () => {
+    const baseline = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'PW',
+        rowIndex: i + 1,
+        measurements: {
+          flatCarryPremium: 110,
+          speedPremium: 150,
+          launchPremium: 13,
+          apexPremium: 30,
+        },
+      }),
+    );
+    // Target agreement (45 m) but very low flight: contact stays a mishit.
+    const dud = makeShot({
+      sessionId: session.id,
+      recordedClub: 'PW',
+      rowIndex: 20,
+      measurements: {
+        flatCarryPremium: 45,
+        speedPremium: 140,
+        launchPremium: 2,
+        apexPremium: 1,
+        target: 45,
+      },
+    });
+    const out = assessShots([...baseline, dud], [session]);
+    expect(out.get(dud.id)!.intent.value).toBe('partial');
+    expect(out.get(dud.id)!.contact.value).toBe('mishit');
+  });
+
   it('keeps a chunked partial representable as partial and mishit', () => {
     const shots = [
       ...fullShots('SW', 100, 90, 12),

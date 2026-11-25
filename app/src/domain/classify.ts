@@ -205,23 +205,8 @@ function contactFor(
 ): { value: ContactValue; reason: string } {
   if (s.carry === null || s.speed === null || s.carry <= 0 || s.speed <= 0)
     return { value: 'uncertain', reason: 'Needs positive carry and ball speed.' };
-  const carryLow =
-    base.carryP75 !== null && s.carry < MISHIT_CARRY_FACTOR * base.carryP75;
-  const speedLow =
-    base.speedP75 !== null && s.speed < MISHIT_SPEED_FACTOR * base.speedP75;
-  const lowShare =
-    s.total !== null &&
-    s.total > 0 &&
-    base.carryShareMedian !== null &&
-    s.carry / s.total < LOW_CARRY_SHARE_FACTOR * base.carryShareMedian;
-  if (carryLow && (speedLow || lowFlight(s, base) || lowShare)) {
-    const why = [
-      speedLow ? 'low ball speed' : null,
-      lowFlight(s, base) ? 'low launch/apex' : null,
-      lowShare ? 'low carry share of total' : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
+  if (carryLowSignal(s, base) && corroboration(s, base).length > 0) {
+    const why = corroboration(s, base).join(', ');
     return {
       value: 'mishit',
       reason: `Carry ${s.carry.toFixed(0)} m is far below the recent ${club} upper range with ${why} — likely mishit.`,
@@ -231,6 +216,43 @@ function contactFor(
     value: 'typical',
     reason: `Within the recent ${club} carry, speed and flight range.`,
   };
+}
+
+/** Carry far below the recent upper range. */
+function carryLowSignal(s: Signals, base: Baseline): boolean {
+  return (
+    base.carryP75 !== null &&
+    s.carry !== null &&
+    s.carry < MISHIT_CARRY_FACTOR * base.carryP75
+  );
+}
+
+/**
+ * Independent corroboration for a mishit: low ball speed, low flight, or a low
+ * carry-to-total share. Speed alone scales with intended distance, so targeted
+ * partials rely on flight/share corroboration only (see the targeted rule).
+ */
+function corroboration(s: Signals, base: Baseline): string[] {
+  const speedLow =
+    base.speedP75 !== null &&
+    s.speed !== null &&
+    s.speed < MISHIT_SPEED_FACTOR * base.speedP75;
+  const lowShare =
+    s.total !== null &&
+    s.total > 0 &&
+    base.carryShareMedian !== null &&
+    s.carry !== null &&
+    s.carry / s.total < LOW_CARRY_SHARE_FACTOR * base.carryShareMedian;
+  return [
+    speedLow ? 'low ball speed' : null,
+    lowFlight(s, base) ? 'low launch/apex' : null,
+    lowShare ? 'low carry share of total' : null,
+  ].filter((w): w is string => w !== null);
+}
+
+/** Flight/share corroboration — the signals that do not scale with distance. */
+function flightCorroboration(s: Signals, base: Baseline): string[] {
+  return corroboration(s, base).filter((w) => w !== 'low ball speed');
 }
 
 /**
@@ -321,30 +343,33 @@ export function assessShots(
       apex: assessmentMeasurement(shot, 'apex'),
       total: assessmentMeasurement(shot, 'total'),
     };
-    // Recorded-target evidence: when the measured carry matches the recorded
-    // target, the golfer almost certainly selected that distance — a targeted
-    // wedge partial is intentional distance control, not a mishit.
+    // Recorded-target evidence informs intent only: a wedge whose carry both
+    // matches the recorded target AND sits well below the full-swing baseline
+    // is a targeted partial. Target agreement alone is not proof (a successful
+    // full swing at the target distance stays full), and contact is still
+    // assessed independently by contactFor — a corroborated dud near the
+    // target remains a mishit.
     const target = shot.measurements.target;
     const targeted =
       isWedge(club) &&
       signals.carry !== null &&
       target !== null &&
       target > 0 &&
-      Math.abs(signals.carry - target) <= Math.max(5, 0.1 * target);
-    if (targeted) {
-      base.intent = {
-        value: 'partial',
-        reason: `Carry ${signals.carry!.toFixed(0)} m matches the recorded target ${target.toFixed(0)} m — intentional distance control.`,
-      };
-      base.contact =
-        signals.speed !== null && signals.speed > 0
-          ? { value: 'typical', reason: 'Targeted partial with positive ball speed.' }
-          : { value: 'uncertain', reason: 'Needs positive ball speed.' };
-      out.set(shot.id, base);
-      continue;
-    }
-    base.contact = contactFor(signals, baseline, club);
-    base.intent = intentFor(club, signals, baseline);
+      Math.abs(signals.carry - target) <= Math.max(5, 0.1 * target) &&
+      baseline.carryMedian !== null &&
+      signals.carry < PARTIAL_CARRY_FACTOR * baseline.carryMedian;
+    base.contact =
+      targeted && flightCorroboration(signals, baseline).length === 0
+        ? signals.speed !== null && signals.speed > 0
+          ? { value: 'typical', reason: 'Targeted partial: low speed alone scales with the shorter distance, and flight/share are normal.' }
+          : { value: 'uncertain', reason: 'Needs positive ball speed.' }
+        : contactFor(signals, baseline, club);
+    base.intent = targeted
+      ? {
+          value: 'partial',
+          reason: `Carry ${signals.carry!.toFixed(0)} m matches the recorded target ${target!.toFixed(0)} m and is well below the recent ${club} median ${baseline.carryMedian!.toFixed(0)} m — intentional distance control.`,
+        }
+      : intentFor(club, signals, baseline);
     out.set(shot.id, base);
   }
   return out;
