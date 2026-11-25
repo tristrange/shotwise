@@ -1,17 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import {
-  resolvedClub,
-  resolveShots,
-} from '../domain/assessment';
+import { resolveShots } from '../domain/assessment';
 import {
   BASES,
   clubOrder,
-  isUnknownClub,
   localToday,
   type Dataset,
 } from '../domain/model';
 import {
+  benchmarkClubGroups,
   metricStats,
   selectCohort,
   summarize,
@@ -47,10 +44,6 @@ export function Analysis({
     () => resolveShots(data.shots, data.sessions, basis),
     [data.shots, data.sessions, basis],
   );
-  const clubOf = (shot: (typeof data.shots)[number]) => {
-    const r = resolved.get(shot.id);
-    return r ? resolvedClub(r) : '';
-  };
   const selected = selectCohort(data.shots, data.sessions, query, basis);
   const sessionDates = new Map(data.sessions.map((s) => [s.id, s.date]));
   const shots = selected.toSorted(
@@ -69,9 +62,12 @@ export function Analysis({
   const cohort = `${summary.n} shots · ${summary.sessions} sessions · ${
     dates.length ? `${dates[0]} to ${dates.at(-1)}` : 'No dates'
   }`;
-  const clubs = [...new Set(selected.map(clubOf))]
-    .filter((club) => !isUnknownClub(club))
-    .sort((a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b));
+  // Club rows are club-specific benchmarks: the shared eligibility rule keeps
+  // suspected wrong-club labels out of every club figure on this screen.
+  const clubGroups = benchmarkClubGroups(selected, resolved);
+  const clubs = [...clubGroups.keys()].sort(
+    (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
+  );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const toggleClub = (name: string) =>
     setExpanded((current) => {
@@ -89,17 +85,13 @@ export function Analysis({
     hideLikelyMishits: false,
   } as const;
   const broader = selectCohort(data.shots, data.sessions, broaderQuery, basis);
+  const broaderGroups = benchmarkClubGroups(broader, resolved);
   const potentialByClub = new Map(
     clubStrongStrike(data, basis, broaderQuery).map((row) => [row.club, row]),
   );
   const rows = clubs.map((name) => {
-    // Club rows are club-specific benchmarks: suspected wrong-club labels stay out.
-    const clubShots = selected.filter(
-      (s) => clubOf(s) === name && !resolved.get(s.id)?.suspectedWrongClub,
-    );
-    const broaderShots = broader.filter(
-      (s) => clubOf(s) === name && !resolved.get(s.id)?.suspectedWrongClub,
-    );
+    const clubShots = clubGroups.get(name) ?? [];
+    const broaderShots = broaderGroups.get(name) ?? [];
     const fields = BASES[basis];
     const stats = metricStats(clubShots, fields.carry);
     const broadStats = metricStats(broaderShots, fields.carry);

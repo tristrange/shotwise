@@ -1,4 +1,5 @@
 import {
+  clubBenchmarkEligible,
   directionStats,
   metricStats,
   selectCohort,
@@ -67,7 +68,7 @@ export function wedgePractice(
   const shots = selectCohort(data.shots, data.sessions, query, basis).filter(
     (shot) => {
       const r = resolved.get(shot.id);
-      return r ? isWedge(resolvedClub(r)) : false;
+      return r ? clubBenchmarkEligible(r) && isWedge(resolvedClub(r)) : false;
     },
   );
   const dates = new Map(
@@ -88,7 +89,7 @@ export function wedgePractice(
   let zeroTarget = 0;
   for (const shot of shots) {
     const r = resolved.get(shot.id);
-    const club = r ? resolvedClub(r) : '';
+    const club = r && clubBenchmarkEligible(r) ? resolvedClub(r) : '';
     const { target } = shot.measurements;
     const intent = r?.intent ?? shot.review.intent;
     if (target === null || target < 0) missingTarget++;
