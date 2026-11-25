@@ -324,6 +324,21 @@ do $$ declare v0 bigint; r jsonb; rev integer; begin
  perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000011','club','--','metric','carry','valueM',140,'note',null,'revision',null)),'Invalid reference value');
 end $$;
 
+-- C1: reference metadata — basis/source are accepted when valid, rejected when
+-- not, and legacy rows without the fields remain valid (treated as unknown).
+do $$ declare r jsonb; begin
+ r:=public.save_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000020','club','9i','metric','carry','valueM',130,'note',null,'basis','range','source','fitting','revision',null));
+ if r->>'basis'<>'range' or r->>'source'<>'fitting' then raise exception 'reference metadata not stored'; end if;
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000021','club','8i','metric','carry','valueM',140,'note',null,'basis','measured','source','manual','revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000021','club','8i','metric','carry','valueM',140,'note',null,'basis','range','source','guessed','revision',null)),'Invalid reference value');
+ perform public.delete_reference_value((r->>'id')::uuid,(r->>'revision')::integer);
+end $$;
+-- Legacy row without basis/source stays valid (validator runs as postgres).
+set local role postgres;
+select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000022','club','6i','metric','total','valueM',160,'note',null,'revision',0)),'legacy reference row accepted');
+select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000022','club','6i','metric','total','valueM',160,'note',null,'basis','range','source','chart','revision',0)),'reference with metadata accepted');
+set local role authenticated;
+
 -- A9: write and restore limits are aligned at 1000 rows; the export pages fully.
 set local role postgres;
 insert into public.user_reference_values

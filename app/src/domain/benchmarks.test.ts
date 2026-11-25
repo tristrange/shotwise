@@ -9,6 +9,7 @@ import {
   normalizeBenchmarkClub,
   validateUserReferenceValue,
 } from './benchmarks';
+import { userReferenceValueSchema } from './model';
 
 describe('normalizeBenchmarkClub', () => {
   it('maps driver aliases to the registry key', () => {
@@ -177,6 +178,36 @@ describe('validateUserReferenceValue', () => {
         valueM: 100,
       }),
     ).toBe('Unknown metric');
+  });
+});
+
+describe('reference value metadata (C1)', () => {
+  it('defaults basis/source on legacy rows so they never parse as a guessed basis', () => {
+    const legacy = userReferenceValueSchema.parse({
+      id: crypto.randomUUID(),
+      club: '7i',
+      metric: 'carry',
+      valueM: 142,
+      note: null,
+      revision: 0,
+    });
+    expect(legacy.basis).toBe('unknown');
+    expect(legacy.source).toBe('manual');
+  });
+
+  it('keeps explicit basis and source', () => {
+    const parsed = userReferenceValueSchema.parse({
+      id: crypto.randomUUID(),
+      club: '7i',
+      metric: 'carry',
+      valueM: 142,
+      note: 'Fitting',
+      basis: 'range',
+      source: 'fitting',
+      revision: 3,
+    });
+    expect(parsed.basis).toBe('range');
+    expect(parsed.source).toBe('fitting');
   });
 });
 
