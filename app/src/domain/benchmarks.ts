@@ -1,4 +1,4 @@
-import { isUnknownClub } from './model';
+import { isUnknownClub, type Basis } from './model';
 
 /**
  * Source-aware external benchmark data model (roadmap §7, Phase 5 PR 16;
@@ -165,12 +165,26 @@ export function attributionFor(source: BenchmarkSource): string {
 }
 
 /**
+ * Range-ball bases measure the limited-flight range ball itself; no external
+ * source measures range balls, so range-ball measurements never get a
+ * benchmark overlay (docs/external-benchmark-sources.md §7.4).
+ */
+export function isRangeBallBasis(basis: Basis): boolean {
+  return basis === 'range' || basis === 'range-flat';
+}
+
+/**
  * Link-out references for a recorded club label. Only link-only sources are
  * returned; professional-audience entries are flagged so the UI can show the
- * "professional reference — not an amateur target" badge.
+ * "professional reference — not an amateur target" badge. Pass the active
+ * measurement basis: range-ball bases return no references at all.
  */
-export function benchmarkReferencesForClub(club: string): BenchmarkReference[] {
+export function benchmarkReferencesForClub(
+  club: string,
+  basis?: Basis,
+): BenchmarkReference[] {
   if (isUnknownClub(club)) return [];
+  if (basis && isRangeBallBasis(basis)) return [];
   const key = normalizeBenchmarkClub(club);
   return BENCHMARK_SOURCES.filter(
     (source) => source.license === 'link-only' && source.clubs.includes(key),
