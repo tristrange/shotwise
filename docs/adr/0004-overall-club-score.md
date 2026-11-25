@@ -1,6 +1,6 @@
 # ADR-0004: No composite overall club score — within-bag category standings instead
 
-Status: accepted
+Status: **superseded by ADR-0005 (accepted 2026-11-25)** — raw-metric within-bag standings removed on implementation; underlying measurements retained.
 Date: 2026-11-26
 Related: `docs/ROADMAP.md` §8.3, `app/src/domain/standings.ts`, ADR-0003
 
