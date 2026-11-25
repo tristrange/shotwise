@@ -18,4 +18,13 @@ Equipment and shot assignments live in `public.equipment` and `public.equipment_
 
 ## Migration sequencing
 
-From `app/`, run `npx supabase migration up` against the local stack, then run `npm run test:db`. Stage the reviewed migration on hosted Supabase before merging the Pages client that reads the new collections. Refresh open Shotwise tabs before downloading an equipment-inclusive backup.
+From `app/`, run `npx supabase migration up` against the local stack, then run `npm run test:db`. Stage the reviewed migration on hosted Supabase **before** merging the Pages client that reads the new collections — the GitHub Pages deploy and the hosted migration are independent, so database-first release order is a hard rule, not a preference. `npm run test:db` exercises `dataset_page` for every collection and is the RPC-contract smoke test; run it against the target schema before each release.
+
+Compatibility matrix:
+
+| Client \ Database | Old schema | New schema |
+| --- | --- | --- |
+| Old client | works | works (never asks for new collections) |
+| New client | works — `loadConsistent` treats collections the old RPC rejects with `Invalid table` as empty (`OPTIONAL_TABLES` in `app/src/data/snapshot.ts`) | works |
+
+Newer clients must never *require* a new collection to load history. Writes to a new RPC from an old client fail loudly (e.g. the two-argument `delete_reference_value`), which is safe: no silent data loss. Backups taken from a tab opened before a schema change restore fine — restore treats missing collections as empty and validates present ones. Refresh open Shotwise tabs before downloading a backup that should include the new collections.

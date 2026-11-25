@@ -45,6 +45,29 @@ describe('complete snapshot loading', () => {
       }),
     ).rejects.toThrow('changed');
   });
+  it('loads history against an older RPC that lacks newer collections', async () => {
+    const result = await loadConsistent({
+      version: async () => 7,
+      page: async (table) => {
+        if (table === 'userReferenceValues')
+          throw new Error('Invalid table'); // pre-migration dataset_page
+        if (table === 'sessions') return [makeSession()];
+        return [];
+      },
+      pageSize: 100,
+    });
+    expect(result.sessions).toHaveLength(1);
+    expect(result.userReferenceValues).toEqual([]);
+    await expect(
+      loadConsistent({
+        version: async () => 7,
+        page: async (table) => {
+          if (table === 'userReferenceValues') throw new Error('offline');
+          return [];
+        },
+      }),
+    ).rejects.toThrow('offline');
+  });
 });
 
 describe('equipment snapshot paging', () => {

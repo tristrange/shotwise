@@ -8,6 +8,13 @@ type Table =
   | 'equipment'
   | 'equipmentAssignments'
   | 'userReferenceValues';
+/**
+ * Collections added after the client's minimum supported RPC schema. A newer
+ * client loading against an older deployed database must still read history:
+ * the old `dataset_page` rejects these with 'Invalid table', which is treated
+ * as an empty collection (the dataset schema defaults them to []).
+ */
+const OPTIONAL_TABLES: ReadonlySet<Table> = new Set(['userReferenceValues']);
 export async function loadConsistent(source: {
   version(): Promise<number>;
   page(table: Table, offset: number, limit: number): Promise<unknown[]>;
@@ -19,7 +26,18 @@ export async function loadConsistent(source: {
     const read = async (table: Table) => {
       const rows: unknown[] = [];
       for (let offset = 0; ; offset += pageSize) {
-        const page = await source.page(table, offset, pageSize);
+        let page: unknown[];
+        try {
+          page = await source.page(table, offset, pageSize);
+        } catch (error) {
+          if (
+            OPTIONAL_TABLES.has(table) &&
+            error instanceof Error &&
+            error.message.includes('Invalid table')
+          )
+            return [];
+          throw error;
+        }
         rows.push(...page);
         if (page.length < pageSize) return rows;
       }
