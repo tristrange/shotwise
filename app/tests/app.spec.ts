@@ -288,7 +288,9 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(driver.getByRole('cell').nth(2)).toHaveText('20');
-  await expect(pitchingWedge.getByRole('cell').nth(2)).toHaveText('23');
+  // The three short+slow PW shots are partial intent AND likely mishits on the
+  // canonical basis, so hiding likely mishits removes them too.
+  await expect(pitchingWedge.getByRole('cell').nth(2)).toHaveText('20');
   await page.screenshot({
     path: testInfo.outputPath('filtered-stats.png'),
     fullPage: true,
@@ -308,7 +310,7 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   ).toContainText('20 / 0');
   await nav(page, 'Shot shape');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.context')).toContainText('63 shots');
+  await expect(page.locator('.context')).toContainText('60 shots');
   await nav(page, 'Overview');
   await toggle.click();
   await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
