@@ -214,28 +214,36 @@ function PersonalReference({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
+  // Baseline captured when editing starts: if another device changes the
+  // record meanwhile, submitting with this revision reports a conflict
+  // instead of silently overwriting (same pattern as ManageBag).
+  const [baseline, setBaseline] = useState<{
+    id: string;
+    revision: number;
+  } | null>(null);
   const own = values.filter(
     (v) => v.club.toLowerCase() === club.trim().toLowerCase(),
   );
-  const record = own.find((v) => v.metric === metric);
-
   const startEdit = (m: ReferenceMetric) => {
     const existing = own.find((v) => v.metric === m);
     setMetric(m);
     setValueM(existing ? String(existing.valueM) : '');
     setNote(existing?.note ?? '');
+    setBaseline(
+      existing ? { id: existing.id, revision: existing.revision } : null,
+    );
     setEditing(m);
     setLocalError('');
   };
 
   const submit = async () => {
     const input: UserReferenceValueSaveInput = {
-      id: record?.id ?? crypto.randomUUID(),
+      id: baseline?.id ?? crypto.randomUUID(),
       club: club.trim(),
       metric,
       valueM: Number(valueM),
       note: note.trim() ? note.trim() : null,
-      revision: record?.revision ?? null,
+      revision: baseline?.revision ?? null,
     };
     const problem = validateUserReferenceValue(input);
     if (problem) {
@@ -247,6 +255,7 @@ function PersonalReference({
     try {
       await onSave(input);
       setEditing(null);
+      setBaseline(null);
     } catch {
       // surfaced via the error prop
     } finally {
@@ -329,12 +338,17 @@ function PersonalReference({
           >
             Save
           </button>
-          {record && (
+          {baseline && (
             <button
               type="button"
               className="secondary"
               disabled={busy}
-              onClick={() => void onDelete(record.id).then(() => setEditing(null))}
+              onClick={() =>
+                void onDelete(baseline.id).then(() => {
+                  setEditing(null);
+                  setBaseline(null);
+                })
+              }
             >
               Delete
             </button>
