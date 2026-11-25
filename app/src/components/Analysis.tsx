@@ -40,8 +40,17 @@ export function Analysis({
   onSettingsChange: (settings: AnalysisSettings) => void;
   progressView?: boolean;
 }) {
-  const { basis, ...filters } = settings;
-  const query = { ...filters, today: localToday() };
+  const { basis } = settings;
+  const query = useMemo(
+    () => ({
+      mode: settings.mode,
+      intent: settings.intent,
+      contact: settings.contact,
+      hideLikelyMishits: settings.hideLikelyMishits,
+      today: localToday(),
+    }),
+    [settings],
+  );
   const resolved = useMemo(
     () => resolveShots(data.shots, data.sessions, basis),
     [data.shots, data.sessions, basis],
@@ -114,9 +123,13 @@ export function Analysis({
     };
   });
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
-  // ADR-0005 ratings: computed once per render on the fixed premium-flat
-  // rating basis — independent of the display basis selected above.
-  const ratingsByClub = new Map(clubRatings(data, query).map((r) => [r.club, r]));
+  // ADR-0005 ratings: computed on the fixed premium-flat rating basis —
+  // independent of the display basis selected above — and memoized so
+  // unrelated re-renders do not recompute them.
+  const ratingsByClub = useMemo(
+    () => new Map(clubRatings(data, query).map((r) => [r.club, r])),
+    [data, query],
+  );
   return (
     <>
       {progressView ? (
@@ -436,6 +449,7 @@ export function Analysis({
                 <th>Left</th>
                 <th>Straight</th>
                 <th>Right</th>
+                <th>Measured / missing</th>
               </tr>
             </thead>
             <tbody>
@@ -448,9 +462,14 @@ export function Analysis({
               ).map(([name, d]) => (
                 <tr key={name}>
                   <td>{name}</td>
-                  <td>{d.left}</td>
-                  <td>{d.straight}</td>
-                  <td>{d.right}</td>
+                  {/* Counts are shares of MEASURED shots; with no measurements
+                      the row shows missing, never a misleading 0/0/0. */}
+                  <td>{d.n === 0 ? '—' : d.left}</td>
+                  <td>{d.n === 0 ? '—' : d.straight}</td>
+                  <td>{d.n === 0 ? '—' : d.right}</td>
+                  <td>
+                    {d.n} / {d.missing}
+                  </td>
                 </tr>
               ))}
             </tbody>

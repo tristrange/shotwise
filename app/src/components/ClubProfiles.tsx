@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import { validateUserReferenceValue } from '../domain/benchmarks';
 import type { Repository } from '../data/contracts';
 import type {
+  Equipment,
   ReferenceBasis,
   ReferenceMetric,
   ReferenceSource,
+  ReferenceStatistic,
+  ReferenceType,
   UserReferenceValueRecord,
   UserReferenceValueSaveInput,
 } from '../domain/model';
 import {
   BENCHMARK_SOURCES,
+  REFERENCE_STATISTIC_LABEL,
+  REFERENCE_TYPE_LABEL,
   attributionFor,
   benchmarkReferencesForClub,
   compareWithReference,
@@ -25,7 +30,7 @@ import {
   type CategoryScore,
   type CategoryScores,
 } from '../domain/scores';
-import { clubRatings, type ClubRating } from '../domain/ratings';
+import { clubRatings, RATINGS_VERSION, type ClubRating } from '../domain/ratings';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Basis, type Dataset } from '../domain/model';
@@ -174,10 +179,10 @@ function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
         <p className="context">
           Scores are raw measurements from your own shots on the selected
           basis, each with its sample size; categories with too little data show
-          “not enough data” rather than a guess. There is no composite 0–100
-          overall score — carry, direction and mishit share cannot be combined
-          meaningfully — so each category instead shows your standing within
-          your own bag (ADR-0004). Methodology version{' '}
+          “not enough data” rather than a guess. The normalized 0–100 category
+          ratings and overall composite live in the rating breakdown above
+          (ADR-0005, {RATINGS_VERSION}); these raw measurements are the
+          evidence behind them. Methodology version{' '}
           {CATEGORY_SCORES_VERSION}.
         </p>
       </details>
@@ -239,6 +244,7 @@ function PersonalReference({
   basis,
   typicalCarry,
   strongCarry,
+  equipment,
   onSave,
   onDelete,
   error,
@@ -248,6 +254,7 @@ function PersonalReference({
   basis: Basis;
   typicalCarry: number | null;
   strongCarry: number | null;
+  equipment: Equipment[];
   onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDelete: (id: string, expectedRevision: number) => Promise<void>;
   error: string;
@@ -258,6 +265,10 @@ function PersonalReference({
   const [note, setNote] = useState('');
   const [refBasis, setRefBasis] = useState<ReferenceBasis>('unknown');
   const [source, setSource] = useState<ReferenceSource>('manual');
+  const [refType, setRefType] = useState<ReferenceType>('goal');
+  const [statistic, setStatistic] = useState<ReferenceStatistic>('other');
+  const [recordedOn, setRecordedOn] = useState('');
+  const [equipmentId, setEquipmentId] = useState('');
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
   // Baseline captured when editing starts: if another device changes the
@@ -277,6 +288,10 @@ function PersonalReference({
     setNote(existing?.note ?? '');
     setRefBasis(existing?.basis ?? 'unknown');
     setSource(existing?.source ?? 'manual');
+    setRefType(existing?.referenceType ?? 'goal');
+    setStatistic(existing?.statistic ?? 'other');
+    setRecordedOn(existing?.recordedOn ?? '');
+    setEquipmentId(existing?.equipmentId ?? '');
     setBaseline(
       existing ? { id: existing.id, revision: existing.revision } : null,
     );
@@ -285,7 +300,6 @@ function PersonalReference({
   };
 
   const submit = async () => {
-    const current = own.find((v) => v.id === baseline?.id);
     const input: UserReferenceValueSaveInput = {
       id: baseline?.id ?? crypto.randomUUID(),
       club: club.trim(),
@@ -294,12 +308,12 @@ function PersonalReference({
       note: note.trim() ? note.trim() : null,
       basis: refBasis,
       source,
-      // Rating metadata carried through unchanged; editable reference-type
-      // UI lands with the ratings UI PR.
-      referenceType: current?.referenceType ?? 'goal',
-      statistic: current?.statistic ?? 'other',
-      recordedOn: current?.recordedOn ?? null,
-      equipmentId: current?.equipmentId ?? null,
+      // Rating metadata (ADR-0005 §4.5): the reference concepts stay distinct
+      // and are respected by rating-reference resolution.
+      referenceType: refType,
+      statistic,
+      recordedOn: recordedOn.trim() ? recordedOn.trim() : null,
+      equipmentId: equipmentId ? equipmentId : null,
       revision: baseline?.revision ?? null,
     };
     const problem = validateUserReferenceValue(input);
@@ -335,6 +349,9 @@ function PersonalReference({
                   basis,
                 )
               : null;
+          const equipmentName = v.equipmentId
+            ? equipment.find((e) => e.id === v.equipmentId)
+            : undefined;
           return (
             <div key={v.metric}>
               <p>
@@ -342,7 +359,13 @@ function PersonalReference({
                 <strong>
                   {decimal.format(v.valueM)} m {v.metric}
                 </strong>
-                {v.note ? ` · ${v.note}` : ''} · basis {v.basis} · {v.source}{' '}
+                {v.note ? ` · ${v.note}` : ''} · basis {v.basis} · {v.source} ·{' '}
+                {REFERENCE_TYPE_LABEL[v.referenceType].toLowerCase()} ·{' '}
+                {REFERENCE_STATISTIC_LABEL[v.statistic]} statistic
+                {v.recordedOn ? ` · recorded ${v.recordedOn}` : ''}
+                {v.equipmentId
+                  ? ` · ${equipmentName ? equipmentDisplayName(equipmentName) : 'unknown club'}`
+                  : ''}{' '}
                 ·{' '}
                 <button
                   type="button"
@@ -431,6 +454,56 @@ function PersonalReference({
             </select>
           </label>
           <label>
+            Type{' '}
+            <select
+              value={refType}
+              onChange={(e) => setRefType(e.target.value as ReferenceType)}
+              title="What this reference represents — the three concepts are labelled distinctly and never mixed in ratings"
+            >
+              <option value="goal">personal goal</option>
+              <option value="observed">observed personal best</option>
+              <option value="historical-potential">
+                historical personal potential
+              </option>
+            </select>
+          </label>
+          <label>
+            Statistic{' '}
+            <select
+              value={statistic}
+              onChange={(e) => setStatistic(e.target.value as ReferenceStatistic)}
+              title="Which statistic this number represents (median, P80, …) — shown with ratings so a median goal is never read as P80"
+            >
+              <option value="other">other / not a statistic</option>
+              <option value="median">median</option>
+              <option value="p80">P80</option>
+              <option value="mean">mean</option>
+            </select>
+          </label>
+          <label>
+            Recorded on{' '}
+            <input
+              type="date"
+              value={recordedOn}
+              onChange={(e) => setRecordedOn(e.target.value)}
+            />
+          </label>
+          <label>
+            Equipment{' '}
+            <select
+              value={equipmentId}
+              onChange={(e) => setEquipmentId(e.target.value)}
+              title="The physical club this reference was measured with — ratings only apply it while that equipment is assigned to the club's shots"
+            >
+              <option value="">not tied to equipment</option>
+              {equipment.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {equipmentDisplayName(e)} ({e.inrangeLabel})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Note{' '}
             <input
               type="text"
@@ -487,6 +560,7 @@ function ProfileCard({
   scores,
   rating,
   referenceValues,
+  equipmentList,
   onSaveReference,
   onDeleteReference,
   referenceError,
@@ -498,6 +572,7 @@ function ProfileCard({
   scores: CategoryScores;
   rating: ClubRating | null;
   referenceValues: UserReferenceValueRecord[];
+  equipmentList: Equipment[];
   onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDeleteReference: (id: string, expectedRevision: number) => Promise<void>;
   referenceError: string;
@@ -657,6 +732,7 @@ function ProfileCard({
         basis={basis}
         typicalCarry={recent.typical.median}
         strongCarry={recent.potential.value}
+        equipment={equipmentList}
         onSave={onSaveReference}
         onDelete={onDeleteReference}
         error={referenceError}
@@ -722,8 +798,17 @@ export function ClubProfiles({
   repository: Repository;
   refresh: () => Promise<void>;
 }) {
-  const { basis, ...filters } = settings;
-  const query = { ...filters, today: localToday() };
+  const { basis } = settings;
+  const query = useMemo(
+    () => ({
+      mode: settings.mode,
+      intent: settings.intent,
+      contact: settings.contact,
+      hideLikelyMishits: settings.hideLikelyMishits,
+      today: localToday(),
+    }),
+    [settings],
+  );
   const profiles = clubProfiles(data, basis, query);
   const [referenceError, setReferenceError] = useState('');
   const saveReference = async (input: UserReferenceValueSaveInput) => {
@@ -755,8 +840,12 @@ export function ClubProfiles({
     }
   };
   // Scores reuse the profiles computed above; ratings come from the shared
-  // ratings-2 module on the fixed premium-flat rating basis (ADR-0005).
-  const ratingsByClub = new Map(clubRatings(data, query).map((r) => [r.club, r]));
+  // ratings-2 module on the fixed premium-flat rating basis (ADR-0005),
+  // memoized so unrelated re-renders do not recompute them.
+  const ratingsByClub = useMemo(
+    () => new Map(clubRatings(data, query).map((r) => [r.club, r])),
+    [data, query],
+  );
   const scoresByClub = profiles.map((profile) => ({
     profile,
     scores: categoryScores(data, basis, query, profile.club, profile),
@@ -823,6 +912,7 @@ export function ClubProfiles({
             scores={scores}
             rating={ratingsByClub.get(profile.club) ?? null}
             referenceValues={data.userReferenceValues}
+            equipmentList={data.equipment}
             onSaveReference={saveReference}
             onDeleteReference={deleteReference}
             referenceError={referenceError}
