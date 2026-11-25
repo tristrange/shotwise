@@ -23,7 +23,10 @@ import type { Session, Shot } from '../src/domain/model';
 
 const args = process.argv.slice(2);
 const labelFlag = args.indexOf('--labels');
-const files = args.filter((a, i) => a !== '--labels' && i !== labelFlag + 1);
+const files =
+  labelFlag >= 0
+    ? args.filter((_, i) => i !== labelFlag && i !== labelFlag + 1)
+    : args;
 const labelsPath = labelFlag >= 0 ? args[labelFlag + 1] : undefined;
 if (files.length === 0)
   throw new Error(
@@ -43,9 +46,14 @@ for (const file of files) {
   const bytes = new Uint8Array(await readFile(file));
   const preview = await parseCsv(bytes);
   const name = basename(file);
+  const date = suggestDate(name);
+  if (!date)
+    throw new Error(
+      `${name}: no recognizable date in the filename — rename it like 'session-2026-11-16.csv' or pass a dated export, otherwise session chronology cannot be determined`,
+    );
   const session = makeSession({
     id: `pilot-${name}-${preview.fileHash.slice(0, 8)}`,
-    date: suggestDate(name),
+    date,
     filename: name,
   });
   sessions.push(session);
