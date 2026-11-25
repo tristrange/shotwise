@@ -17,7 +17,7 @@ import {
  * causal per-club baseline is too thin. Derived only — never persisted, never
  * overwrites recorded data or manual reviews (see assessment.ts precedence).
  */
-export const CLASSIFIER_VERSION = 'intent-contact-1';
+export const CLASSIFIER_VERSION = 'intent-contact-2';
 
 export type IntentValue = 'full' | 'partial' | 'unknown';
 export type ContactValue = 'typical' | 'mishit' | 'uncertain';
@@ -49,9 +49,23 @@ type Baseline = {
 };
 
 /**
+ * Total chronological order for visits: date, then recorded start time when
+ * both visits have one, then session id purely as a deterministic tiebreak —
+ * the id is not evidence of real-world chronology.
+ */
+function compareSessionStarts(a: Session, b: Session): number {
+  return (
+    a.date.localeCompare(b.date) ||
+    (a.time !== null && b.time !== null ? a.time.localeCompare(b.time) : 0) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/**
  * Causal baseline for one shot: earlier included shots of the same effective
  * club with positive carry and speed on this basis, excluding reviewed mishits
- * and partials so incorrect labels cannot reinforce themselves.
+ * and partials so incorrect labels cannot reinforce themselves. Same-day other
+ * visits count only when their recorded start time is unambiguously earlier.
  */
 function baselineBefore(
   shot: Shot,
@@ -63,7 +77,8 @@ function baselineBefore(
   const speedKey = BASES[basis].speed;
   const club = effectiveClub(shot);
   if (isUnknownClub(club)) return null;
-  const shotDate = sessionMap.get(shot.sessionId)?.date;
+  const shotSession = sessionMap.get(shot.sessionId);
+  const shotDate = shotSession?.date;
   if (!shotDate) return null;
   const cutoff = shiftDate(shotDate, -RECENT_DAYS);
   const candidates = shots
@@ -72,7 +87,16 @@ function baselineBefore(
       const session = sessionMap.get(s.sessionId);
       if (!session || session.archived) return false;
       if (session.date < cutoff || session.date > shotDate) return false;
-      if (session.date === shotDate && session.id !== shot.sessionId) return false;
+      if (session.date === shotDate && session.id !== shot.sessionId) {
+        if (
+          !(
+            session.time !== null &&
+            shotSession.time !== null &&
+            session.time < shotSession.time
+          )
+        )
+          return false;
+      }
       if (s.sessionId === shot.sessionId && s.rowIndex >= shot.rowIndex) return false;
       if (effectiveClub(s) !== club) return false;
       if (s.review.exclusion.kind !== 'included') return false;
@@ -82,9 +106,11 @@ function baselineBefore(
       return carry !== null && speed !== null && carry > 0 && speed > 0;
     })
     .sort((a, b) => {
-      const da = sessionMap.get(a.sessionId)?.date ?? '';
-      const db = sessionMap.get(b.sessionId)?.date ?? '';
-      return db.localeCompare(da) || b.rowIndex - a.rowIndex;
+      const sa = sessionMap.get(a.sessionId);
+      const sb = sessionMap.get(b.sessionId);
+      if (!sa || !sb) return 0;
+      // Total order makes the BASELINE_CAP cutoff independent of input order.
+      return compareSessionStarts(sb, sa) || b.rowIndex - a.rowIndex;
     })
     .slice(0, BASELINE_CAP);
   const carries = candidates.flatMap((s) => s.measurements[carryKey] ?? []);

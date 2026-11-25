@@ -125,8 +125,8 @@ const resolveCache = new WeakMap<Shot[], CacheEntry>();
 
 /**
  * Resolve every shot's intent, contact and club through the precedence chain,
- * combining the per-shot classifier (`intent-contact-1`) with sequence-aware
- * club inference (`sequence-1`). Results are cached per shots/sessions/basis
+ * combining the per-shot classifier (`intent-contact-2`) with sequence-aware
+ * club inference (`sequence-2`). Results are cached per shots/sessions/basis
  * identity — callers may invoke this freely. Assessments stay derived: the
  * shot and its review are never modified.
  */

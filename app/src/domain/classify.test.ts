@@ -147,4 +147,60 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     // For a shot on 2026-11-16, the 2026-01-01 session is outside the 60-day window.
     expect(out.get(newShots[5]!.id)!.baselineCount).toBe(12 + 5);
   });
+
+  it('counts unambiguously earlier same-day visits, but not same-time or timeless ones', () => {
+    const morning = makeSession({ id: 'morning', date: '2026-11-16', time: '09:00' });
+    const evening = makeSession({ id: 'evening', date: '2026-11-16', time: '18:00' });
+    const morningShots = fullShots('7i', 160, 150, 12, morning);
+    const eveningShots = fullShots('7i', 160, 150, 3, evening);
+    const probe = makeShot({
+      sessionId: evening.id,
+      recordedClub: '7i',
+      rowIndex: 20,
+      measurements: { flatCarryPremium: 90, speedPremium: 100 },
+    });
+    const out = assessShots([...eveningShots, ...morningShots, probe], [evening, morning]);
+    // 12 morning shots + the 3 earlier evening shots form the causal baseline.
+    expect(out.get(probe.id)!.baselineCount).toBe(15);
+    expect(out.get(probe.id)!.contact.value).toBe('mishit');
+    // A same-start-time visit is not unambiguously earlier: excluded.
+    const sameTime = makeSession({ id: 'sametime', date: '2026-11-16', time: '18:00' });
+    const sameTimeShots = fullShots('7i', 160, 150, 5, sameTime);
+    const out2 = assessShots(
+      [...eveningShots, ...morningShots, ...sameTimeShots, probe],
+      [evening, morning, sameTime],
+    );
+    expect(out2.get(probe.id)!.baselineCount).toBe(15);
+    // A timeless same-day visit is also excluded (order unknowable).
+    const timeless = makeSession({ id: 'timeless', date: '2026-11-16', time: null });
+    const timelessShots = fullShots('7i', 160, 150, 5, timeless);
+    const out3 = assessShots(
+      [...eveningShots, ...morningShots, ...timelessShots, probe],
+      [evening, morning, timeless],
+    );
+    expect(out3.get(probe.id)!.baselineCount).toBe(15);
+  });
+
+  it('picks a deterministic baseline at the 50-shot cap regardless of input order', () => {
+    const many = Array.from({ length: 60 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: '7i',
+        rowIndex: i + 1,
+        measurements: { flatCarryPremium: 150 + (i % 7), speedPremium: 150 },
+        review: review({ intent: 'full', contact: 'typical' }),
+      }),
+    );
+    const probe = makeShot({
+      sessionId: session.id,
+      recordedClub: '7i',
+      rowIndex: 99,
+      measurements: { flatCarryPremium: 160, speedPremium: 150 },
+    });
+    const forward = assessShots([...many, probe], [session]);
+    expect(forward.get(probe.id)!.baselineCount).toBe(50);
+    // Same selected baseline (median, P75 and reasons) under permutation.
+    const shuffled = assessShots([probe, ...[...many].reverse()], [session]);
+    expect(shuffled.get(probe.id)).toEqual(forward.get(probe.id));
+  });
 });

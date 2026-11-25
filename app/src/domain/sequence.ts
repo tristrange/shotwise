@@ -17,7 +17,7 @@ import {
  * size counts. Inferred clubs are provisional and never overwrite recorded
  * labels; suspected wrong labels are flagged, never reassigned.
  */
-export const SEQUENCE_RULE_VERSION = 'sequence-1';
+export const SEQUENCE_RULE_VERSION = 'sequence-2';
 
 export type SequenceAssessment =
   | {
@@ -127,6 +127,12 @@ function distance(shot: Shot, profile: Profile, basis: Basis): number {
  * Assess every included shot of every non-archived session. Unknown labels
  * are inferred from neighbouring labelled runs; long labelled runs whose
  * measurements match another club are flagged as suspected wrong labels.
+ *
+ * Append-stable (sequence-2): each visit is assessed against a reference
+ * window anchored to that visit's own date — later visits never influence
+ * earlier results, and archived sessions neither move an anchor nor
+ * contribute references. Within the assessed visit, context from both sides
+ * is allowed (the visit is complete when it is read).
  */
 export function assessSequences(
   shots: Shot[],
@@ -134,17 +140,12 @@ export function assessSequences(
   basis: Basis = 'premium-flat',
 ): Map<string, SequenceAssessment> {
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
-  const today = sessions.map((s) => s.date).sort().at(-1) ?? '1970-01-01';
-  const cutoff = shiftDate(today, -RECENT_DAYS);
-  const recentShots = shots.filter((s) => {
-    const session = sessionMap.get(s.sessionId);
-    return session && !session.archived && session.date >= cutoff && session.date <= today;
-  });
-  const globalProfiles = profiles(recentShots, sessionMap, basis);
   const out = new Map<string, SequenceAssessment>();
 
   const bySession = new Map<string, Shot[]>();
-  for (const shot of recentShots) {
+  for (const shot of shots) {
+    const session = sessionMap.get(shot.sessionId);
+    if (!session || session.archived) continue;
     if (shot.review.exclusion.kind !== 'included') continue;
     const group = bySession.get(shot.sessionId) ?? [];
     group.push(shot);
@@ -152,12 +153,24 @@ export function assessSequences(
   }
 
   for (const [sessionId, sessionShots] of bySession) {
+    const session = sessionMap.get(sessionId)!;
+    const cutoff = shiftDate(session.date, -RECENT_DAYS);
+    const windowShots = shots.filter((s) => {
+      const sess = sessionMap.get(s.sessionId);
+      return (
+        sess !== undefined &&
+        !sess.archived &&
+        sess.date >= cutoff &&
+        sess.date <= session.date
+      );
+    });
+    const referenceProfiles = profiles(windowShots, sessionMap, basis);
     const ordered = [...sessionShots].sort((a, b) => a.rowIndex - b.rowIndex);
     const sessionProfiles = profiles(ordered, sessionMap, basis, sessionId);
     const profileFor = (club: string) => {
       const local = sessionProfiles.get(club);
       if (local && local.n >= MIN_PROFILE) return local;
-      return globalProfiles.get(club);
+      return referenceProfiles.get(club);
     };
 
     for (let i = 0; i < ordered.length; i++) {
@@ -218,7 +231,7 @@ export function assessSequences(
         continue;
       }
       const winner = scored[0]!;
-      const evidence = (sessionProfiles.get(winner.candidate)?.n ?? globalProfiles.get(winner.candidate)?.n ?? 0);
+      const evidence = (sessionProfiles.get(winner.candidate)?.n ?? referenceProfiles.get(winner.candidate)?.n ?? 0);
       out.set(shot.id, {
         kind: 'inferred-club',
         shotId: shot.id,
@@ -245,11 +258,11 @@ export function assessSequences(
       }
     }
     for (const run of runs) {
-      const own = globalProfiles.get(run.club);
+      const own = referenceProfiles.get(run.club);
       if (!own || own.n < MIN_PROFILE) continue;
       // A forgotten tablet switch shows up as a contiguous sub-block of the
       // labelled run whose measurements match another club, not the label.
-      const others = [...globalProfiles.entries()].filter(
+      const others = [...referenceProfiles.entries()].filter(
         ([club, profile]) => club !== run.club && clubOrder(club) < 200 && profile.n >= MIN_PROFILE,
       );
       for (const [candidate, profile] of others) {
