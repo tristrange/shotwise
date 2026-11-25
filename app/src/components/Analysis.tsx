@@ -17,6 +17,7 @@ import {
   summarize,
   type AnalysisSettings,
 } from '../domain/analytics';
+import { clubStrongStrike } from '../domain/potential';
 import {
   BasisButton,
   MishitToggle,
@@ -79,26 +80,43 @@ export function Analysis({
       else next.add(name);
       return next;
     });
+  // Reliability (spread band, IQR) and distance potential always come from
+  // the broader population, so they stay visible when a performance filter
+  // (e.g. Strong-strike) narrows the median (roadmap §6.3, ADR-0002).
+  const broaderQuery = {
+    ...query,
+    contact: 'all',
+    hideLikelyMishits: false,
+  } as const;
+  const broader = selectCohort(data.shots, data.sessions, broaderQuery, basis);
+  const potentialByClub = new Map(
+    clubStrongStrike(data, basis, broaderQuery).map((row) => [row.club, row]),
+  );
   const rows = clubs.map((name) => {
     // Club rows are club-specific benchmarks: suspected wrong-club labels stay out.
     const clubShots = selected.filter(
       (s) => clubOf(s) === name && !resolved.get(s.id)?.suspectedWrongClub,
     );
+    const broaderShots = broader.filter(
+      (s) => clubOf(s) === name && !resolved.get(s.id)?.suspectedWrongClub,
+    );
     const fields = BASES[basis];
     const stats = metricStats(clubShots, fields.carry);
+    const broadStats = metricStats(broaderShots, fields.carry);
     return {
       name,
       median: stats.median,
-      low: stats.p10,
-      high: stats.p90,
-      iqr: stats.iqr,
+      low: broadStats.p10,
+      high: broadStats.p90,
+      iqr: broadStats.iqr,
+      potential: potentialByClub.get(name) ?? null,
       speed: metricStats(clubShots, fields.speed),
       launch: metricStats(clubShots, fields.launch),
       apex: metricStats(clubShots, fields.apex),
       total: clubShots.length,
       n: stats.n,
       missing: stats.missing,
-      reliable: stats.n >= 10,
+      reliable: broadStats.n >= 10,
     };
   });
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
@@ -174,7 +192,13 @@ export function Analysis({
             <div className="gap-list" role="list" aria-label="Median carry by club">
               <div className="gap-head">
                 <span>Club</span>
-                <span>Typical carry · spread</span>
+                <span>
+                  {settings.contact === 'strong'
+                    ? 'Strong-strike median · broader spread'
+                    : settings.contact === 'typical'
+                      ? 'Typical carry · spread'
+                      : 'Median carry · spread'}
+                </span>
                 <span>Shots</span>
                 <span>Median</span>
               </div>
@@ -277,6 +301,24 @@ export function Analysis({
                             </span>
                             <span className="detail-sub">
                               {row.apex.n} of {row.total} measured
+                            </span>
+                          </div>
+                          <div className="detail-stat">
+                            <span className="detail-label">
+                              Strong-strike carry (P80)
+                            </span>
+                            <span className="detail-value">
+                              {row.potential?.potential === null ||
+                              row.potential === null
+                                ? '—'
+                                : `${row.potential.potential.toFixed(0)} m`}
+                            </span>
+                            <span className="detail-sub">
+                              {row.potential && !row.potential.reliable && (
+                                <span className="pill">Sample limited</span>
+                              )}
+                              {row.potential &&
+                                `${row.potential.n} measured full swings`}
                             </span>
                           </div>
                           <div className="detail-stat">

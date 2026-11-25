@@ -125,6 +125,19 @@ function ProfileCard({
           )}
         </li>
         <li>
+          <strong>
+            Strong-strike carry (P80) {fmt(recent.potential.value)} m
+          </strong>{' '}
+          · distance potential when struck well, from {recent.potential.n}{' '}
+          measured full swings · not an overall shot-quality score
+          {recent.potential.value === null && recent.potential.n > 0 && (
+            <span className="pill"> Sample limited</span>
+          )}
+          {recent.potential.value !== null && !recent.potential.reliable && (
+            <span className="pill"> Sample limited</span>
+          )}
+        </li>
+        <li>
           <strong>Carry spread (IQR) {fmt(recent.spread.iqr)} m</strong> · middle
           half of {recent.spread.n} measured carries, mishits and flagged shots
           included · {recent.spread.missing} missing

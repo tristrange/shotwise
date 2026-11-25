@@ -113,7 +113,8 @@ export function clubStrongStrike(
           shots.flatMap((s) => s.measurements[key] ?? []),
         ),
         reliable: stats.n >= MIN_POTENTIAL_SAMPLES,
-        shotIds: shots.map((s) => s.id),
+        // Sorted so the report is invariant to input array order.
+        shotIds: shots.map((s) => s.id).sort(),
         ruleVersion: STRONG_STRIKE_RULE_VERSION,
       };
     })

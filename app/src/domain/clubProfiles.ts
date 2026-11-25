@@ -18,6 +18,7 @@ import {
   type Session,
 } from './model';
 import { clubProgress } from './progress';
+import { clubStrongStrike } from './potential';
 import {
   clubShotGroups,
   filterCohort,
@@ -45,6 +46,18 @@ export type ProfileRecent = {
     median: number | null;
     n: number;
     missing: number;
+  };
+  /**
+   * Strong-strike carry (P80 distance potential, ADR-0002), always computed
+   * from the broader full-swing non-mishit population — never from a
+   * strong-strike-filtered subset — so potential and reliability can be read
+   * side by side.
+   */
+  potential: {
+    value: number | null;
+    n: number;
+    reliable: boolean;
+    shotIds: string[];
   };
   spread: { iqr: number | null; n: number; missing: number };
   lowerTail: { p10: number | null; n: number };
@@ -106,6 +119,15 @@ export function clubProfiles(
   const sessionMap = new Map(data.sessions.map((s) => [s.id, s]));
   const resolved = resolveShots(data.shots, data.sessions, basis);
   const groups = clubShotGroups(data, resolved);
+  // Distance potential is always read from the broader population, regardless
+  // of the selected performance mode (ADR-0002, roadmap §6.3).
+  const potentialByClub = new Map(
+    clubStrongStrike(data, basis, {
+      ...query,
+      contact: 'all',
+      hideLikelyMishits: false,
+    }).map((row) => [row.club, row]),
+  );
 
   const clubs = [...new Set([...groups.values()].flatMap((perClub) => [...perClub.keys()]))]
     .filter((club) => !isUnknownClub(club))
@@ -238,6 +260,17 @@ export function clubProfiles(
       equipment: equipmentForShots(windowShots),
       recent: {
         typical,
+        potential: (() => {
+          const row = potentialByClub.get(club);
+          return row
+            ? {
+                value: row.potential,
+                n: row.n,
+                reliable: row.reliable,
+                shotIds: row.shotIds,
+              }
+            : { value: null, n: 0, reliable: false, shotIds: [] };
+        })(),
         spread: {
           iqr: reliabilityStats.iqr,
           n: reliabilityStats.n,

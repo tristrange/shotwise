@@ -353,5 +353,9 @@ describe('strong performance mode in selectCohort (roadmap §6.1)', () => {
     expect(seven.recent.contact.total).toBe(21);
     // The typical (performance) metric follows the strong filter.
     expect(seven.recent.typical.n).toBeLessThanOrEqual(4);
+    // Distance potential stays on the broader population: P80 of 100..119.
+    expect(seven.recent.potential.value).toBe(115.2);
+    expect(seven.recent.potential.n).toBe(20);
+    expect(seven.recent.potential.reliable).toBe(true);
   });
 });
