@@ -2911,6 +2911,25 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(card).toContainText('100% of full swings contact-reviewed');
   await expect(card).toContainText('Gap to the next longer club: 20 m');
 
+  // Optional external references: collapsed by default, link-out only, with
+  // attribution, comparability caveat and a pro badge — never embedded numbers.
+  const refs = card.locator('details.benchmark-refs');
+  await expect(refs.locator('summary')).toHaveText('External references (1)');
+  const refLink = refs.getByRole('link', { name: /TrackMan Tour Averages/ });
+  await expect(refLink).toBeHidden();
+  await refs.locator('summary').click();
+  await expect(refLink).toBeVisible();
+  await expect(refLink).toHaveAttribute(
+    'href',
+    'https://www.trackman.com/golf-tour-averages',
+  );
+  await expect(refLink).toHaveAttribute('target', '_blank');
+  await expect(refs).toContainText('Pro reference — not an amateur target');
+  await expect(refs).toContainText('carry distance, mixed venues');
+  await expect(refs).toContainText('not directly comparable');
+  await expect(refs).toContainText('Linked sources only');
+  await expect(refs).toContainText('TrackMan');
+
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
   await expect(latestLine).toContainText('typical carry 122 m from 13 measured shots');

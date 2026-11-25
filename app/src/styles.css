@@ -239,6 +239,9 @@ td { color: var(--ink); }
 tbody tr:hover { background: var(--panel); }
 details { margin-top: 18px; font-size: .9rem; color: var(--ink2); }
 summary { cursor: pointer; font-weight: 600; font-family: 'Instrument Sans', sans-serif; }
+.benchmark-refs ul { margin: 8px 0; padding-left: 18px; }
+.benchmark-refs li { margin-block: 8px; }
+.benchmark-refs li p { margin: 4px 0 0; }
 .preview { border: 1px solid var(--line); padding: 18px; margin: 20px 0; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .muted { margin-top: 24px; font: 400 12px/1.6 'Instrument Sans', sans-serif; color: var(--mute); }

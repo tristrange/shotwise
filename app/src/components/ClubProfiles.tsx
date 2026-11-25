@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
+import {
+  BENCHMARK_SOURCES,
+  attributionFor,
+  benchmarkReferencesForClub,
+} from '../domain/benchmarks';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
 import { localToday, type Dataset } from '../domain/model';
@@ -37,6 +42,48 @@ function gapNote(gap: ClubProfile['gap']) {
           ? ' · large gap'
           : '';
   return `Gap to the next longer club: ${decimal.format(gap.gap)} m${flag}`;
+}
+
+/**
+ * Optional link-out external references for a club. Hidden behind a
+ * disclosure; nothing is embedded, every row carries full attribution, and
+ * professional-audience sources get a badge so they are not read as amateur
+ * targets. Comparability (carry↔carry, total↔total) is stated per row.
+ */
+function BenchmarkReferences({ club }: { club: string }) {
+  const references = benchmarkReferencesForClub(club);
+  if (references.length === 0) return null;
+  return (
+    <details className="benchmark-refs">
+      <summary>External references ({references.length})</summary>
+      <ul>
+        {references.map((ref) => {
+          const source = BENCHMARK_SOURCES.find((s) => s.id === ref.sourceId);
+          if (!source) return null;
+          return (
+            <li key={ref.sourceId}>
+              <a href={ref.url} target="_blank" rel="noopener noreferrer">
+                {ref.label}
+              </a>{' '}
+              {ref.audience === 'professional' && (
+                <span className="pill">
+                  Pro reference — not an amateur target
+                </span>
+              )}
+              <p className="context">
+                {ref.caveat}. {attributionFor(source)}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="context">
+        Linked sources only — no external dataset is embedded in the app.
+        Compare carry with carry and total with total: on-course totals are
+        context for range carry, not a like-for-like target.
+      </p>
+    </details>
+  );
 }
 
 function ProfileCard({
@@ -189,6 +236,7 @@ function ProfileCard({
         <p>No measured carry on this basis for {club} yet.</p>
       )}
       {gapText && <p>{gapText}.</p>}
+      <BenchmarkReferences club={club} />
       <div className="table-wrap">
         <table aria-label={`${club} history across sessions`}>
           <caption>
