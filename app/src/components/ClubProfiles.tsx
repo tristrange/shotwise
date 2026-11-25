@@ -294,6 +294,7 @@ function PersonalReference({
   };
 
   const submit = async () => {
+    const current = own.find((v) => v.id === baseline?.id);
     const input: UserReferenceValueSaveInput = {
       id: baseline?.id ?? crypto.randomUUID(),
       club: club.trim(),
@@ -302,6 +303,12 @@ function PersonalReference({
       note: note.trim() ? note.trim() : null,
       basis: refBasis,
       source,
+      // Rating metadata carried through unchanged; editable reference-type
+      // UI lands with the ratings UI PR.
+      referenceType: current?.referenceType ?? 'goal',
+      statistic: current?.statistic ?? 'other',
+      recordedOn: current?.recordedOn ?? null,
+      equipmentId: current?.equipmentId ?? null,
       revision: baseline?.revision ?? null,
     };
     const problem = validateUserReferenceValue(input);

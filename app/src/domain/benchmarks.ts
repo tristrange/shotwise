@@ -5,8 +5,29 @@ import {
   userReferenceValueSchema,
   type Basis,
   type ReferenceBasis,
+  type ReferenceStatistic,
+  type ReferenceType,
   type UserReferenceValueRecord,
 } from './model';
+
+/**
+ * UI labels for the reference concepts (ADR-0005 §4.5). Ratings must show
+ * these distinctly — personal goal attainment, observed personal best and
+ * historical personal potential attainment are never presented as directly
+ * equivalent.
+ */
+export const REFERENCE_TYPE_LABEL: Record<ReferenceType, string> = {
+  goal: 'Personal goal',
+  observed: 'Observed personal best',
+  'historical-potential': 'Historical personal potential',
+};
+
+export const REFERENCE_STATISTIC_LABEL: Record<ReferenceStatistic, string> = {
+  median: 'median',
+  p80: 'P80',
+  mean: 'mean',
+  other: 'other',
+};
 
 /**
  * Source-aware external benchmark data model (roadmap §7, Phase 5 PR 16;

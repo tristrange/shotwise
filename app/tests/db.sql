@@ -337,6 +337,16 @@ end $$;
 set local role postgres;
 select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000022','club','6i','metric','total','valueM',160,'note',null,'revision',0)),'legacy reference row accepted');
 select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000022','club','6i','metric','total','valueM',160,'note',null,'basis','premium-flat','source','chart','revision',0)),'reference with metadata accepted');
+-- C1 follow-up: rating metadata. Full metadata accepted; invalid type/statistic/
+-- calendar date/equipment id rejected; legacy rows OMITTING the new keys stay
+-- valid, as do explicit JSON nulls.
+select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000023','club','4i','metric','carry','valueM',145,'note',null,'basis','premium-flat','source','fitting','referenceType','observed','statistic','p80','recordedOn','2026-11-20','equipmentId','cccccccc-0000-4000-8000-000000000001','revision',0)),'reference with rating metadata accepted');
+select pg_temp.assert_true(private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000023','club','4i','metric','carry','valueM',145,'note',null,'recordedOn',null,'equipmentId',null,'revision',0)),'explicit null rating metadata accepted');
+select pg_temp.assert_true(not private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000024','club','4i','metric','carry','valueM',145,'note',null,'referenceType','target','revision',0)),'invalid referenceType rejected');
+select pg_temp.assert_true(not private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000024','club','4i','metric','carry','valueM',145,'note',null,'statistic','p90','revision',0)),'invalid statistic rejected');
+select pg_temp.assert_true(not private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000024','club','4i','metric','carry','valueM',145,'note',null,'recordedOn','2026-02-30','revision',0)),'impossible calendar date rejected');
+select pg_temp.assert_true(not private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000024','club','4i','metric','carry','valueM',145,'note',null,'recordedOn','20/11/2026','revision',0)),'non-ISO date rejected');
+select pg_temp.assert_true(not private.valid_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000024','club','4i','metric','carry','valueM',145,'note',null,'equipmentId','not-a-uuid','revision',0)),'invalid equipmentId rejected');
 set local role authenticated;
 
 -- A9: write and restore limits are aligned at 1000 rows; the export pages fully.

@@ -201,12 +201,30 @@ export const referenceSourceSchema = z
   .default('manual');
 export type ReferenceSource = z.infer<typeof referenceSourceSchema>;
 /**
+ * What kind of reference a value represents (roadmap §13.8, ADR-0005 §4.5):
+ * a 'goal' the golfer set, an 'observed' personal best, or a
+ * 'historical-potential' reference derived automatically. Ratings must label
+ * these distinctly and never present them as directly equivalent. Defaults to
+ * 'goal' for legacy rows.
+ */
+export const referenceTypeSchema = z
+  .enum(['goal', 'observed', 'historical-potential'])
+  .default('goal');
+export type ReferenceType = z.infer<typeof referenceTypeSchema>;
+/** The statistic the reference number represents (median, P80, …). */
+export const referenceStatisticSchema = z
+  .enum(['median', 'p80', 'mean', 'other'])
+  .default('other');
+export type ReferenceStatistic = z.infer<typeof referenceStatisticSchema>;
+/**
  * A user-entered per-club reference value (e.g. from a fitting session or a
  * printed distance chart). Stored separately from imported measurements and
  * never mixed into analytics cohorts; labelled "user-entered" in the UI.
  * `basis`/`source` default for legacy rows so old records still parse; a
  * comparison must never silently mix a range-ball reference with premium
- * estimates or vice versa.
+ * estimates or vice versa. `referenceType`/`statistic`/`recordedOn`/`equipmentId`
+ * carry the rating-metadata fields (roadmap §13.8); all default so legacy rows
+ * stay valid, and `unknown` bases are still never silently compared.
  */
 export const userReferenceValueSchema = z.object({
   id: idSchema,
@@ -216,6 +234,12 @@ export const userReferenceValueSchema = z.object({
   note: z.string().trim().max(200).nullable(),
   basis: referenceBasisSchema.default('unknown'),
   source: referenceSourceSchema,
+  referenceType: referenceTypeSchema,
+  statistic: referenceStatisticSchema,
+  /** ISO date the reference was recorded/observed, when known. */
+  recordedOn: dateSchema.nullable().default(null),
+  /** Equipment the reference was measured with, when known. */
+  equipmentId: idSchema.nullable().default(null),
   revision: z.number().int().nonnegative().max(2_147_483_647),
 });
 export type UserReferenceValueRecord = z.infer<typeof userReferenceValueSchema>;
