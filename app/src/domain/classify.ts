@@ -1,8 +1,6 @@
 import { quantile } from './statistics';
 import {
   BASES,
-  effectiveClub,
-  isPitchingWedge,
   isUnknownClub,
   isWedge,
   shiftDate,
@@ -16,8 +14,17 @@ import {
  * every assessment carries a reason, and the classifier abstains when the
  * causal per-club baseline is too thin. Derived only — never persisted, never
  * overwrites recorded data or manual reviews (see assessment.ts precedence).
+ *
+ * intent-contact-3: intent and contact are decided independently. Contact uses
+ * carry, ball speed and — where measured — launch, apex and the carry-to-total
+ * share, so a severe low-launch mishit with retained ball speed is still caught.
+ * Intent for wedges (including PW) distinguishes likely partials from full
+ * swings using carry relative to the baseline and flight height; a low-flight
+ * short shot is not called a partial. Club identity is resolved first (manual,
+ * then provisional sequence inference, then the recorded label), so inferred
+ * clubs receive club-specific assessments.
  */
-export const CLASSIFIER_VERSION = 'intent-contact-2';
+export const CLASSIFIER_VERSION = 'intent-contact-3';
 
 export type IntentValue = 'full' | 'partial' | 'unknown';
 export type ContactValue = 'typical' | 'mishit' | 'uncertain';
@@ -35,17 +42,35 @@ const MIN_BASELINE = 10;
 const RECENT_DAYS = 60;
 /** Cap the baseline at the most recent N earlier shots per club. */
 const BASELINE_CAP = 50;
-/** A shot this far below the recent upper-quartile carry+speed looks like a mishit. */
+/** A shot this far below the recent upper-quartile carry looks like a mishit. */
 const MISHIT_CARRY_FACTOR = 0.65;
 const MISHIT_SPEED_FACTOR = 0.8;
 /** A wedge this far below its typical carry looks like intentional distance control. */
 const PARTIAL_CARRY_FACTOR = 0.7;
+/** Launch this many degrees below the recent median counts as low flight. */
+const LOW_LAUNCH_DROP_DEG = 4;
+/** Apex this far below the recent median counts as low flight. */
+const LOW_APEX_FACTOR = 0.6;
+/** Carry-to-total share this far below the recent median counts as a ground ball. */
+const LOW_CARRY_SHARE_FACTOR = 0.85;
+
+type Signals = {
+  carry: number | null;
+  speed: number | null;
+  launch: number | null;
+  apex: number | null;
+  total: number | null;
+};
 
 type Baseline = {
   n: number;
   carryMedian: number | null;
   carryP75: number | null;
   speedP75: number | null;
+  launchMedian: number | null;
+  apexMedian: number | null;
+  /** Median carry / total share of the baseline — ground-ball corroboration. */
+  carryShareMedian: number | null;
 };
 
 /**
@@ -66,7 +91,22 @@ function compareSessionStarts(a: Session, b: Session): number {
 }
 
 /**
- * Causal baseline for one shot: earlier included shots of the same effective
+ * Club identity for assessment: a manual correction or confirmation wins, then
+ * a provisional sequence inference, then the recorded label. Mirrors
+ * resolveClub in assessment.ts (kept local to avoid a module cycle).
+ */
+function assessmentClubOf(
+  shot: Shot,
+  inferred: Map<string, string> | undefined,
+): string {
+  const decision = shot.review.club;
+  if (decision.kind === 'corrected') return decision.club;
+  if (decision.kind === 'confirmed') return shot.recordedClub;
+  return inferred?.get(shot.id) ?? shot.recordedClub;
+}
+
+/**
+ * Causal baseline for one shot: earlier included shots of the same resolved
  * club with positive carry and speed on this basis, excluding reviewed mishits
  * and partials so incorrect labels cannot reinforce themselves. Same-day other
  * visits count only when their recorded start time is unambiguously earlier.
@@ -76,11 +116,10 @@ function baselineBefore(
   shots: Shot[],
   sessionMap: Map<string, Session>,
   basis: Basis,
+  inferred: Map<string, string> | undefined,
+  club: string,
 ): Baseline | null {
-  const carryKey = BASES[basis].carry;
-  const speedKey = BASES[basis].speed;
-  const club = effectiveClub(shot);
-  if (isUnknownClub(club)) return null;
+  const fields = BASES[basis];
   const shotSession = sessionMap.get(shot.sessionId);
   const shotDate = shotSession?.date;
   if (!shotDate) return null;
@@ -102,11 +141,11 @@ function baselineBefore(
           return false;
       }
       if (s.sessionId === shot.sessionId && s.rowIndex >= shot.rowIndex) return false;
-      if (effectiveClub(s) !== club) return false;
+      if (assessmentClubOf(s, inferred) !== club) return false;
       if (s.review.exclusion.kind !== 'included') return false;
       if (s.review.contact === 'mishit' || s.review.intent === 'partial') return false;
-      const carry = s.measurements[carryKey];
-      const speed = s.measurements[speedKey];
+      const carry = s.measurements[fields.carry];
+      const speed = s.measurements[fields.speed];
       return carry !== null && speed !== null && carry > 0 && speed > 0;
     })
     .sort((a, b) => {
@@ -117,34 +156,126 @@ function baselineBefore(
       return compareSessionStarts(sb, sa) || b.rowIndex - a.rowIndex;
     })
     .slice(0, BASELINE_CAP);
-  const carries = candidates.flatMap((s) => s.measurements[carryKey] ?? []);
-  const speeds = candidates.flatMap((s) => s.measurements[speedKey] ?? []);
+  const carries = candidates.flatMap((s) => s.measurements[fields.carry] ?? []);
+  const speeds = candidates.flatMap((s) => s.measurements[fields.speed] ?? []);
+  const launches = candidates.flatMap((s) => s.measurements[fields.launch] ?? []);
+  const apexes = candidates.flatMap((s) => s.measurements[fields.apex] ?? []);
+  const carryShares = candidates.flatMap((s) => {
+    const carry = s.measurements[fields.carry];
+    const total = s.measurements[fields.total];
+    return carry !== null && total !== null && total > 0 ? [carry / total] : [];
+  });
   return {
     n: candidates.length,
     carryMedian: quantile(carries, 0.5),
     carryP75: quantile(carries, 0.75),
     speedP75: quantile(speeds, 0.75),
+    launchMedian: launches.length >= 5 ? quantile(launches, 0.5) : null,
+    apexMedian: apexes.length >= 5 ? quantile(apexes, 0.5) : null,
+    carryShareMedian: carryShares.length >= 5 ? quantile(carryShares, 0.5) : null,
+  };
+}
+
+/** Low-flight corroboration from launch and apex where measured. */
+function lowFlight(s: Signals, base: Baseline): boolean {
+  const lowLaunch =
+    s.launch !== null &&
+    base.launchMedian !== null &&
+    s.launch < base.launchMedian - LOW_LAUNCH_DROP_DEG;
+  const lowApex =
+    s.apex !== null &&
+    base.apexMedian !== null &&
+    s.apex < LOW_APEX_FACTOR * base.apexMedian;
+  return lowLaunch || lowApex;
+}
+
+/**
+ * Contact from independent signals: a mishit needs a low carry corroborated by
+ * low speed, low flight or a low carry-to-total share — a low-launch strike
+ * with retained ball speed is still caught, and a normal shot is never flagged
+ * on one weak signal alone.
+ */
+function contactFor(
+  s: Signals,
+  base: Baseline,
+  club: string,
+): { value: ContactValue; reason: string } {
+  if (s.carry === null || s.speed === null || s.carry <= 0 || s.speed <= 0)
+    return { value: 'uncertain', reason: 'Needs positive carry and ball speed on this basis.' };
+  const carryLow =
+    base.carryP75 !== null && s.carry < MISHIT_CARRY_FACTOR * base.carryP75;
+  const speedLow =
+    base.speedP75 !== null && s.speed < MISHIT_SPEED_FACTOR * base.speedP75;
+  const lowShare =
+    s.total !== null &&
+    s.total > 0 &&
+    base.carryShareMedian !== null &&
+    s.carry / s.total < LOW_CARRY_SHARE_FACTOR * base.carryShareMedian;
+  if (carryLow && (speedLow || lowFlight(s, base) || lowShare)) {
+    const why = [
+      speedLow ? 'low ball speed' : null,
+      lowFlight(s, base) ? 'low launch/apex' : null,
+      lowShare ? 'low carry share of total' : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    return {
+      value: 'mishit',
+      reason: `Carry ${s.carry.toFixed(0)} m is far below the recent ${club} upper range with ${why} — likely mishit.`,
+    };
+  }
+  return {
+    value: 'typical',
+    reason: `Within the recent ${club} carry, speed and flight range.`,
   };
 }
 
 /**
+ * Intent, independent of contact. Wedges (including PW) are partial when carry
+ * is well below the recent median and the flight is not low — a short,
+ * low-flight shot is a full-swing mishit, not a partial. Non-wedges are full
+ * swings unless reviewed otherwise.
+ */
+function intentFor(
+  club: string,
+  s: Signals,
+  base: Baseline,
+): { value: IntentValue; reason: string } {
+  if (!isWedge(club))
+    return { value: 'full', reason: 'Non-wedge shots are treated as full swings unless reviewed otherwise.' };
+  if (s.carry === null || base.carryMedian === null)
+    return { value: 'unknown', reason: 'Needs measured carry to judge wedge intent.' };
+  if (
+    s.carry < PARTIAL_CARRY_FACTOR * base.carryMedian &&
+    !lowFlight(s, base)
+  )
+    return {
+      value: 'partial',
+      reason: `Carry ${s.carry.toFixed(0)} m is well below the recent ${club} median ${base.carryMedian.toFixed(0)} m with normal flight — likely distance control.`,
+    };
+  return { value: 'full', reason: `Carry is near the recent ${club} median — likely a full wedge shot.` };
+}
+
+/**
  * Assess intent and contact for every shot. Dimensions stay independent:
- * a likely-partial wedge can still be a typical strike; a mishit can have the
- * correct recorded club.
+ * a likely-partial wedge can be typical or a mishit; a mishit can have the
+ * correct recorded club. `inferredClubs` carries provisional sequence
+ * inferences (shot id → club) so unknown labels can be assessed against their
+ * inferred club; manual decisions always win.
  */
 export function assessShots(
   shots: Shot[],
   sessions: Session[],
   basis: Basis = 'premium-flat',
+  inferredClubs?: Map<string, string>,
 ): Map<string, ShotAssessment> {
-  const carryKey = BASES[basis].carry;
-  const speedKey = BASES[basis].speed;
+  const fields = BASES[basis];
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const out = new Map<string, ShotAssessment>();
 
   for (const shot of shots) {
     const session = sessionMap.get(shot.sessionId);
-    const club = effectiveClub(shot);
+    const club = assessmentClubOf(shot, inferredClubs);
     const base: ShotAssessment = {
       intent: { value: 'unknown', reason: '' },
       contact: { value: 'uncertain', reason: '' },
@@ -157,7 +288,13 @@ export function assessShots(
       out.set(shot.id, base);
       continue;
     }
-    const baseline = baselineBefore(shot, shots, sessionMap, basis);
+    if (isUnknownClub(club)) {
+      base.intent.reason = 'Club label is unknown; sequence inference may resolve it.';
+      base.contact.reason = 'Club label is unknown; no baseline available.';
+      out.set(shot.id, base);
+      continue;
+    }
+    const baseline = baselineBefore(shot, shots, sessionMap, basis, inferredClubs, club);
     if (
       !baseline ||
       baseline.n < MIN_BASELINE ||
@@ -165,58 +302,23 @@ export function assessShots(
       baseline.carryP75 === null ||
       baseline.speedP75 === null
     ) {
-      base.intent.reason = `Needs at least ${MIN_BASELINE} earlier ${isUnknownClub(club) ? 'known-club' : club} shots with carry and speed.`;
+      base.intent.reason = `Needs at least ${MIN_BASELINE} earlier ${club} shots with carry and speed.`;
       base.contact.reason = base.intent.reason;
       base.baselineCount = baseline?.n ?? 0;
       out.set(shot.id, base);
       continue;
     }
     base.baselineCount = baseline.n;
-    const carry = shot.measurements[carryKey];
-    const speed = shot.measurements[speedKey];
-
-    // Intent: higher wedges are often played partial; irons and PW are full.
-    if (isWedge(club) && !isPitchingWedge(club)) {
-      if (carry !== null && carry < PARTIAL_CARRY_FACTOR * baseline.carryMedian) {
-        base.intent = {
-          value: 'partial',
-          reason: `Carry ${carry.toFixed(0)} m is well below the recent ${club} median ${baseline.carryMedian.toFixed(0)} m — likely distance control.`,
-        };
-        // A deliberate partial is not a mishit; keep contact independent but typical.
-        base.contact = { value: 'typical', reason: 'A likely partial swing can still be well struck.' };
-      } else {
-        base.intent = { value: 'full', reason: `Carry is near the recent ${club} median — likely a full wedge shot.` };
-        base.contact = contactFor(carry, speed, baseline, club);
-      }
-    } else if (isUnknownClub(club)) {
-      base.intent.reason = 'Club label is unknown; sequence inference may resolve it.';
-      base.contact.reason = 'Club label is unknown; no baseline available.';
-    } else {
-      base.intent = { value: 'full', reason: 'Non-wedge shots are treated as full swings unless reviewed otherwise.' };
-      base.contact = contactFor(carry, speed, baseline, club);
-    }
+    const signals: Signals = {
+      carry: shot.measurements[fields.carry],
+      speed: shot.measurements[fields.speed],
+      launch: shot.measurements[fields.launch],
+      apex: shot.measurements[fields.apex],
+      total: shot.measurements[fields.total],
+    };
+    base.contact = contactFor(signals, baseline, club);
+    base.intent = intentFor(club, signals, baseline);
     out.set(shot.id, base);
   }
   return out;
-}
-
-function contactFor(
-  carry: number | null,
-  speed: number | null,
-  baseline: Baseline,
-  club: string,
-): { value: ContactValue; reason: string } {
-  if (carry === null || speed === null || carry <= 0 || speed <= 0)
-    return { value: 'uncertain', reason: 'Needs positive carry and ball speed on this basis.' };
-  if (
-    baseline.carryP75 !== null &&
-    baseline.speedP75 !== null &&
-    carry < MISHIT_CARRY_FACTOR * baseline.carryP75 &&
-    speed < MISHIT_SPEED_FACTOR * baseline.speedP75
-  )
-    return {
-      value: 'mishit',
-      reason: `Carry ${carry.toFixed(0)} m and speed ${speed.toFixed(0)} kph are both far below recent ${club} shots — likely mishit.`,
-    };
-  return { value: 'typical', reason: `Within the recent ${club} carry and speed range.` };
 }

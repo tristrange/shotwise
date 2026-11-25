@@ -239,6 +239,50 @@ describe('resolveShots (PR 10 analytics wiring)', () => {
     expect(ids.has('wrong-0')).toBe(false);
   });
 
+  it('assesses inferred clubs against their provisional club baseline', () => {
+    const shots: Shot[] = [
+      ...history('SW', 100, 150),
+      makeShot({
+        id: 'unknown-sw',
+        sessionId: late.id,
+        rowIndex: 1,
+        recordedClub: '?',
+        measurements: { flatCarryPremium: 100, speedPremium: 150 },
+      }),
+      ...history('SW', 100, 150, late).map((s, i) => ({
+        ...s,
+        id: `late-sw-${i}`,
+        rowIndex: i + 2,
+      })),
+    ];
+    const resolved = resolveShots(shots, sessions, 'premium-flat');
+    const r = resolved.get('unknown-sw')!;
+    expect(r.club).toMatchObject({ kind: 'inferred', club: 'SW', provisional: true });
+    // The inferred club feeds intent/contact: not unknown/uncertain anymore,
+    // and a resolved full intent makes it a full-swing candidate.
+    expect(r.intent).toBe('full');
+    expect(r.contact).toBe('typical');
+    expect(isFullSwingResolved(r)).toBe(true);
+  });
+
+  it('never treats an unresolved unknown club as a full swing', () => {
+    const session: Session = makeSession({ id: 'solo2', date: '2026-11-16' });
+    const shots = [
+      makeShot({
+        id: 'mystery',
+        sessionId: session.id,
+        rowIndex: 1,
+        recordedClub: '?',
+        measurements: { flatCarryPremium: 160, speedPremium: 150 },
+      }),
+    ];
+    const resolved = resolveShots(shots, [session], 'premium-flat');
+    const r = resolved.get('mystery')!;
+    expect(r.club.kind).toBe('recorded');
+    expect(r.intent).toBe('unknown');
+    expect(isFullSwingResolved(r)).toBe(false);
+  });
+
   it('abstains without enough history and falls back to the recorded defaults', () => {
     const session: Session = makeSession({ id: 'solo', date: '2026-11-16' });
     const shots = [

@@ -51,7 +51,23 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     expect(out.get(shots[5]!.id)!.contact.value).toBe('uncertain');
   });
 
-  it('flags short wedge shots as likely partial but well struck', () => {
+  it('flags a clean short wedge shot as likely partial and well struck', () => {
+    const shots = [
+      ...fullShots('SW', 100, 90, 12),
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'SW',
+        rowIndex: 20,
+        measurements: { flatCarryPremium: 60, speedPremium: 88 },
+      }),
+    ];
+    const out = assessShots(shots, [session]);
+    const partial = out.get(shots.at(-1)!.id)!;
+    expect(partial.intent.value).toBe('partial');
+    expect(partial.contact.value).toBe('typical');
+  });
+
+  it('keeps a chunked partial representable as partial and mishit', () => {
     const shots = [
       ...fullShots('SW', 100, 90, 12),
       makeShot({
@@ -62,9 +78,91 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
       }),
     ];
     const out = assessShots(shots, [session]);
-    const partial = out.get(shots.at(-1)!.id)!;
-    expect(partial.intent.value).toBe('partial');
-    expect(partial.contact.value).toBe('typical');
+    const chunked = out.get(shots.at(-1)!.id)!;
+    expect(chunked.intent.value).toBe('partial');
+    expect(chunked.contact.value).toBe('mishit');
+  });
+
+  it('catches a low-flight full strike with retained ball speed as a mishit', () => {
+    const baseline = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'PW',
+        rowIndex: i + 1,
+        measurements: {
+          flatCarryPremium: 110,
+          speedPremium: 150,
+          launchPremium: 13,
+          apexPremium: 30,
+        },
+        review: review({ intent: 'full', contact: 'typical' }),
+      }),
+    );
+    const duff = makeShot({
+      sessionId: session.id,
+      recordedClub: 'PW',
+      rowIndex: 20,
+      measurements: {
+        flatCarryPremium: 45,
+        speedPremium: 140,
+        launchPremium: 2,
+        apexPremium: 1,
+      },
+    });
+    const out = assessShots([...baseline, duff], [session]);
+    const assessed = out.get(duff.id)!;
+    // Low flight, not distance control: intent stays full, contact is a mishit
+    // even though ball speed was retained.
+    expect(assessed.intent.value).toBe('full');
+    expect(assessed.contact.value).toBe('mishit');
+  });
+
+  it('distinguishes a likely partial PW from a full PW', () => {
+    const baseline = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'PW',
+        rowIndex: i + 1,
+        measurements: {
+          flatCarryPremium: 120,
+          speedPremium: 110,
+          launchPremium: 12,
+          apexPremium: 25,
+        },
+        review: review({ intent: 'full', contact: 'typical' }),
+      }),
+    );
+    const partial = makeShot({
+      sessionId: session.id,
+      recordedClub: 'PW',
+      rowIndex: 20,
+      measurements: {
+        flatCarryPremium: 70,
+        speedPremium: 105,
+        launchPremium: 12,
+        apexPremium: 24,
+      },
+    });
+    const out = assessShots([...baseline, partial], [session]);
+    const assessed = out.get(partial.id)!;
+    expect(assessed.intent.value).toBe('partial');
+    expect(assessed.contact.value).toBe('typical');
+  });
+
+  it('abstains wedge intent when carry is missing', () => {
+    const shots = [
+      ...fullShots('SW', 100, 90, 12),
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'SW',
+        rowIndex: 20,
+        measurements: { flatCarryPremium: null, speedPremium: 90 },
+      }),
+    ];
+    const out = assessShots(shots, [session]);
+    const last = out.get(shots.at(-1)!.id)!;
+    expect(last.intent.value).toBe('unknown');
+    expect(last.contact.value).toBe('uncertain');
   });
 
   it('treats PW as iron-style full, not partial', () => {
