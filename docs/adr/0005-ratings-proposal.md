@@ -283,7 +283,7 @@ historical personal potential (148 m) serves as the fallback reference.
 
 - mishit share 6% of n=48 assessed → reliability 93.8
 - Wilson 95% interval (**sampling uncertainty only**): [2%, 17%] → reliability range [83.2, 97.9]
-- if 10% of full swings were still unassessed and all were mishits: share up to 16% → reliability down to 83.8 (missingness sensitivity bound; classifier uncertainty is reported via assessed coverage, not the Wilson interval)
+- missingness sensitivity over the **full-swing** population (90% assessed, 10% unassessed): if all unassessed were mishits, full-population share 16% → reliability down to 84.4; if all clean, share 6% → reliability 94.4. Classifier uncertainty is reported via assessed coverage and these bounds, not the Wilson interval.
 
 ### 8.5 Consistency anchor sensitivity (score vs relative carry IQR)
 

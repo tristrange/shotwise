@@ -343,14 +343,18 @@ for (const { label, r, note } of rows) {
 // --- §8.4 reliability uncertainty --------------------------------------------------
 {
   const s = intermediate.find((r) => r.club === 'PW');
-  const mishits = Math.round(s.mishitShare * s.n);
-  const w = wilsonInterval(mishits, s.n);
-  const upper = wilsonInterval(mishits + Math.round(0.1 * s.n), s.n); // 10% unassessed sensitivity bound example
+  const assessed = s.n;
+  const mishits = Math.round(s.mishitShare * assessed);
+  const w = wilsonInterval(mishits, assessed);
+  // Missingness sensitivity over the FULL-swing population: `assessed` is only
+  // the assessed share; the unassessed remainder belongs to the denominator.
+  const u = 0.1; // unassessed share of all full swings
+  const shareIfAllUnassessedMishits = u + (1 - u) * (mishits / assessed);
+  const shareIfAllUnassessedClean = (1 - u) * (mishits / assessed);
   console.log('\n### §8.4 Reliability uncertainty (intermediate PW)\n');
-  console.log(`- mishit share ${pct(s.mishitShare)} of n=${s.n} assessed → reliability ${fmt(s.reliability)}`);
+  console.log(`- mishit share ${pct(s.mishitShare)} of n=${assessed} assessed → reliability ${fmt(s.reliability)}`);
   console.log(`- Wilson 95% interval (sampling uncertainty only): [${pct(w[0])}, ${pct(w[1])}] → reliability range [${fmt(reliabilityScore(w[1]))}, ${fmt(reliabilityScore(w[0]))}]`);
-  console.log(`- if 10% of full swings were still unassessed and all were mishits: share up to ${pct((mishits + 0.1 * s.n) / s.n)} → reliability down to ${fmt(reliabilityScore((mishits + 0.1 * s.n) / s.n))} (missingness sensitivity bound; classifier uncertainty reported via assessed coverage, not the Wilson interval)`);
-  void upper;
+  console.log(`- missingness sensitivity over the full-swing population (${pct(1 - u)} assessed, ${pct(u)} unassessed): if all unassessed were mishits, full-population share ${pct(shareIfAllUnassessedMishits)} → reliability ${fmt(reliabilityScore(shareIfAllUnassessedMishits))}; if all clean, share ${pct(shareIfAllUnassessedClean)} → reliability ${fmt(reliabilityScore(shareIfAllUnassessedClean))}. Classifier uncertainty is reported via assessed coverage and these bounds, not the Wilson interval.`);
 }
 
 // --- §8.5 consistency anchor sensitivity sweep --------------------------------------
