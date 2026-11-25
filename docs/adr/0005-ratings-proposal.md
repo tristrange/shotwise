@@ -12,11 +12,12 @@ potential as a distinct labelled reference, removal of raw-metric standings,
 Overview placement with expandable breakdown, separately versioned
 classification and scoring methodologies). The exact scoring formulas were
 revised per that feedback; this v2 is the review artifact for the revised
-methodology. The canonical implementation of the §4 functions lives in
-`app/src/domain/ratings.ts` as versioned constants `ratings-2`; the
+methodology. The canonical implementation of the §4 functions is
+`app/src/domain/ratings.ts` as versioned constants `ratings-2` (PR #94); the
 documentation fixture `docs/adr/adr-0005-illustrative-scores.mjs` imports that
 single source (run from `app/`: `npx tsx ../docs/adr/adr-0005-illustrative-scores.mjs`)
-and generates every illustrative table in §8, so docs and app cannot drift apart.
+and generates every illustrative table in §8, so docs and app share one
+calculation source instead of maintaining two independent implementations.
 
 ## 1. What the ratings represent
 
