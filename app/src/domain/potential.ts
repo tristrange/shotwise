@@ -52,18 +52,19 @@ export type StrongStrikeCarry = {
 };
 
 /**
- * The strong-strike population: included shots in the selected cohort that
- * resolve to a full swing with non-mishit contact under a known club, with
- * carry measured on the basis. Manual review wins through the resolved layer;
- * automatically assessed mishits are excluded too; suspected wrong-club
- * labels stay out so they cannot create false personal bests (ADR-0001).
+ * The pre-measurement strong-strike base: included shots in the selected
+ * cohort that resolve to a full swing with non-mishit contact under a known
+ * club. Carry is not required here so callers can count missing/zero
+ * measurements over the true population instead of a pre-filtered one.
+ * Manual review wins through the resolved layer; automatically assessed
+ * mishits are excluded too; suspected wrong-club labels stay out so they
+ * cannot create false personal bests (ADR-0001).
  */
-export function strongStrikePopulation(
+function strongStrikeBase(
   data: Dataset,
   basis: Basis,
   query: AnalysisQuery,
 ): Shot[] {
-  const key = BASES[basis].carry;
   const resolved = resolveShots(data.shots, data.sessions, basis);
   return selectCohort(data.shots, data.sessions, query, basis).filter(
     (shot) => {
@@ -73,10 +74,25 @@ export function strongStrikePopulation(
         isFullSwingResolved(r) &&
         r.contact !== 'mishit' &&
         !r.suspectedWrongClub &&
-        !isUnknownClub(resolvedClub(r)) &&
-        shot.measurements[key] !== null
+        !isUnknownClub(resolvedClub(r))
       );
     },
+  );
+}
+
+/**
+ * The strong-strike population: the strong-strike base with a positive carry
+ * measurement on the basis (null and zero carries are failed/placeholder
+ * measurements, not distances).
+ */
+export function strongStrikePopulation(
+  data: Dataset,
+  basis: Basis,
+  query: AnalysisQuery,
+): Shot[] {
+  const key = BASES[basis].carry;
+  return strongStrikeBase(data, basis, query).filter(
+    (shot) => (shot.measurements[key] ?? 0) > 0,
   );
 }
 
@@ -93,20 +109,23 @@ export function clubStrongStrike(
 ): StrongStrikeCarry[] {
   const key = BASES[basis].carry;
   const resolved = resolveShots(data.shots, data.sessions, basis);
-  const groups = new Map<string, Shot[]>();
-  for (const shot of strongStrikePopulation(data, basis, query)) {
+  // Group the pre-measurement base so `missing` counts strong swings whose
+  // carry is null or zero, not just the ones already filtered out.
+  const baseGroups = new Map<string, Shot[]>();
+  for (const shot of strongStrikeBase(data, basis, query)) {
     const r = resolved.get(shot.id);
     if (!r) continue;
     const club = resolvedClub(r);
-    groups.set(club, [...(groups.get(club) ?? []), shot]);
+    baseGroups.set(club, [...(baseGroups.get(club) ?? []), shot]);
   }
-  return [...groups.entries()]
-    .map(([club, shots]): StrongStrikeCarry => {
+  return [...baseGroups.entries()]
+    .map(([club, baseShots]): StrongStrikeCarry => {
+      const shots = baseShots.filter((s) => (s.measurements[key] ?? 0) > 0);
       const stats = metricStats(shots, key);
       return {
         club,
         n: stats.n,
-        missing: stats.missing,
+        missing: baseShots.length - shots.length,
         median: stats.median,
         iqr: stats.iqr,
         potential: potentialCarry(

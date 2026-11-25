@@ -283,10 +283,16 @@ function strongStrikeThresholds(
   return thresholds;
 }
 /**
- * Manual review coverage of a shot set, plus how much of the rest the
- * automatic layer assessed when a resolved map is supplied. Manual review
- * stays the authoritative measure; `assessed`/`automatic` show that analytics
- * no longer depend on review being complete.
+ * Review coverage of a shot set, plus how much of the rest the automatic
+ * layer assessed when a resolved map is supplied. Manual review stays the
+ * authoritative measure; `assessed`/`automatic` show that analytics no longer
+ * depend on review being complete.
+ *
+ * `unassessed` is manual-review-only (full swings the golfer has not reviewed);
+ * `unassessedResolved` is the resolved-cohort counterpart used by the
+ * reliability score (full swings whose resolved contact is still uncertain,
+ * manual or automatic). The two denominators answer different questions and
+ * must not be mixed.
  */
 export function reviewCoverage(
   shots: Shot[],
@@ -320,6 +326,12 @@ export function reviewCoverage(
     unassessed: eligible.filter(
       (s) => s.review.intent === 'full' && s.review.contact === 'uncertain',
     ).length,
+    unassessedResolved: resolved
+      ? eligible.filter((s) => {
+          const r = resolved.get(s.id);
+          return r !== undefined && r.intent === 'full' && r.contact === 'uncertain';
+        }).length
+      : null,
     assessed: assessed.length,
     automatic: automatic.length,
   };

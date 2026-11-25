@@ -528,7 +528,9 @@ function ProfileCard({
           {best.n < 10 && <span className="pill"> Sample limited</span>}
           {best.reviewedShare !== null &&
             ` · ${percent.format(best.reviewedShare)} of full swings contact-reviewed`}
-          {best.mishit && ' · confirmed mishit, treat with care'}.
+          {best.mishit &&
+            ` · ${best.mishit === 'confirmed' ? 'confirmed' : 'auto-flagged'} mishit, treat with care`}
+          .
         </p>
       ) : (
         <p>No measured carry on this basis for {club} yet.</p>

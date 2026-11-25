@@ -384,4 +384,43 @@ describe('strong performance mode in selectCohort (roadmap §6.1)', () => {
     expect(seven.recent.potential.n).toBe(20);
     expect(seven.recent.potential.reliable).toBe(true);
   });
+
+  it('counts missing and zero carries over the pre-filter strong-strike population', () => {
+    const shots: Shot[] = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeShot({
+          id: `ok-${i}`,
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 120, speedPremium: 200 },
+        }),
+      ),
+      // Full swings with failed/placeholder carry: missing, not distances.
+      makeShot({
+        id: 'null-carry',
+        sessionId: session.id,
+        rowIndex: 20,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: null, speedPremium: 200 },
+      }),
+      makeShot({
+        id: 'zero-carry',
+        sessionId: session.id,
+        rowIndex: 21,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 0, speedPremium: 200 },
+      }),
+    ];
+    const rows = clubStrongStrike(
+      dataset([session], shots),
+      'premium-flat',
+      { ...base, contact: 'all' },
+    );
+    const seven = rows.find((r) => r.club === '7i')!;
+    expect(seven.n).toBe(12);
+    expect(seven.missing).toBe(2);
+    // The zero carry must not leak into the P80 either.
+    expect(seven.potential).toBe(120);
+  });
 });

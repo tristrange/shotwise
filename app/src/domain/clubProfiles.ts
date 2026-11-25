@@ -77,7 +77,8 @@ export type ProfileBest = {
   n: number;
   missing: number;
   reviewedShare: number | null;
-  mishit: boolean;
+  /** Mishit provenance: manual review confirmed it, or only the automatic layer flagged it. */
+  mishit: 'confirmed' | 'automatic' | null;
 };
 export type ClubProfile = {
   club: string;
@@ -231,7 +232,10 @@ export function clubProfiles(
         const r: ResolvedShot | undefined = resolved.get(shot.id);
         if (r?.intent === 'partial') continue;
         const value = shot.measurements[key];
-        if (value === null || (best !== null && value <= best.value)) continue;
+        // Null and zero carries are failed/placeholder measurements, never a
+        // "longest carry".
+        if (value === null || value <= 0) continue;
+        if (best !== null && value <= best.value) continue;
         best = {
           value,
           shotId: shot.id,
@@ -239,7 +243,12 @@ export function clubProfiles(
           n: stats.n,
           missing: stats.missing,
           reviewedShare: full ? coverage.fullReviewed / full : null,
-          mishit: r?.contact === 'mishit',
+          mishit:
+            r?.contact === 'mishit'
+              ? shot.review.contact === 'mishit'
+                ? 'confirmed'
+                : 'automatic'
+              : null,
         };
       }
     }

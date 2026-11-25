@@ -373,14 +373,71 @@ describe('club profiles', () => {
       n: 3,
       missing: 0,
       reviewedShare: 1,
-      mishit: true,
+      mishit: 'confirmed',
     });
     const withoutMishit = profile(
       [older, current],
       shots.filter((s) => s.id !== 'hot-mishit'),
       '7i',
     );
-    expect(withoutMishit.best).toMatchObject({ value: 105, mishit: false });
+    expect(withoutMishit.best).toMatchObject({ value: 105, mishit: null });
+  });
+
+  it('never reports a zero or missing carry as the personal best', () => {
+    const shots = [
+      makeShot({
+        id: 'zero',
+        sessionId: current.id,
+        rowIndex: 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 0 },
+        review: { ...fullTypical },
+      }),
+      makeShot({
+        id: 'real',
+        sessionId: current.id,
+        rowIndex: 2,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 118 },
+        review: { ...fullTypical },
+      }),
+    ];
+    expect(profile([current], shots, '7i').best).toMatchObject({
+      value: 118,
+      shotId: 'real',
+      mishit: null,
+    });
+  });
+
+  it('never lets a suspected wrong-club outlier become the personal best', () => {
+    const early = before(1);
+    const history = (club: string, carry: number, speed: number, session = early) =>
+      Array.from({ length: 12 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: club,
+          measurements: { flatCarryPremium: carry, speedPremium: speed },
+        }),
+      );
+    const shots = [
+      ...history('7i', 150, 200),
+      ...history('8i', 140, 190),
+      ...history('9i', 120, 170),
+      // A forgotten tablet switch in the latest visit: 9i-labelled run with
+      // 8i measurements gets suspected and stays out of the 9i club view.
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          id: `wrong-${i}`,
+          sessionId: current.id,
+          rowIndex: i + 1,
+          recordedClub: '9i',
+          measurements: { flatCarryPremium: 140, speedPremium: 190 },
+        }),
+      ),
+    ];
+    const nine = profile([early, current], shots, '9i');
+    expect(nine.best).toMatchObject({ value: 120, mishit: null });
   });
 
   it('lists history per session like Progress, oldest first, with counts', () => {
