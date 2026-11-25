@@ -1306,3 +1306,37 @@ All inline Codex findings on PRs #90–#96 were checked against current `main`. 
 ### 13.9.4 State after stabilization
 
 C3 (ADR-0005 ratings) is implemented and verified end to end: domain module `ratings-2` as the single calculation source, reference rating metadata persisted and now respected by resolution and editable in the UI, ratings UI on Overview and club profiles, raw-metric standings removed, cohort/filter invariance, evidence and uncertainty visible, no performance regression, database contract green. Remaining before the redesign milestone: owner evaluation of the provisional anchors/weights on real data; D1 external numerical benchmarks (licensing-blocked, link-only); B2 real-world evaluation (opt-in, unevaluated); then the dedicated design-system and UI redesign roadmap supersedes D2 visual simplification.
+
+---
+
+## 13.10 Design-system phase — D2–D5 landed, holding at the D5 visual gate (2026-11-26)
+
+The dedicated visual-redesign roadmap in `docs/DESIGN_SYSTEM.md` was owner-approved on
+2026-11-26 (architecture, phases, and the six open questions — see §0 of that document).
+D2–D5 are implemented on `feat/design-system-foundation` (PR pending owner review):
+
+- **D2 tokens/base** — `app/src/styles/tokens.css` (semantic light/dark tokens, WCAG-AA
+  contrast guarded by `app/src/tokens.test.ts`), `base.css` (element defaults, focus,
+  reduced-motion), editorial serif + global noise texture removed, existing `styles.css`
+  re-pointed through legacy aliases.
+- **D3 ds primitives** — `app/src/components/ds/` (Button, IconButton, Badge, Card,
+  SectionHeader, Metric/MetricGrid, SegmentedControl, Select, Slider, RangeSlider,
+  HelpPopover, Disclosure, Dialog, EmptyState, LoadingState) + `styles/ds.css`;
+  range math unit-tested.
+- **D4 chart kit** — `app/src/components/charts/` on Recharts (ChartContainer/Tooltip,
+  TrendChart) + custom SVG (ScoreRing, ScoreBar, Sparkline, DistributionPlot, BenchmarkBar,
+  DispersionPlot, PerformanceScatterPlot); `RatingBreakdown` moved here (dense: evidence and
+  uncertainty behind HelpPopover; legacy `rating-*` classes kept for e2e);
+  `PerformanceTrendCard` interactive composition.
+- **D5 ClubCard + showcase** — `ClubCard.tsx` + `clubCardData.ts` (all data from existing
+  domain functions; ratings on the fixed premium-flat basis), dev-only `#showcase` route
+  behind an `import.meta.env.DEV` build guard (production `dist/` verified free of showcase
+  code), deterministic synthetic fixtures covering full/early/provisional/no-rating states,
+  Playwright screenshots at 320/375/390/768/1280 × light/dark committed under
+  `docs/design-system/shots/` (`npm run shots:showcase` to re-capture).
+
+No scoring formulas, classification, database or eligibility rules were touched.
+Verification on the branch: `npm test` 355 passed, typecheck/lint clean, `npm run build`
+and `--base=/shotwise/` build clean, `npm run test:e2e` 88 passed (local Supabase +
+Playwright). **Stopping at the D5 visual approval gate** — D6 (Overview) and the remaining
+screens wait for the owner's inspection of the showcase.
