@@ -1,35 +1,43 @@
-// Reproducible calculation fixture for ADR-0005 (proposal v2, 2026-11-25).
+// Reproducible calculation fixture for ADR-0005 v2 (accepted 2026-11-25).
 //
-// This script is the review artifact's evidence generator: it implements the
-// PROPOSED v2 normalization functions exactly as written in
-// docs/adr/0005-ratings-proposal.md §4 and prints every illustrative table in
-// §8 as markdown. It is standalone on purpose — it imports nothing from app/
-// and nothing in app/ imports it. If ADR-0005 is accepted, these functions
-// move verbatim into app/src/domain/ratings.ts as versioned constants
-// `ratings-2`; until then they are documentation only.
+// This script generates every illustrative table in
+// docs/adr/0005-ratings-proposal.md §8 as markdown. The SCORING FUNCTIONS are
+// NOT duplicated here: they are imported from the app's single calculation
+// source app/src/domain/ratings.ts (`ratings-2`), so documentation and app
+// cannot drift apart. Only the synthetic shot generation and table printing
+// live here.
 //
-// Run: node docs/adr/adr-0005-illustrative-scores.mjs
+// Run from app/:  npx tsx ../docs/adr/adr-0005-illustrative-scores.mjs
 //
 // All randomness is seeded, so output is byte-for-byte reproducible.
 
-export const RATINGS_VERSION = 'ratings-2 (proposed)';
+import {
+  RATINGS_VERSION,
+  clubRole,
+  compositeScore,
+  consistencyScore,
+  CORRIDOR_HALF_WIDTH,
+  directionScore,
+  distanceScore,
+  launchDirectionScore,
+  rampScore,
+  reliabilityScore,
+  wilsonInterval,
+} from '../../app/src/domain/ratings.ts';
+import { quantile } from '../../app/src/domain/statistics.ts';
+
+// Previous v1 anchors, kept only for the §8.5 sensitivity comparison.
+const CONSISTENCY_ANCHORS_V1 = {
+  'driver-wood': { excellent: 0.035, poor: 0.1 },
+  'hybrid-iron': { excellent: 0.025, poor: 0.08 },
+  wedge: { excellent: 0.03, poor: 0.1 },
+};
 
 // ---------------------------------------------------------------------------
-// Core math (quantile matches app/src/domain/statistics.ts exactly)
+// Synthetic club distributions (seeded). A mishit is short AND offline, which
+// is what makes the categories correlated in real data.
 // ---------------------------------------------------------------------------
 
-export function quantile(values, p) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const offset = (sorted.length - 1) * p;
-  const left = sorted[Math.floor(offset)];
-  const right = sorted[Math.ceil(offset)];
-  return left === undefined || right === undefined
-    ? null
-    : left + (right - left) * (offset % 1);
-}
-
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const iqr = (values) => {
   const q1 = quantile(values, 0.25);
   const q3 = quantile(values, 0.75);
@@ -51,123 +59,6 @@ function normal(rand) {
   while (u === 0) u = rand();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand());
 }
-
-// ---------------------------------------------------------------------------
-// Proposed v2 constants (`ratings-2`). Product constants, NOT population
-// benchmarks — see ADR-0005 §4 and the sensitivity sweep in §8.
-// ---------------------------------------------------------------------------
-
-export const WEIGHTS = { distance: 0.2, consistency: 0.25, direction: 0.3, reliability: 0.25 };
-
-// Consistency: role-specific anchors on relative carry IQR (IQR / median).
-// Owner-proposed starting points (2026-11-25 feedback).
-export const CONSISTENCY_ANCHORS = {
-  'driver-wood': { excellent: 0.05, poor: 0.3 },
-  'hybrid-iron': { excellent: 0.04, poor: 0.25 },
-  wedge: { excellent: 0.04, poor: 0.25 },
-};
-
-// Directional control: anchors on P80 of |lateral finishing error| relative to
-// median carry — the upper tail, so poor offline shots count, not just the
-// typical shot. Provisional product constants.
-export const DIRECTION_ANCHORS = {
-  'driver-wood': { good: 0.08, poor: 0.25 },
-  'hybrid-iron': { good: 0.05, poor: 0.18 },
-  wedge: { good: 0.06, poor: 0.2 },
-};
-
-// Fallback when finishing-position data is unavailable: P80 |launch direction|
-// in degrees, scored on its own anchors and labelled separately — never mixed
-// with finishing-position scores.
-export const LAUNCH_ANCHORS = { good: 1.5, poor: 6.0 };
-
-// Corridor half-width as a fraction of median carry, for the corridor success
-// aux display (not the scoring metric).
-export const CORRIDOR_HALF_WIDTH = { 'driver-wood': 0.08, 'hybrid-iron': 0.05, wedge: 0.1 };
-
-// Previous v1 anchors, kept for the sensitivity comparison only.
-const CONSISTENCY_ANCHORS_V1 = {
-  'driver-wood': { excellent: 0.035, poor: 0.1 },
-  'hybrid-iron': { excellent: 0.025, poor: 0.08 },
-  wedge: { excellent: 0.03, poor: 0.1 },
-};
-
-export function clubRole(club) {
-  const c = club.trim().toUpperCase();
-  if (c === 'D' || c === 'DR' || c === 'DRIVER' || /^[1-9]W$/.test(c)) return 'driver-wood';
-  if (/^[1-5]H$/.test(c) || c === 'HY' || c === 'HYBRID' || /^[1-9]I$/.test(c)) return 'hybrid-iron';
-  return 'wedge'; // PW, GW, AW, SW, LW, 48–60° wedges (full-swing only)
-}
-
-// ---------------------------------------------------------------------------
-// Proposed v2 scoring functions (ADR-0005 §4)
-// ---------------------------------------------------------------------------
-
-/** Distance: capped target attainment. 80% of target scores 80, not 0. */
-export function distanceScore(p80, referenceM) {
-  if (p80 === null || referenceM === null || referenceM === undefined || referenceM <= 0) return null;
-  return Math.min(100, (100 * p80) / referenceM);
-}
-
-/** Linear ramp, lower metric = better, clamped to [0, 100]. */
-const ramp = (x, good, poor) => 100 * clamp01((poor - x) / (poor - good));
-
-export function consistencyScore(relIqr, role) {
-  if (relIqr === null) return null;
-  const a = CONSISTENCY_ANCHORS[role];
-  return ramp(relIqr, a.excellent, a.poor);
-}
-
-export function directionScore(relLatP80, role) {
-  if (relLatP80 === null) return null;
-  const a = DIRECTION_ANCHORS[role];
-  return ramp(relLatP80, a.good, a.poor);
-}
-
-export function launchDirectionScore(p80AbsDeg) {
-  if (p80AbsDeg === null) return null;
-  return ramp(p80AbsDeg, LAUNCH_ANCHORS.good, LAUNCH_ANCHORS.poor);
-}
-
-/** Reliability: acceptable-strike percentage. 25% mishits scores 75, not 0. */
-export function reliabilityScore(mishitShare) {
-  if (mishitShare === null) return null;
-  return 100 * clamp01(1 - mishitShare);
-}
-
-/**
- * Wilson 95% interval for a binomial proportion. SAMPLING uncertainty only,
- * under its assumptions (i.i.d. assessed shots); it says nothing about
- * classifier uncertainty — that is reported separately as assessed coverage
- * and the missingness sensitivity range.
- */
-export function wilsonInterval(k, n, z = 1.96) {
-  if (!n) return null;
-  const p = k / n;
-  const denom = 1 + (z * z) / n;
-  const centre = (p + (z * z) / (2 * n)) / denom;
-  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / denom;
-  return [centre - half, centre + half];
-}
-
-/**
- * Composite. All four categories present -> full composite. 2–3 present ->
- * provisional composite renormalized over the present categories, flagged with
- * its coverage and never ranked against composites with a different category
- * set. Fewer than 2 -> no composite.
- */
-export function compositeScores(cats) {
-  const entries = Object.entries(cats).filter(([, v]) => v !== null && v !== undefined);
-  if (entries.length < 2) return { value: null, coverage: entries.length, provisional: entries.length > 0 };
-  const weightSum = entries.reduce((s, [k]) => s + WEIGHTS[k], 0);
-  const value = entries.reduce((s, [k, v]) => s + WEIGHTS[k] * v, 0) / weightSum;
-  return { value, coverage: entries.length, provisional: entries.length < 4 };
-}
-
-// ---------------------------------------------------------------------------
-// Synthetic club distributions (seeded). A mishit is short AND offline, which
-// is what makes the categories correlated in real data.
-// ---------------------------------------------------------------------------
 
 function makeClubShots({ seed, n, visits, median, relIqr, mishitEvery, latP80Rel, launchP80Deg, fromCentre = true }) {
   const rand = mulberry32(seed);
@@ -220,7 +111,7 @@ function rateClub(stats, referenceM) {
   const direction = directionScore(stats.latP80Rel, stats.role);
   const launchOnly = launchDirectionScore(stats.launchP80);
   const reliability = reliabilityScore(stats.mishitShare);
-  const comp = compositeScores({ distance, consistency, direction, reliability });
+  const comp = compositeScore({ distancePotential: distance, consistency, directionalControl: direction, reliability });
   return { ...stats, referenceM, distance, consistency, direction, launchOnly, reliability, ...comp };
 }
 
@@ -251,8 +142,8 @@ function golfer(seedBase, clubs) {
   });
 }
 
-console.log(`# ADR-0005 v2 illustrative scores — generated by \`adr-0005-illustrative-scores.mjs\` (${RATINGS_VERSION})`);
-console.log('\nAll numbers below are computed by the proposed functions in this fixture, not hand-derived.');
+console.log(`# ADR-0005 v2 illustrative scores — generated by \`adr-0005-illustrative-scores.mjs\` (${RATINGS_VERSION}), scoring functions imported from \`app/src/domain/ratings.ts\``);
+console.log('\nAll numbers below are computed by the shared calculation source, not hand-derived.');
 
 // --- §8.1 three golfer scenarios -------------------------------------------------
 const beginner = golfer(11, [
@@ -277,7 +168,7 @@ scenarioTable('§8.1c Highly consistent', elite);
 // --- §8.2 owner's worked example: 7i median 120, IQR 10 ---------------------------
 {
   const rel = 10 / 120;
-  const v1 = ramp(rel, CONSISTENCY_ANCHORS_V1['hybrid-iron'].excellent, CONSISTENCY_ANCHORS_V1['hybrid-iron'].poor);
+  const v1 = rampScore(rel, CONSISTENCY_ANCHORS_V1['hybrid-iron'].excellent, CONSISTENCY_ANCHORS_V1['hybrid-iron'].poor);
   const v2 = consistencyScore(rel, 'hybrid-iron');
   console.log('\n### §8.2 Owner’s worked example — 7 iron, median carry 120 m, IQR 10 m (rel IQR 8.33%)\n');
   console.log('| Methodology | consistency score |');
@@ -313,18 +204,15 @@ add('Baseline', base7i);
   const shots = makeClubShots({ seed: 503, n: 48, visits: 4, club: 'PW', median: 114, relIqr: 0.075, mishitEvery: 4, latP80Rel: 0.11, launchP80Deg: 4.0 });
   const full = clubStats(shots, 'PW');
   const clean = clubStats(shots.filter((s) => !s.mishit), 'PW');
-  const withMishits = rateClub(full, 120);
   const cleanOnly = rateClub({ ...clean, mishitShare: full.mishitShare }, 120); // reliability kept, consistency/direction clean
   add('Same PW, mishits excluded from consistency/direction (counterfactual)', cleanOnly, 'shows the correlated-category overlap');
-  void withMishits;
 }
 {
   const s = clubStats(makeClubShots({ seed: 504, n: 48, visits: 4, club: '7i', median: 143, relIqr: 0.065, mishitEvery: 18, latP80Rel: 0.08, launchP80Deg: 3.0, fromCentre: false }), '7i');
   const r = rateClub(s, 150);
   r.direction = null; // finishing-position unavailable -> not scored on lateral
-  r.directionNote = 'launch-direction fallback: ' + fmt(r.launchOnly) + ' (deg basis)';
-  const comp = compositeScores({ distance: r.distance, consistency: r.consistency, direction: null, reliability: r.reliability });
-  add('Directional coverage missing (no fromCentre)', { ...r, ...comp }, 'direction withheld; launch score ' + fmt(r.launchOnly) + ' shown separately; composite provisional 3/4');
+  const comp = compositeScore({ distancePotential: r.distance, consistency: r.consistency, directionalControl: null, reliability: r.reliability });
+  add('Directional coverage missing (no fromCentre)', { ...r, ...comp }, 'direction withheld; launch score ' + fmt(r.launchOnly) + ' shown separately, never in the composite; provisional 3/4');
 }
 {
   const s = clubStats(makeClubShots({ seed: 505, n: 12, visits: 1, club: '5i', median: 128, relIqr: 0.09, mishitEvery: 12, latP80Rel: 0.1, launchP80Deg: 4.5 }), '5i');
@@ -362,9 +250,9 @@ console.log('\n### §8.5 Consistency anchor sensitivity (score vs relative carry
 console.log('| rel IQR | driver-wood v1 (3.5/10%) | driver-wood v2 (5/30%) | iron v1 (2.5/8%) | iron v2 (4/25%) | wedge v1 (3/10%) | wedge v2 (4/25%) |');
 console.log('| --- | --- | --- | --- | --- | --- | --- |');
 for (let rel = 0.02; rel <= 0.351; rel += 0.03) {
-  const r = (x, a) => ramp(x, a.excellent ?? a.good, a.poor);
+  const v1 = (role) => rampScore(rel, CONSISTENCY_ANCHORS_V1[role].excellent, CONSISTENCY_ANCHORS_V1[role].poor);
   console.log(
-    `| ${(100 * rel).toFixed(0)}% | ${fmt(r(rel, CONSISTENCY_ANCHORS_V1['driver-wood']))} | ${fmt(consistencyScore(rel, 'driver-wood'))} | ${fmt(r(rel, CONSISTENCY_ANCHORS_V1['hybrid-iron']))} | ${fmt(consistencyScore(rel, 'hybrid-iron'))} | ${fmt(r(rel, CONSISTENCY_ANCHORS_V1.wedge))} | ${fmt(consistencyScore(rel, 'wedge'))} |`,
+    `| ${(100 * rel).toFixed(0)}% | ${fmt(v1('driver-wood'))} | ${fmt(consistencyScore(rel, 'driver-wood'))} | ${fmt(v1('hybrid-iron'))} | ${fmt(consistencyScore(rel, 'hybrid-iron'))} | ${fmt(v1('wedge'))} | ${fmt(consistencyScore(rel, 'wedge'))} |`,
   );
 }
 
