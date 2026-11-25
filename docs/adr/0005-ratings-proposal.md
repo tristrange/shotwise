@@ -1,7 +1,7 @@
-# ADR-0005 (PROPOSAL v2 — not yet accepted): normalized club ratings on a common 0–100 scale
+# ADR-0005 (ACCEPTED v2): normalized club ratings on a common 0–100 scale
 
-Status: **proposed v2 — blocked on owner review of the revised formulas** (roadmap §13.6 approval scope; §13.8)
-Date: 2026-11-25 (v2, revised after owner feedback on v1)
+Status: **accepted 2026-11-25 with owner clarifications** (see §10; roadmap §13.6 approval scope, §13.8). Implementation proceeds in small PRs; formulas/anchors/weights stay provisional until the owner evaluates real ratings on their own data.
+Date: 2026-11-25 (v1 proposed → owner feedback → v2 revised → accepted same day)
 Related: reopens ADR-0004; `docs/ROADMAP.md` §13.5 item C3, §13.6 decisions 1/2/3/5/6; `app/src/domain/scores.ts` (`category-scores-1`), `app/src/domain/benchmarks.ts` (reference basis compatibility), `app/src/domain/potential.ts` (`strong-strike-1` P80); reproducible fixture `docs/adr/adr-0005-illustrative-scores.mjs`
 
 v1 of this document was reviewed by the owner on 2026-11-25. The architecture
@@ -12,12 +12,11 @@ potential as a distinct labelled reference, removal of raw-metric standings,
 Overview placement with expandable breakdown, separately versioned
 classification and scoring methodologies). The exact scoring formulas were
 revised per that feedback; this v2 is the review artifact for the revised
-methodology. **Nothing here is implemented yet** — the only executable copy of
-the proposed functions is the documentation fixture
-`docs/adr/adr-0005-illustrative-scores.mjs` (run:
-`node docs/adr/adr-0005-illustrative-scores.mjs`), which generates every
-illustrative table in §8. On acceptance the functions move verbatim into
-`app/src/domain/ratings.ts` as versioned constants `ratings-2`.
+methodology. The canonical implementation of the §4 functions lives in
+`app/src/domain/ratings.ts` as versioned constants `ratings-2`; the
+documentation fixture `docs/adr/adr-0005-illustrative-scores.mjs` imports that
+single source (run from `app/`: `npx tsx ../docs/adr/adr-0005-illustrative-scores.mjs`)
+and generates every illustrative table in §8, so docs and app cannot drift apart.
 
 ## 1. What the ratings represent
 
@@ -319,18 +318,60 @@ but the displayed reference is honest and independent of the evaluated data,
 and any uncapped use of the reference (comparison bars, future metrics) is not
 self-inflated.
 
-## 9. Open questions for the owner
+## 9. Open questions for the owner (answered 2026-11-25 — see §10)
 
-1. Confirm the §4.2/§4.3 anchors as provisional v1 constants (product
-   constants, not population benchmarks) pending the §8.5-style sensitivity
-   review on real data; per-club editable goals can come later.
-2. Direction: confirm P80-lateral as the scoring metric with corridor success
-   as display, or prefer corridor-success scoring (more intuitive, but
-   corridor-width-dependent).
-3. Provisional composites: renormalize over present categories (proposed) or
-   keep fixed weights and show the gap? Coverage labelling is required either
-   way.
-4. Confirm the 20/25/30/25 weights as provisional v1 given the documented
-   category correlation (§4.4).
-5. Confirm the fixed `premium-flat` rating basis (`rating-basis-1`) and the
-   exact-vs-family-level reference labelling.
+## 10. Owner acceptance and clarifications — 2026-11-25
+
+ADR-0005 v2 is **accepted** with the following binding clarifications:
+
+1. §4.2/§4.3 anchors approved as provisional, versioned product constants,
+   reevaluated after real golfer data; **no editable per-club tolerances yet**.
+2. Direction scores on P80 |lateral| / median carry; corridor success rate and
+   median lateral error are complementary measurements only.
+3. Provisional composites **renormalize over the available categories**,
+   require **at least two** categories, always display category coverage, and
+   are never ranked as directly comparable across different category sets.
+4. Weights confirmed: distance 20%, consistency 25%, direction 30%,
+   reliability 25% (provisional, `ratings-2`).
+5. Fixed `premium-flat` rating basis approved, independent of the canonical
+   range-preferred classification basis and the display basis. Premium-flat
+   measurements are **not** assumed to exist for every shot: missing stays
+   missing, with no silent range-ball substitution.
+
+Additional implementation clarifications:
+
+- **Reference types stay distinct:** personal goal attainment vs historical
+  personal potential attainment vs external benchmark attainment are labelled
+  separately and never presented as directly equivalent. Historical potential
+  uses a **robust high percentile of eligible per-session P80 values** (not the
+  single highest session) over the trailing 12 months, retaining the
+  leave-evaluated-window-out guard (§8.6). Recent window is the primary
+  Overview rating; Historical/All-time views must define reference selection,
+  including the case where no independent historical reference remains.
+- **Launch-direction ratings never enter the main composite**, even when
+  separately labelled; they display separately only when finishing-position
+  data is unavailable. This policy is stated identically in this ADR,
+  `app/src/domain/ratings.ts` and the tests.
+- **Evidence levels:** the normalized consistency rating needs a justified
+  minimum above the 4-measurement raw-IQR minimum (v2: ≥10, flagged <20). n ≥
+  30 across only one or two visits is still useful — evidence level
+  "provisional (high sample)"; "better-supported" requires ≥30 across ≥3
+  visits. Category-specific minimums and coverage are maintained.
+- **Reliability uncertainty:** sampling uncertainty (Wilson), unassessed-shot
+  sensitivity, and classifier accuracy stay distinct; the missingness range
+  does not cover errors among assessed shots; automated reliability is not
+  presented as independently validated until real-world evaluation supports it.
+- **UI:** overall rating directly on Overview club rows; tapping a club/rating
+  reveals the four category bars with measurements and benchmark context; full
+  vs provisional composites visibly but unobtrusively distinguished;
+  methodology/uncertainty on demand; no growing text density; the visual
+  simplification milestone (D2) lands alongside.
+- **Verification:** the ADR formulas and illustrative examples are regression
+  fixtures; app implementation and documentation share one calculation source
+  (`app/src/domain/ratings.ts`; the docs fixture imports it) rather than two
+  implementations. Regression tests cover: missing measurement coverage, no
+  reference configured, different reference types, club roles, partial PW
+  shots, severe mishits, new club with one session, display-basis changes,
+  historical reference stability, category/composite consistency, and removal
+  of raw-metric standings. Synthetic verification stays distinct from
+  real-world classifier validation.
