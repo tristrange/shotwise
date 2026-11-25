@@ -1,8 +1,4 @@
-import {
-  reviewCoverage,
-  selectCohort,
-  type AnalysisQuery,
-} from './analytics';
+import { selectCohort, type AnalysisQuery } from './analytics';
 import { resolveShots } from './assessment';
 import { clubProfiles } from './clubProfiles';
 import { BASES, type Basis, type Dataset } from './model';
@@ -182,16 +178,19 @@ export function categoryScores(
     s.measurements.fromCentre === null ? [] : [s.measurements.fromCentre],
   );
   const directionMedianAbs = medianAbs(directionValues);
+  const directionSufficient =
+    directionValues.length >= MIN_DIRECTIONAL_SAMPLES &&
+    directionMedianAbs !== null;
   const directionalControl: CategoryScore = {
     id: 'directionalControl',
     label: CATEGORY_SCORE_DEFINITIONS.directionalControl.label,
-    value: directionMedianAbs,
+    // Withheld below the minimum sample — an insufficient value is null, never
+    // a misleading median of 1–3 shots.
+    value: directionSufficient ? directionMedianAbs : null,
     unit: 'deg',
     betterDirection: 'lower',
     n: directionValues.length,
-    sufficient:
-      directionValues.length >= MIN_DIRECTIONAL_SAMPLES &&
-      directionMedianAbs !== null,
+    sufficient: directionSufficient,
     note:
       directionValues.length === 0
         ? 'Not measured in this data — launch direction is missing'
@@ -207,7 +206,6 @@ export function categoryScores(
     ],
   };
 
-  const coverage = reviewCoverage(reliabilityShots, resolved);
   let assessedFull = 0;
   let mishits = 0;
   for (const shot of reliabilityShots) {
@@ -216,25 +214,34 @@ export function categoryScores(
     assessedFull += 1;
     if (contact === 'mishit') mishits += 1;
   }
+  // The unassessed remainder is counted from the same resolved cohort as the
+  // rate, so the qualification note and the assessed share always agree.
+  const unassessed = reliabilityShots.length - assessedFull;
   const rate = assessedFull ? mishits / assessedFull : null;
+  const reliabilitySufficient =
+    assessedFull >= MIN_RELIABILITY_SAMPLES && rate !== null;
   const reliability: CategoryScore = {
     id: 'reliability',
     label: CATEGORY_SCORE_DEFINITIONS.reliability.label,
-    value: rate,
+    // Withheld below the minimum sample — insufficient means null, not a
+    // potentially perfect-looking 0 from a handful of swings.
+    value: reliabilitySufficient ? rate : null,
     unit: 'share',
     betterDirection: 'lower',
     n: assessedFull,
-    sufficient: assessedFull >= MIN_RELIABILITY_SAMPLES && rate !== null,
+    sufficient: reliabilitySufficient,
     note:
-      assessedFull < MIN_RELIABILITY_SAMPLES
+      !reliabilitySufficient
         ? `Needs ${MIN_RELIABILITY_SAMPLES} assessed full swings`
-        : coverage.unassessed > 0
-          ? `${coverage.unassessed} of ${coverage.total} full swings still unassessed`
+        : unassessed > 0
+          ? `${unassessed} of ${reliabilityShots.length} full swings still unassessed`
           : null,
     aux: [
       {
         label: 'Assessed (manual or automatic)',
-        value: coverage.total ? coverage.assessed / coverage.total : null,
+        value: reliabilityShots.length
+          ? assessedFull / reliabilityShots.length
+          : null,
         unit: 'share',
       },
     ],

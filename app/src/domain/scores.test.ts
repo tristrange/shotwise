@@ -155,12 +155,23 @@ describe('category score definitions (PR 18)', () => {
     expect(result.reliability.note).toContain('4 of 14');
   });
 
-  it('marks reliability insufficient below the minimum assessed sample', () => {
+  it('withholds the reliability value below the minimum assessed sample', () => {
+    // Three perfect swings must not surface as a numerical 0 (perfect) rate.
     const shots = series(current, [120, 121, 122]);
     const result = scores([current], shots);
-    expect(result.reliability.value).toBeCloseTo(0);
+    expect(result.reliability.value).toBeNull();
     expect(result.reliability.sufficient).toBe(false);
     expect(result.reliability.note).toContain('Needs 10');
+  });
+
+  it('withholds the directional value below the minimum sample', () => {
+    const shots = series(current, [120, 121, 122], {
+      measurements: { launchDirection: 1 },
+    });
+    const result = scores([current], shots);
+    expect(result.directionalControl.value).toBeNull();
+    expect(result.directionalControl.sufficient).toBe(false);
+    expect(result.directionalControl.note).toContain('Needs 4');
   });
 
   it('follows the analysis window like the profiles do', () => {
