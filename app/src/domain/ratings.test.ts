@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { makeSession, makeShot } from './fixtures';
+import { makeEquipment, makeSession, makeShot } from './fixtures';
 import {
   clubRating,
   clubRatings,
@@ -19,6 +19,7 @@ import {
   reliabilityScore,
   resolveRatingReference,
   rampScore,
+  weakestEvidence,
   wilsonInterval,
   type CategoryId,
 } from './ratings';
@@ -476,5 +477,155 @@ describe('clubRating on the fixed premium-flat rating basis', () => {
     const ratings = clubRatings(data, query, []);
     expect(ratings.map((r) => r.club)).toEqual(['D', '7i']);
     expect(ratings.every((r) => r.basis === 'premium-flat')).toBe(true);
+  });
+
+  it('rating cohort follows the time window only — intent/contact/mishit/scope filters never change ratings', () => {
+    const data = clubDataset({
+      sessions: [
+        { date: TODAY, count: 12, base: 140 },
+        { date: '2026-11-20', count: 12, base: 138 },
+      ],
+      mishits: 2,
+      partials: 3,
+      fromCentre: [3],
+      launchDirection: [2],
+    });
+    const baseline = clubRating(data, query, '7i', [ref()])!;
+    const variants = [
+      { ...query, intent: 'full' as const },
+      { ...query, intent: 'partial' as const },
+      { ...query, contact: 'typical' as const },
+      { ...query, contact: 'strong' as const },
+      { ...query, hideLikelyMishits: true },
+      { ...query, scopeSessionId: data.sessions[1]!.id },
+    ];
+    for (const v of variants) {
+      expect(clubRating(data, v, '7i', [ref()])).toEqual(baseline);
+    }
+    expect(clubRatings(data, variants[0]!, [ref()])).toEqual(clubRatings(data, query, [ref()]));
+  });
+
+  it('reference resolution respects referenceType — only goals are personal references', () => {
+    const data = clubDataset({ fromCentre: [3], launchDirection: [2] });
+    const observed = clubRating(data, query, '7i', [
+      ref({ referenceType: 'observed', statistic: 'p80' }),
+    ])!;
+    // An observed personal best is a distinct concept, never mixed into the
+    // goal reference; with no historical potential it yields no reference.
+    expect(observed.distancePotential.reference).toBeNull();
+    expect(observed.distancePotential.score).toBeNull();
+    const historicalRow = clubRating(data, query, '7i', [
+      ref({ referenceType: 'historical-potential' }),
+    ])!;
+    expect(historicalRow.distancePotential.reference).toBeNull();
+    const goal = clubRating(data, query, '7i', [
+      ref({ referenceType: 'goal', statistic: 'p80', recordedOn: '2026-11-20' }),
+    ])!;
+    expect(goal.distancePotential.reference?.type).toBe('personal-goal');
+    expect(goal.distancePotential.reference?.statistic).toBe('p80');
+    expect(goal.distancePotential.reference?.recordedOn).toBe('2026-11-20');
+    expect(goal.distancePotential.score).not.toBeNull();
+  });
+
+  it('reference resolution respects equipment identity — tagged references apply only to the currently assigned equipment', () => {
+    const data = clubDataset({ fromCentre: [3], launchDirection: [2] });
+    const equipment = makeEquipment({
+      id: 'cccccccc-0000-4000-8000-000000000001',
+      inrangeLabel: '7i',
+      name: 'Fitted 7i',
+    });
+    data.equipment.push(equipment);
+    // Current assignment on the window's 7i shots.
+    for (const shot of data.shots) {
+      data.equipmentAssignments.push({
+        shotId: shot.id,
+        equipmentId: equipment.id,
+        clubLabel: '7i',
+      });
+    }
+    const matching = clubRating(data, query, '7i', [
+      ref({ equipmentId: equipment.id }),
+    ])!;
+    expect(matching.distancePotential.reference?.type).toBe('personal-goal');
+    // A different physical club was measured — the reference must not apply.
+    const mismatched = clubRating(data, query, '7i', [
+      ref({ equipmentId: 'dddddddd-0000-4000-8000-000000000002' }),
+    ])!;
+    expect(mismatched.distancePotential.reference).toBeNull();
+    // No assignments at all: an equipment-tagged reference cannot be verified.
+    const unassigned = structuredClone(data);
+    unassigned.equipmentAssignments = [];
+    const unverifiable = clubRating(unassigned, query, '7i', [
+      ref({ equipmentId: equipment.id }),
+    ])!;
+    expect(unverifiable.distancePotential.reference).toBeNull();
+    // Untagged references (legacy rows) apply regardless of assignments.
+    const untagged = clubRating(unassigned, query, '7i', [ref({ equipmentId: null })])!;
+    expect(untagged.distancePotential.reference?.type).toBe('personal-goal');
+  });
+
+  it('equipment eligibility comes from the distance population, not every window shot', () => {
+    const data = clubDataset({
+      partials: 3,
+      fromCentre: [3],
+      launchDirection: [2],
+    });
+    const fitted = makeEquipment({
+      id: 'cccccccc-0000-4000-8000-000000000001',
+      inrangeLabel: '7i',
+      name: 'Fitted 7i',
+    });
+    const other = makeEquipment({
+      id: 'dddddddd-0000-4000-8000-000000000002',
+      inrangeLabel: '7i',
+      name: 'Other 7i',
+    });
+    data.equipment.push(fitted, other);
+    // Full-swing distance shots were hit with `fitted`; the partial shots are
+    // tagged `other` and contribute nothing to the distance rating.
+    for (const shot of data.shots) {
+      data.equipmentAssignments.push({
+        shotId: shot.id,
+        equipmentId: shot.review.intent === 'partial' ? other.id : fitted.id,
+        clubLabel: '7i',
+      });
+    }
+    // The partial-only `other` assignment must not authorize an other-tagged reference.
+    const wrong = clubRating(data, query, '7i', [ref({ equipmentId: other.id })])!;
+    expect(wrong.distancePotential.reference).toBeNull();
+    const right = clubRating(data, query, '7i', [ref({ equipmentId: fitted.id })])!;
+    expect(right.distancePotential.reference?.type).toBe('personal-goal');
+  });
+
+  it('a mixed distance population withholds equipment-tagged references', () => {
+    const data = clubDataset({ fromCentre: [3], launchDirection: [2] });
+    const a = makeEquipment({
+      id: 'cccccccc-0000-4000-8000-000000000001',
+      inrangeLabel: '7i',
+    });
+    const b = makeEquipment({
+      id: 'dddddddd-0000-4000-8000-000000000002',
+      inrangeLabel: '7i',
+    });
+    data.equipment.push(a, b);
+    data.shots.forEach((shot, i) => {
+      data.equipmentAssignments.push({
+        shotId: shot.id,
+        equipmentId: i % 2 ? a.id : b.id,
+        clubLabel: '7i',
+      });
+    });
+    // Two physical clubs in the distance population: unverifiable, withheld.
+    const r = clubRating(data, query, '7i', [ref({ equipmentId: a.id })])!;
+    expect(r.distancePotential.reference).toBeNull();
+  });
+
+  it('weakestEvidence ranks evidence levels across rated categories', () => {
+    expect(weakestEvidence([])).toBeNull();
+    expect(weakestEvidence(['supported', 'early', 'provisional'])).toBe('early');
+    expect(
+      weakestEvidence(['provisional-high-sample', 'provisional', 'supported']),
+    ).toBe('provisional');
+    expect(weakestEvidence(['supported'])).toBe('supported');
   });
 });

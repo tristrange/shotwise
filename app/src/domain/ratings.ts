@@ -1,6 +1,7 @@
 import { metricStats, selectCohort, type AnalysisQuery } from './analytics';
 import { isFullSwingResolved, resolveShots, resolvedClub, type ResolvedShot } from './assessment';
 import { referenceBasisCompatible } from './benchmarks';
+import { assignmentStatus } from './equipment';
 import {
   BASES,
   clubOrder,
@@ -9,6 +10,8 @@ import {
   type Basis,
   type Dataset,
   type ReferenceBasis,
+  type ReferenceStatistic,
+  type Shot,
   type UserReferenceValueRecord,
 } from './model';
 import { MIN_POTENTIAL_SAMPLES, potentialCarry } from './potential';
@@ -234,6 +237,20 @@ export function evidenceLevel(n: number, visits: number): EvidenceLevel {
   return visits >= 3 ? 'supported' : 'provisional-high-sample';
 }
 
+const EVIDENCE_RANK: Record<EvidenceLevel, number> = {
+  none: 0,
+  early: 1,
+  provisional: 2,
+  'provisional-high-sample': 3,
+  supported: 4,
+};
+
+/** Weakest evidence level among the given categories (null when none rated). */
+export function weakestEvidence(levels: EvidenceLevel[]): EvidenceLevel | null {
+  if (!levels.length) return null;
+  return levels.reduce((a, b) => (EVIDENCE_RANK[a] <= EVIDENCE_RANK[b] ? a : b));
+}
+
 // ---------------------------------------------------------------------------
 // References (ADR-0005 §4.5) — the three reference concepts stay distinct
 // ---------------------------------------------------------------------------
@@ -249,6 +266,10 @@ export type RatingReference = {
   basis: ReferenceBasis;
   /** 'exact' when the reference basis equals the rating basis, 'family' for a family-level match. */
   match: 'exact' | 'family';
+  /** The statistic the reference number represents, when recorded — kept visible so a median goal is never read as a P80 goal. */
+  statistic: ReferenceStatistic | null;
+  /** ISO date the reference was recorded on, when known (display only). */
+  recordedOn: string | null;
   label: string;
 };
 
@@ -301,14 +322,20 @@ export function historicalPersonalPotential(
   const start = shiftDate(query.today, -365);
   const resolved = resolveShots(data.shots, data.sessions, RATING_BASIS);
   const key = BASES[RATING_BASIS].carry;
+  // Group included shots by session once — scanning the full shot list per
+  // session makes this O(sessions × shots) per club.
+  const shotsBySession = new Map<string, Shot[]>();
+  for (const shot of data.shots) {
+    if (shot.review.exclusion.kind !== 'included') continue;
+    const group = shotsBySession.get(shot.sessionId) ?? [];
+    group.push(shot);
+    shotsBySession.set(shot.sessionId, group);
+  }
   const perVisitP80: number[] = [];
   for (const session of data.sessions) {
     if (session.archived || excluded.has(session.id)) continue;
     if (session.date < start || session.date > query.today) continue;
-    const sessionShots = data.shots.filter(
-      (s) =>
-        s.sessionId === session.id && s.review.exclusion.kind === 'included',
-    );
+    const sessionShots = shotsBySession.get(session.id) ?? [];
     const broader = filterCohort(sessionShots, resolved, 'broader').filter(
       (s) => resolvedClub(resolved.get(s.id)!) === club,
     );
@@ -324,21 +351,97 @@ export function historicalPersonalPotential(
 }
 
 /**
+ * The shots that actually contribute to the distance rating: the broader
+ * full-swing cohort of the club's window with a positive measured carry on
+ * the rating basis — the same population the P80 is computed from.
+ */
+function distancePopulationShots(
+  data: Dataset,
+  query: AnalysisQuery,
+  club: string,
+): Shot[] {
+  const resolved = resolveShots(data.shots, data.sessions, RATING_BASIS);
+  const selected = selectCohort(
+    data.shots,
+    data.sessions,
+    ratingQuery(query, club),
+    RATING_BASIS,
+  );
+  const key = BASES[RATING_BASIS].carry;
+  return filterCohort(selected, resolved, 'broader').filter(
+    (s) => (s.measurements[key] ?? 0) > 0,
+  );
+}
+
+/**
+ * Equipment identity of the club's DISTANCE population: the single physical
+ * club with a CURRENT assignment on the shots that contribute to the distance
+ * rating. A reference tagged with an `equipmentId` applies only when that
+ * equipment is what those shots were hit with — a shot that contributes
+ * nothing to the distance rating (e.g. a partial) can never authorize a
+ * reference measured with different equipment. Returns null when the
+ * population is mixed (more than one physical club) or unverifiable (none
+ * currently assigned); an equipment-tagged reference is then withheld, never
+ * silently applied.
+ */
+function distanceEquipmentId(
+  data: Dataset,
+  query: AnalysisQuery,
+  club: string,
+  distanceShots?: Shot[],
+): string | null {
+  const shots = distanceShots ?? distancePopulationShots(data, query, club);
+  const assignmentByShot = new Map(
+    data.equipmentAssignments.map((a) => [a.shotId, a]),
+  );
+  const ids = new Set<string>();
+  for (const shot of shots) {
+    const assignment = assignmentByShot.get(shot.id);
+    if (assignment && assignmentStatus(shot, assignment) === 'current')
+      ids.add(assignment.equipmentId);
+  }
+  return ids.size === 1 ? [...ids][0]! : null;
+}
+
+/**
  * Resolve the distance reference for a club, in priority order (ADR-0005
  * §4.5): (1) basis-compatible personal goal; (2) automatic historical personal
  * potential; (3) external benchmark (link-only today, so usually absent).
  * Reference types are never mixed and ratings based on different reference
  * concepts are never presented as directly equivalent. No reference → null
  * (the distance category is withheld; measured P80 is still reported).
+ *
+ * The record's rating metadata is respected, not just stored: only `goal`
+ * records are a personal reference ('observed' and 'historical-potential'
+ * records are distinct concepts — the automatic historical potential below is
+ * the governed path for that concept), a basis-incompatible or `unknown`-basis
+ * record never applies, and an `equipmentId`-tagged record applies only when
+ * that equipment is the single current assignment of the club's DISTANCE
+ * population (the full swings with measured carries that the P80 comes
+ * from) — mixed or unverifiable populations withhold it. The statistic and
+ * recorded-on date are carried through so the UI can label them.
  */
 export function resolveRatingReference(
   club: string,
   data: Dataset,
   query: AnalysisQuery,
   references: UserReferenceValueRecord[] = data.userReferenceValues,
+  distanceShots?: Shot[],
 ): RatingReference | null {
+  let distanceEquipment: string | null | undefined;
+  const equipmentMatches = (equipmentId: string | null): boolean => {
+    if (equipmentId === null) return true;
+    if (distanceEquipment === undefined)
+      distanceEquipment = distanceEquipmentId(data, query, club, distanceShots);
+    return distanceEquipment === equipmentId;
+  };
   const personal = references.find(
-    (r) => r.club === club && r.metric === 'carry' && ratingReferenceMatch(r.basis) !== null,
+    (r) =>
+      r.club === club &&
+      r.metric === 'carry' &&
+      r.referenceType === 'goal' &&
+      ratingReferenceMatch(r.basis) !== null &&
+      equipmentMatches(r.equipmentId),
   );
   if (personal) {
     const match = ratingReferenceMatch(personal.basis)!;
@@ -347,6 +450,8 @@ export function resolveRatingReference(
       valueM: personal.valueM,
       basis: personal.basis,
       match,
+      statistic: personal.statistic,
+      recordedOn: personal.recordedOn,
       label:
         match === 'exact'
           ? 'Personal goal'
@@ -360,6 +465,8 @@ export function resolveRatingReference(
       valueM: historical,
       basis: RATING_BASIS,
       match: 'exact',
+      statistic: 'p80',
+      recordedOn: null,
       label: 'Historical personal potential',
     };
   }
@@ -371,6 +478,24 @@ export function resolveRatingReference(
 // ---------------------------------------------------------------------------
 // Per-club ratings on the fixed rating basis
 // ---------------------------------------------------------------------------
+
+/**
+ * The rating cohort follows the selected time window (mode + today) only.
+ * Intent, contact, mishit and single-visit scope are display filters, never
+ * rating filters: pinning them here keeps ratings identical across screens
+ * and filter combinations, so a future intent filter cannot silently change
+ * the rating population.
+ */
+function ratingQuery(query: AnalysisQuery, club?: string): AnalysisQuery {
+  return {
+    mode: query.mode,
+    today: query.today,
+    intent: 'all',
+    contact: 'all',
+    hideLikelyMishits: false,
+    club,
+  };
+}
 
 export type CategoryRating = {
   score: number | null;
@@ -442,7 +567,7 @@ export function clubRating(
   const selected = selectCohort(
     data.shots,
     data.sessions,
-    { ...query, club, contact: 'all', hideLikelyMishits: false },
+    ratingQuery(query, club),
     RATING_BASIS,
   );
   const reliabilityShots = filterCohort(selected, resolved, 'reliability');
@@ -461,7 +586,14 @@ export function clubRating(
   const strongShots = broader.filter((s) => (s.measurements[key] ?? 0) > 0);
   const strongCarries = strongShots.map((s) => s.measurements[key] as number);
   const p80 = potentialCarry(strongCarries);
-  const reference = resolveRatingReference(club, data, query, references);
+  // Equipment identity is validated against the very shots that set the P80.
+  const reference = resolveRatingReference(
+    club,
+    data,
+    query,
+    references,
+    strongShots,
+  );
   const distanceVisits = visitsOf(strongShots);
   const distance: ClubRating['distancePotential'] = {
     score: distanceScore(p80, reference?.valueM ?? null),
@@ -627,7 +759,7 @@ export function clubRatings(
   const selected = selectCohort(
     data.shots,
     data.sessions,
-    { ...query, contact: 'all', hideLikelyMishits: false },
+    ratingQuery(query),
     RATING_BASIS,
   );
   const clubs = new Set(

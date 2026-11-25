@@ -1268,3 +1268,41 @@ All §13.7 items marked merged are on main (A9→#76, A10→#77, A1→#78, A2→
 ### 13.8.2 C3 progress — ratings UI (branch `feat/ratings-ui`, stacked on #94/#95)
 
 Overview club rows now show the composite `ratings-2` rating chip (dashed-outline "prov n/4" marker for provisional composites); expanding a club reveals the four category bars with measurements and reference context, methodology behind a disclosure. Club profiles show the same chip and breakdown and the ADR-0004 raw-metric within-bag standings are removed (`standings.ts` deleted; raw measurements retained in `category-scores-1`). Ratings are computed on the fixed premium-flat rating basis regardless of the display basis. New `ClubRating.tsx` component + styles. Verified: `npm test` 337 passed, typecheck/lint/build clean. E2E (`npm run test:e2e`) not run — no Playwright browsers/local Supabase in this environment.
+
+---
+
+## 13.9 Technical stabilization pass — 2026-11-26 (after PR #96)
+
+Goal: a stable, trustworthy analytics and data foundation before the dedicated design-system / UI redesign milestone (which is deliberately **not** started here). ADR-0005 v2 is preserved unchanged; no formula, anchor, weight or evidence rule was altered.
+
+### 13.9.1 Independent Codex review reconciliation
+
+All inline Codex findings on PRs #90–#96 were checked against current `main`. The findings on #94 (nonpositive carries in rating stats, per-category visit counts), #95 (omitted-nullable metadata guards, calendar-date validation of `recordedOn`), #96 (nonpositive carries, category evidence/uncertainty rendering, mobile rating grid) and #92 (full-population sensitivity bounds) were already fixed inside those PRs. The one latent finding still open is now fixed:
+
+- **Rating cohort inherited `query.intent`** (`ratings.ts`): ratings are pinned to the selected time window only — `ratingQuery()` now fixes `intent: 'all'`, `contact: 'all'`, `hideLikelyMishits: false` and drops any single-visit `scopeSessionId`, so no present or future display filter can change the rating population. Regression test: identical ratings under intent/contact/mishit/scope query variants.
+
+### 13.9.2 Outstanding findings investigated
+
+- **Reference metadata respected by rating-reference resolution** — was a real gap; fixed. `resolveRatingReference` now uses a record only when it is a `goal` (`observed` and `historical-potential` records stay distinct concepts and never feed the goal reference), the basis is compatible (exact/family labelled, `unknown` never compared — already in place), and an `equipmentId`-tagged reference applies only when that equipment is the single current assignment of the club's **distance population** (the full swings with measured carries that the P80 comes from — a partial-only shot can never authorize a differently-measured reference; mixed or unverifiable populations withhold tagged references, never silently applied). The `statistic` and `recordedOn` are carried into the resolved reference and labelled in the UI, so a median goal is never read as a P80 goal. Unit-tested (type, statistic, equipment match/mismatch/unassigned/partial-only/mixed, legacy untagged rows).
+- **Reference metadata editing** — was missing (fields were carried through unchanged on edit); fixed. The club-profile reference form now edits type, statistic, recorded-on date and equipment, and the saved row displays all metadata. Covered in e2e.
+- **Missing directional measurements shown as zero** — fixed. The Overview distribution table rendered `0/0/0` when a direction metric was entirely unmeasured; it now shows `—` with a measured/missing column. The rating breakdown's `?? 0` fallbacks for P80-offline/corridor now render `—` when missing.
+- **Early evidence distinguishable from better-supported ratings, independent of coverage** — the breakdown already shows per-category n / visits / evidence level; the composite chip now also carries an `early` tag (dotted outline + title) whenever the weakest rated category is `early`, so a full 4/4 composite from small-sample single-visit data is never read as well-supported.
+- **Historical reference availability for newer golfers** — behaves as ADR-0005 §8.6 intends: the leave-evaluated-window-out guard means a golfer whose whole history is inside the current window (or who views All-time, where every session is under evaluation) has **no** independent historical reference; the distance category is then withheld (measured P80 still shown) unless a compatible personal goal exists, and the other three categories still rate. This is documented behaviour, not a bug — no change made. Newer golfers get useful ratings from the first sessions via progressive evidence levels.
+- **Rating consistency across screens and filters** — Overview (`Analysis.tsx`) and Club Profiles (`ClubProfiles.tsx`) both call the shared `clubRatings(data, query)`; with the §13.9.1 pin the rating population depends only on the time window (mode/today), never on display basis, intent, contact, mishit or visit-scope filters. Both computations are now memoized on `[data, query]`. Unit test asserts equality across filter variants.
+- **Performance impact of the rating system** — measured with `npm run verify:performance` (now including a `clubRatings` pass): at 12 000 synthetic shots, resolve cold ≈ 385 ms (unchanged from A11), ratings add ≈ 16 ms warm / ≈ 14 ms in recent mode. `historicalPersonalPotential` no longer scans the full shot list per session (recent-mode ratings at 12k shots: ≈ 201 ms → ≈ 14 ms). No regression; warm re-renders ≈ 19 ms at 12k shots.
+- **Database migration, backup and restore compatibility** — `npm run test:db` run against the local Supabase stack (all six migrations functionally applied): passed, including the rating-metadata validator assertions (full metadata accepted, explicit-null and omitted keys accepted, invalid type/statistic/`2026-02-30`/non-UUID rejected), reference paging, revision-checked delete, 1000-row export bound and restore/import races. Backup/restore round-trips are covered by the e2e backup test (passed). The migrations remain validator-only; no data migration, legacy rows stay valid.
+- **Remaining evaluation-contract limitations** (unchanged, restated from §13.8): the B1/B2 harness is complete as a harness but is **not** real-world classifier validation — `verify:realworld` remains opt-in, local-only and unevaluated; per-class recall is derivable but not surfaced as a headline field; inference tasks are reported per scenario, not aggregated over a labelled corpus; parity is checked in-process, not against an independent pipeline run. No real-export accuracy claims are made anywhere.
+
+### 13.9.3 Verification run in this pass
+
+- `npm test` — 344 passed (23 files), incl. 4 new ratings tests.
+- `npm run typecheck`, `npm run lint` — clean.
+- `npm run build` and `npm run build -- --base=/shotwise/` — clean.
+- `npm run test:db` — passed against the local stack (previously not run locally for #94–#96).
+- `npm run test:e2e` — **88 passed** (44 desktop Chromium + 44 phone WebKit), the suite not run locally during #94–#96; the club-profile test now also edits reference type/statistic/date/equipment end to end.
+- `npm run verify:performance` — extended with the ratings pass; timings above. `npm run verify:classifier` — thresholds hold.
+- Not run: `verify:csv`, `verify:unusual`, `verify:realworld` — opt-in scripts requiring personal Inrange exports, which are never committed; real-world accuracy remains unevaluated (§13.9.2).
+
+### 13.9.4 State after stabilization
+
+C3 (ADR-0005 ratings) is implemented and verified end to end: domain module `ratings-2` as the single calculation source, reference rating metadata persisted and now respected by resolution and editable in the UI, ratings UI on Overview and club profiles, raw-metric standings removed, cohort/filter invariance, evidence and uncertainty visible, no performance regression, database contract green. Remaining before the redesign milestone: owner evaluation of the provisional anchors/weights on real data; D1 external numerical benchmarks (licensing-blocked, link-only); B2 real-world evaluation (opt-in, unevaluated); then the dedicated design-system and UI redesign roadmap supersedes D2 visual simplification.

@@ -2884,6 +2884,12 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   if (!archivedSession) throw new Error('Missing seeded archived session');
   await account.repository.updateSession({ ...archivedSession, archived: true });
 
+  // One physical club, so the reference form's equipment metadata can be set.
+  const fitted = await account.repository.saveEquipment({
+    ...makeEquipment({ name: 'Fitted 7i', inrangeLabel: '7i' }),
+    revision: null,
+  });
+
   await login(page, account);
 
   // Discoverable entry point: the Overview club rows link to the profile.
@@ -2949,7 +2955,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(methodology.locator('summary')).toHaveText('How these are scored');
   await methodology.locator('summary').click();
   await expect(methodology).toContainText('category-scores-1');
-  await expect(methodology).toContainText('no composite 0–100 overall score');
+  // Raw category metrics stay, but the composite now lives in the ADR-0005
+  // rating breakdown — the disclosure points there instead of denying it.
+  await expect(methodology).toContainText('ADR-0005');
 
   // Normalized ratings (ADR-0005, ratings-2): the breakdown shows the overall
   // composite and the four category bars; the ADR-0004 raw-metric within-bag
@@ -2981,10 +2989,20 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(personal).toContainText('Fitting session');
   await personal.getByRole('button', { name: 'Edit' }).click();
   await personal.getByLabel(/Value \(m\)/).fill('145');
+  // Rating metadata is editable: type, statistic, recorded-on date and the
+  // physical club the reference was measured with.
+  await personal.getByLabel(/^Type/).selectOption('observed');
+  await personal.getByLabel(/^Statistic/).selectOption('p80');
+  await personal.getByLabel(/Recorded on/).fill('2026-11-20');
+  await personal.getByLabel(/^Equipment/).selectOption(fitted.id);
   await personal.getByRole('button', { name: 'Save' }).click();
   await expect(personal).toContainText(
     'Personal reference (user-entered): 145 m carry',
   );
+  await expect(personal).toContainText('observed personal best');
+  await expect(personal).toContainText('P80 statistic');
+  await expect(personal).toContainText('recorded 2026-11-20');
+  await expect(personal).toContainText('Fitted 7i');
 
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
