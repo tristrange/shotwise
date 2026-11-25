@@ -49,14 +49,18 @@ type Baseline = {
 };
 
 /**
- * Total chronological order for visits: date, then recorded start time when
- * both visits have one, then session id purely as a deterministic tiebreak —
- * the id is not evidence of real-world chronology.
+ * Total chronological order for visits: date, then recorded start time with
+ * missing times ordered first ('' sorts before any HH:MM), then session id
+ * purely as a deterministic tiebreak — the id is not evidence of real-world
+ * chronology. Missing times must order consistently (not "tie") so the
+ * comparator stays transitive when known and unknown times mix; the
+ * same-day eligibility rules that require a known, earlier time are applied
+ * separately as filters.
  */
 function compareSessionStarts(a: Session, b: Session): number {
   return (
     a.date.localeCompare(b.date) ||
-    (a.time !== null && b.time !== null ? a.time.localeCompare(b.time) : 0) ||
+    (a.time ?? '').localeCompare(b.time ?? '') ||
     a.id.localeCompare(b.id)
   );
 }

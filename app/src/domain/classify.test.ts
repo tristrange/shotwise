@@ -181,6 +181,30 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     expect(out3.get(probe.id)!.baselineCount).toBe(15);
   });
 
+  it('keeps a transitive visit order when same-day times mix known and missing', () => {
+    // a=12:00, b=null, c=10:00 on the same date: with a consistent ordering
+    // (missing time first), c is unambiguously earlier than a, and the
+    // baseline must not depend on input permutation.
+    const a = makeSession({ id: 'a', date: '2026-11-16', time: '12:00' });
+    const b = makeSession({ id: 'b', date: '2026-11-16', time: null });
+    const c = makeSession({ id: 'c', date: '2026-11-16', time: '10:00' });
+    const blockA = fullShots('7i', 160, 150, 10, a);
+    const blockB = fullShots('7i', 170, 160, 10, b);
+    const blockC = fullShots('7i', 150, 140, 10, c);
+    const probe = makeShot({
+      sessionId: a.id,
+      recordedClub: '7i',
+      rowIndex: 50,
+      measurements: { flatCarryPremium: 90, speedPremium: 100 },
+    });
+    const forward = assessShots([...blockA, ...blockB, ...blockC, probe], [a, b, c]);
+    const shuffled = assessShots([probe, ...blockB, ...blockC, ...blockA], [b, c, a]);
+    // The probe's own earlier a-shots (10) plus c (10:00 < 12:00) count;
+    // b's missing time is not evidence of being earlier, so it is excluded.
+    expect(forward.get(probe.id)!.baselineCount).toBe(20);
+    expect(shuffled.get(probe.id)).toEqual(forward.get(probe.id));
+  });
+
   it('picks a deterministic baseline at the 50-shot cap regardless of input order', () => {
     const many = Array.from({ length: 60 }, (_, i) =>
       makeShot({
