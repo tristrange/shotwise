@@ -686,6 +686,7 @@ test('expands overview club summaries inline with per-club measurements', async 
   await expect(detail7i).toContainText('Launch');
   await expect(detail7i).toContainText('21.0°');
   await expect(detail7i).toContainText('Apex');
+  await expect(detail7i).toContainText('Strong-strike carry (P80)');
   await expect(detail7i).toContainText('Carry spread (IQR)');
   await expect(detail7i.getByRole('link', { name: 'Full club profile' })).toHaveAttribute(
     'href',
@@ -2900,6 +2901,8 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(card).toContainText(
     'reviewed full swings with typical contact · 13 measured, 1 missing',
   );
+  await expect(card).toContainText('Strong-strike carry (P80)');
+  await expect(card).toContainText('distance potential when struck well');
   await expect(card).toContainText('Carry spread (IQR) 10 m');
   await expect(card).toContainText('middle half of 25 measured carries');
   await expect(card).toContainText('Lower carry tail (P10) 110.4 m');
