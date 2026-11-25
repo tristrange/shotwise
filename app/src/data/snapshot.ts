@@ -11,8 +11,9 @@ type Table =
 /**
  * Collections added after the client's minimum supported RPC schema. A newer
  * client loading against an older deployed database must still read history:
- * the old `dataset_page` rejects these with 'Invalid table', which is treated
- * as an empty collection (the dataset schema defaults them to []).
+ * the old `dataset_page` rejects these with 'Invalid dataset table' (see
+ * supabase/migrations/20261120003439_equipment_persistence.sql), which is
+ * treated as an empty collection (the dataset schema defaults them to []).
  */
 const OPTIONAL_TABLES: ReadonlySet<Table> = new Set(['userReferenceValues']);
 export async function loadConsistent(source: {
@@ -33,7 +34,7 @@ export async function loadConsistent(source: {
           if (
             OPTIONAL_TABLES.has(table) &&
             error instanceof Error &&
-            error.message.includes('Invalid table')
+            /Invalid (dataset )?table/.test(error.message)
           )
             return [];
           throw error;

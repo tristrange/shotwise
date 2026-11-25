@@ -50,7 +50,7 @@ describe('complete snapshot loading', () => {
       version: async () => 7,
       page: async (table) => {
         if (table === 'userReferenceValues')
-          throw new Error('Invalid table'); // pre-migration dataset_page
+          throw new Error('Invalid dataset table'); // pre-migration dataset_page
         if (table === 'sessions') return [makeSession()];
         return [];
       },
