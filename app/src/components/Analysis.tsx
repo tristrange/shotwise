@@ -15,6 +15,7 @@ import {
   type AnalysisSettings,
 } from '../domain/analytics';
 import { clubStrongStrike } from '../domain/potential';
+import { clubRatings } from '../domain/ratings';
 import {
   BasisButton,
   MishitToggle,
@@ -22,6 +23,7 @@ import {
   ViewToggle,
 } from './AnalysisControls';
 import { clubHref } from './ClubProfiles';
+import { RatingBreakdown, RatingChip } from './ClubRating';
 import { ClubProgress } from './ClubProgress';
 import { Hero } from './Hero';
 import { PracticeInsights } from './PracticeInsights';
@@ -112,6 +114,9 @@ export function Analysis({
     };
   });
   const scale = Math.max(...rows.map((row) => row.high ?? row.median ?? 0), 1) * 1.1;
+  // ADR-0005 ratings: computed once per render on the fixed premium-flat
+  // rating basis — independent of the display basis selected above.
+  const ratingsByClub = new Map(clubRatings(data, query).map((r) => [r.club, r]));
   return (
     <>
       {progressView ? (
@@ -191,6 +196,7 @@ export function Analysis({
                       ? 'Typical carry · spread'
                       : 'Median carry · spread'}
                 </span>
+                <span>Rating</span>
                 <span>Shots</span>
                 <span>Median</span>
               </div>
@@ -198,6 +204,7 @@ export function Analysis({
                 const low = row.low ?? row.median ?? 0;
                 const high = row.high ?? row.median ?? 0;
                 const open = expanded.has(row.name);
+                const rating = ratingsByClub.get(row.name) ?? null;
                 const detailId = `club-detail-${row.name.replace(/\W+/g, '-')}`;
                 return (
                   <div className="gap-item" key={row.name} role="listitem">
@@ -250,6 +257,9 @@ export function Analysis({
                           </>
                         )}
                       </div>
+                      <span className="gap-rating">
+                        <RatingChip rating={ratingsByClub.get(row.name) ?? null} />
+                      </span>
                       <span className="gap-n">
                         {row.n}
                         <small>{row.n === 1 ? 'shot' : 'shots'}</small>
@@ -261,6 +271,7 @@ export function Analysis({
                     </div>
                     {open && (
                       <div className="gap-detail" id={detailId}>
+                        {rating && <RatingBreakdown rating={rating} />}
                         <div className="detail-grid">
                           <div className="detail-stat">
                             <span className="detail-label">Ball speed</span>
