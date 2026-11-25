@@ -101,6 +101,41 @@ describe('sequence-aware club inference (' + SEQUENCE_RULE_VERSION + ')', () => 
     expect(out.get(shots[0]!.id)).toBeUndefined();
   });
 
+  it('abstains on an exact tie between two candidate clubs (same-level comparison)', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 12 }, () => shot('9i', 120, 118)), // 9i profile
+      // Eight 9i-labelled shots at wood distances: seven at 240/210, one at 235/205.
+      ...Array.from({ length: 7 }, () => shot('9i', 240, 210)),
+      shot('9i', 235, 205),
+      ...Array.from({ length: 12 }, () => shot('D', 240, 210)), // D profile
+      ...Array.from({ length: 12 }, () => shot('3w', 240, 210)), // identical 3w profile
+    ];
+    const out = assessSequences(shots, [session]);
+    // D and 3w tie exactly: no clear margin, so nothing is flagged.
+    for (const s of shots.slice(12, 20)) expect(out.get(s.id)).toBeUndefined();
+  });
+
+  it('splits own-compatible shots out of a suspect block instead of discarding it', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 20 }, () => shot('9i', 120, 118)), // 9i profile
+      shot('9i', 130, 125), // overlaps: fits 9i and is adjacent to the suspect block
+      ...Array.from({ length: 8 }, () => shot('9i', 150, 140)), // labelled 9i, 7i distances
+      ...Array.from({ length: 12 }, () => shot('7i', 150, 140)), // 7i profile
+    ];
+    const out = assessSequences(shots, [session]);
+    // The overlapping 130/125 shot must not make the eight suspect shots disappear.
+    const flagged = shots.slice(21, 29);
+    for (const s of flagged) {
+      const a = out.get(s.id);
+      expect(a?.kind).toBe('suspected-wrong-club');
+      if (a?.kind === 'suspected-wrong-club') expect(a.suspectedClub).toBe('7i');
+    }
+    // The genuinely 9i-compatible shot is not flagged.
+    expect(out.get(shots[20]!.id)).toBeUndefined();
+  });
+
   it('does not flag short runs or alternating clubs', () => {
     row = 0;
     const shots = [

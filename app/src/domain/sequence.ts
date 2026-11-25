@@ -314,23 +314,29 @@ export function assessSequences(
       // Rank all candidate clubs together per shot; a clear winner is required
       // before any shot is flagged, so alternatives cannot overwrite each other
       // by iteration order.
-      const best = new Map<string, { candidate: string; distance: number; blockLength: number }>();
+      const best = new Map<
+        string,
+        { candidate: string; distance: number; block: Shot[] }
+      >();
+      // Own reference for the whole run: the run cannot train the reference it
+      // is compared against.
       for (const [candidate, profile] of others) {
-        // The candidate block is excluded from its own reference profile, so a
-        // suspect block cannot train the very reference it is compared against.
         const mask = run.shots.map((s) => compatible(s, profile, basis));
-        // Maximal contiguous blocks of length >= MIN_ADVISORY_RUN.
+        // Maximal contiguous candidate-compatible blocks.
         let start = -1;
         const blocks: Shot[][] = [];
         for (let i = 0; i <= mask.length; i++) {
           if (i < mask.length && mask[i]) {
             if (start < 0) start = i;
           } else if (start >= 0) {
-            if (i - start >= MIN_ADVISORY_RUN) blocks.push(run.shots.slice(start, i));
+            blocks.push(run.shots.slice(start, i));
             start = -1;
           }
         }
         for (const block of blocks) {
+          // Own reference for the block, with the block excluded from its own
+          // reference profile so a suspect block cannot train the reference it
+          // is compared against.
           const blockIds = new Set(block.map((s) => s.id));
           const own = profiles(
             windowShots.filter((s) => !blockIds.has(s.id)),
@@ -338,28 +344,52 @@ export function assessSequences(
             basis,
           ).get(run.club);
           if (!own || own.n < MIN_PROFILE) continue;
-          if (block.some((s) => compatible(s, own, basis))) continue;
-          const ownDistance =
-            block.reduce((sum, s) => sum + distance(s, own, basis), 0) / block.length;
-          const otherDistance =
-            block.reduce((sum, s) => sum + distance(s, profile, basis), 0) / block.length;
-          if (!(otherDistance < SWITCH_CLOSENESS * ownDistance && otherDistance < 2)) continue;
-          for (const shot of block) {
-            const current = best.get(shot.id);
-            if (!current || otherDistance < current.distance)
-              best.set(shot.id, { candidate, distance: otherDistance, blockLength: block.length });
+          // Split out shots that also fit the recorded club: an overlapping
+          // genuine shot must not drag its whole block out of the suspect set.
+          // Suspects stay contiguous in the original run order.
+          const suspectIdx = block
+            .map((s, i) => (compatible(s, own, basis) ? -1 : i))
+            .filter((i) => i >= 0);
+          const subs: Shot[][] = [];
+          let subStart = -1;
+          let prev = -1;
+          for (let k = 0; k <= suspectIdx.length; k++) {
+            const i = k < suspectIdx.length ? suspectIdx[k]! : -1;
+            if (subStart >= 0 && i === prev + 1) {
+              prev = i;
+              continue;
+            }
+            if (subStart >= 0 && prev - subStart + 1 >= MIN_ADVISORY_RUN)
+              subs.push(block.slice(subStart, prev + 1));
+            if (i >= 0) {
+              subStart = i;
+              prev = i;
+            } else {
+              subStart = -1;
+            }
+          }
+          for (const sub of subs) {
+            const ownDistance =
+              sub.reduce((sum, s) => sum + distance(s, own, basis), 0) / sub.length;
+            const otherDistance =
+              sub.reduce((sum, s) => sum + distance(s, profile, basis), 0) / sub.length;
+            if (!(otherDistance < SWITCH_CLOSENESS * ownDistance && otherDistance < 2)) continue;
+            for (const shot of sub) {
+              const current = best.get(shot.id);
+              if (!current || otherDistance < current.distance)
+                best.set(shot.id, { candidate, distance: otherDistance, block: sub });
+            }
           }
         }
       }
-      // Second-best distances per shot, to require a clear margin between the
-      // winning candidate and any alternative.
+      // Second-best distances per shot, computed over the same winning block so
+      // tied candidates cannot win on a block-average vs per-shot mismatch.
       const alternatives = new Map<string, number>();
-      for (const [candidate, profile] of others) {
-        for (const [shotId, b] of best) {
-          if (b.candidate === candidate) continue;
-          const s = run.shots.find((x) => x.id === shotId);
-          if (!s) continue;
-          const d = distance(s, profile, basis);
+      for (const [shotId, b] of best) {
+        for (const [candidate, profile] of others) {
+          if (candidate === b.candidate) continue;
+          const d =
+            b.block.reduce((sum, s) => sum + distance(s, profile, basis), 0) / b.block.length;
           const cur = alternatives.get(shotId);
           if (cur === undefined || d < cur) alternatives.set(shotId, d);
         }
@@ -373,9 +403,9 @@ export function assessSequences(
           shotId: shot.id,
           recordedClub: run.club,
           suspectedClub: b.candidate,
-          evidence: b.blockLength,
-          strength: b.blockLength >= MIN_SWITCH_RUN ? 'strong' : 'advisory',
-          reason: `This block of ${b.blockLength} ${run.club}-labelled shots matches ${b.candidate} better — possible forgotten club switch. Recorded label kept.`,
+          evidence: b.block.length,
+          strength: b.block.length >= MIN_SWITCH_RUN ? 'strong' : 'advisory',
+          reason: `This block of ${b.block.length} ${run.club}-labelled shots matches ${b.candidate} better — possible forgotten club switch. Recorded label kept.`,
           ruleVersion: SEQUENCE_RULE_VERSION,
         });
       }
