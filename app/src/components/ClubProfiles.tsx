@@ -338,7 +338,9 @@ function PersonalReference({
             >
               <option value="unknown">unknown</option>
               <option value="range">range ball</option>
+              <option value="range-flat">range ball (flat)</option>
               <option value="premium">premium ball</option>
+              <option value="premium-flat">premium ball (flat)</option>
             </select>
           </label>
           <label>

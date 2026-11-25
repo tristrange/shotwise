@@ -181,7 +181,19 @@ export type ReferenceMetric = z.infer<typeof referenceMetricSchema>;
  * default for rows written before this field existed, so comparisons must
  * treat it as incompatible with both bases rather than guessing.
  */
-export const referenceBasisSchema = z.enum(['range', 'premium', 'unknown']);
+/**
+ * All four measurement bases plus 'unknown'. The flat/unadjusted distinction
+ * (range vs range-flat, premium vs premium-flat) must be preserved so a
+ * reference recorded on flat carry is never silently compared with unadjusted
+ * carry. 'unknown' is the default for rows written before this field existed.
+ */
+export const referenceBasisSchema = z.enum([
+  'range',
+  'range-flat',
+  'premium',
+  'premium-flat',
+  'unknown',
+]);
 export type ReferenceBasis = z.infer<typeof referenceBasisSchema>;
 /** Provenance of a reference value: how the number was obtained. */
 export const referenceSourceSchema = z

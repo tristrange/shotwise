@@ -208,6 +208,19 @@ describe('reference value metadata (C1)', () => {
     });
     expect(parsed.basis).toBe('range');
     expect(parsed.source).toBe('fitting');
+    // The flat/unadjusted distinction is preserved, not collapsed to a family.
+    expect(
+      userReferenceValueSchema.parse({
+        id: crypto.randomUUID(),
+        club: '7i',
+        metric: 'carry',
+        valueM: 142,
+        note: null,
+        basis: 'premium-flat',
+        source: 'chart',
+        revision: 0,
+      }).basis,
+    ).toBe('premium-flat');
   });
 });
 
