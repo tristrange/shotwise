@@ -385,7 +385,7 @@ describe('clubRating on the fixed premium-flat rating basis', () => {
       fromCentre: [3],
       launchDirection: [2],
     });
-    data.shots[3].measurements.flatCarryPremium = 0;
+    data.shots[3]!.measurements.flatCarryPremium = 0;
     const r = clubRating(data, query, '7i', [ref()])!;
     expect(r.consistency.n).toBe(9);
     expect(r.consistency.score).toBeNull();
@@ -402,7 +402,7 @@ describe('clubRating on the fixed premium-flat rating basis', () => {
       fromCentre: [3],
       launchDirection: [2],
     });
-    data.shots[0].measurements.flatCarryPremium = 0;
+    data.shots[0]!.measurements.flatCarryPremium = 0;
     const r = clubRating(data, query, '7i', [ref()])!;
     expect(r.consistency.n).toBe(11);
     expect(r.consistency.median!).toBeGreaterThan(100); // not dragged toward 0
