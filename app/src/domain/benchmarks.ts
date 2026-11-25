@@ -1,8 +1,9 @@
+import { z } from 'zod';
 import {
   isUnknownClub,
   referenceMetricSchema,
+  userReferenceValueSchema,
   type Basis,
-  type UserReferenceValueRecord,
 } from './model';
 
 /**
@@ -63,7 +64,7 @@ export type BenchmarkReference = {
  * mixed into analytics cohorts. The persisted record adds id and revision.
  */
 export type UserReferenceValue = Omit<
-  UserReferenceValueRecord,
+  z.input<typeof userReferenceValueSchema>,
   'id' | 'revision' | 'note'
 > & {
   note?: string | null;

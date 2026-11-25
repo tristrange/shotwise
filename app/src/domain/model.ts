@@ -177,9 +177,36 @@ export type EquipmentAssignmentPreview = z.infer<
 export const referenceMetricSchema = z.enum(['carry', 'total']);
 export type ReferenceMetric = z.infer<typeof referenceMetricSchema>;
 /**
+ * Measurement basis a reference value was recorded on. 'unknown' is the
+ * default for rows written before this field existed, so comparisons must
+ * treat it as incompatible with both bases rather than guessing.
+ */
+/**
+ * All four measurement bases plus 'unknown'. The flat/unadjusted distinction
+ * (range vs range-flat, premium vs premium-flat) must be preserved so a
+ * reference recorded on flat carry is never silently compared with unadjusted
+ * carry. 'unknown' is the default for rows written before this field existed.
+ */
+export const referenceBasisSchema = z.enum([
+  'range',
+  'range-flat',
+  'premium',
+  'premium-flat',
+  'unknown',
+]);
+export type ReferenceBasis = z.infer<typeof referenceBasisSchema>;
+/** Provenance of a reference value: how the number was obtained. */
+export const referenceSourceSchema = z
+  .enum(['manual', 'fitting', 'chart', 'estimated'])
+  .default('manual');
+export type ReferenceSource = z.infer<typeof referenceSourceSchema>;
+/**
  * A user-entered per-club reference value (e.g. from a fitting session or a
  * printed distance chart). Stored separately from imported measurements and
  * never mixed into analytics cohorts; labelled "user-entered" in the UI.
+ * `basis`/`source` default for legacy rows so old records still parse; a
+ * comparison must never silently mix a range-ball reference with premium
+ * estimates or vice versa.
  */
 export const userReferenceValueSchema = z.object({
   id: idSchema,
@@ -187,6 +214,8 @@ export const userReferenceValueSchema = z.object({
   metric: referenceMetricSchema,
   valueM: z.number().finite().gt(0).lte(500),
   note: z.string().trim().max(200).nullable(),
+  basis: referenceBasisSchema.default('unknown'),
+  source: referenceSourceSchema,
   revision: z.number().int().nonnegative().max(2_147_483_647),
 });
 export type UserReferenceValueRecord = z.infer<typeof userReferenceValueSchema>;

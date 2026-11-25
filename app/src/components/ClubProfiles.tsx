@@ -3,7 +3,9 @@ import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
 import { validateUserReferenceValue } from '../domain/benchmarks';
 import type { Repository } from '../data/contracts';
 import type {
+  ReferenceBasis,
   ReferenceMetric,
+  ReferenceSource,
   UserReferenceValueRecord,
   UserReferenceValueSaveInput,
 } from '../domain/model';
@@ -212,6 +214,8 @@ function PersonalReference({
   const [metric, setMetric] = useState<ReferenceMetric>('carry');
   const [valueM, setValueM] = useState('');
   const [note, setNote] = useState('');
+  const [basis, setBasis] = useState<ReferenceBasis>('unknown');
+  const [source, setSource] = useState<ReferenceSource>('manual');
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
   // Baseline captured when editing starts: if another device changes the
@@ -229,6 +233,8 @@ function PersonalReference({
     setMetric(m);
     setValueM(existing ? String(existing.valueM) : '');
     setNote(existing?.note ?? '');
+    setBasis(existing?.basis ?? 'unknown');
+    setSource(existing?.source ?? 'manual');
     setBaseline(
       existing ? { id: existing.id, revision: existing.revision } : null,
     );
@@ -243,6 +249,8 @@ function PersonalReference({
       metric,
       valueM: Number(valueM),
       note: note.trim() ? note.trim() : null,
+      basis,
+      source,
       revision: baseline?.revision ?? null,
     };
     const problem = validateUserReferenceValue(input);
@@ -273,7 +281,7 @@ function PersonalReference({
             <strong>
               {decimal.format(v.valueM)} m {v.metric}
             </strong>
-            {v.note ? ` · ${v.note}` : ''} ·{' '}
+            {v.note ? ` · ${v.note}` : ''} · basis {v.basis} · {v.source} ·{' '}
             <button
               type="button"
               className="secondary"
@@ -320,6 +328,32 @@ function PersonalReference({
               value={valueM}
               onChange={(e) => setValueM(e.target.value)}
             />
+          </label>
+          <label>
+            Basis{' '}
+            <select
+              value={basis}
+              onChange={(e) => setBasis(e.target.value as ReferenceBasis)}
+              title="Which measurement basis this reference was recorded on — comparisons never mix bases silently"
+            >
+              <option value="unknown">unknown</option>
+              <option value="range">range ball</option>
+              <option value="range-flat">range ball (flat)</option>
+              <option value="premium">premium ball</option>
+              <option value="premium-flat">premium ball (flat)</option>
+            </select>
+          </label>
+          <label>
+            Source{' '}
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value as ReferenceSource)}
+            >
+              <option value="manual">manual entry</option>
+              <option value="fitting">fitting session</option>
+              <option value="chart">printed chart</option>
+              <option value="estimated">estimated</option>
+            </select>
           </label>
           <label>
             Note{' '}
