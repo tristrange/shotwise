@@ -1,5 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
+import { validateUserReferenceValue } from '../domain/benchmarks';
+import type { Repository } from '../data/contracts';
+import type {
+  ReferenceMetric,
+  UserReferenceValueRecord,
+  UserReferenceValueSaveInput,
+} from '../domain/model';
 import {
   BENCHMARK_SOURCES,
   attributionFor,
@@ -182,6 +189,173 @@ function CategoryScoresSection({
   );
 }
 
+/**
+ * The golfer's own user-entered reference for a club (e.g. from a fitting
+ * session), labelled as such and never mixed into analytics cohorts or
+ * compared across metrics. Shown for every basis — unlike external overlays,
+ * it is the user's own number, not an external range-ball-incompatible one.
+ */
+function PersonalReference({
+  club,
+  values,
+  onSave,
+  onDelete,
+  error,
+}: {
+  club: string;
+  values: UserReferenceValueRecord[];
+  onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  error: string;
+}) {
+  const [editing, setEditing] = useState<ReferenceMetric | null>(null);
+  const [metric, setMetric] = useState<ReferenceMetric>('carry');
+  const [valueM, setValueM] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const own = values.filter(
+    (v) => v.club.toLowerCase() === club.trim().toLowerCase(),
+  );
+  const record = own.find((v) => v.metric === metric);
+
+  const startEdit = (m: ReferenceMetric) => {
+    const existing = own.find((v) => v.metric === m);
+    setMetric(m);
+    setValueM(existing ? String(existing.valueM) : '');
+    setNote(existing?.note ?? '');
+    setEditing(m);
+    setLocalError('');
+  };
+
+  const submit = async () => {
+    const input: UserReferenceValueSaveInput = {
+      id: record?.id ?? crypto.randomUUID(),
+      club: club.trim(),
+      metric,
+      valueM: Number(valueM),
+      note: note.trim() ? note.trim() : null,
+      revision: record?.revision ?? null,
+    };
+    const problem = validateUserReferenceValue(input);
+    if (problem) {
+      setLocalError(problem);
+      return;
+    }
+    setBusy(true);
+    setLocalError('');
+    try {
+      await onSave(input);
+      setEditing(null);
+    } catch {
+      // surfaced via the error prop
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="personal-reference">
+      {own.length > 0 &&
+        !editing &&
+        own.map((v) => (
+          <p key={v.metric}>
+            Personal reference (user-entered):{' '}
+            <strong>
+              {decimal.format(v.valueM)} m {v.metric}
+            </strong>
+            {v.note ? ` · ${v.note}` : ''} ·{' '}
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => startEdit(v.metric)}
+            >
+              Edit
+            </button>
+          </p>
+        ))}
+      {!editing && own.length === 0 && (
+        <p>
+          No personal reference for {club} yet.{' '}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => startEdit('carry')}
+          >
+            Add personal reference
+          </button>
+        </p>
+      )}
+      {editing && (
+        <div className="reference-form">
+          <label>
+            Metric{' '}
+            <select
+              value={metric}
+              onChange={(e) => {
+                setMetric(e.target.value as ReferenceMetric);
+                startEdit(e.target.value as ReferenceMetric);
+              }}
+            >
+              <option value="carry">carry</option>
+              <option value="total">total</option>
+            </select>
+          </label>
+          <label>
+            Value (m){' '}
+            <input
+              type="number"
+              min={1}
+              max={500}
+              step="any"
+              value={valueM}
+              onChange={(e) => setValueM(e.target.value)}
+            />
+          </label>
+          <label>
+            Note{' '}
+            <input
+              type="text"
+              maxLength={200}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="pill-button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            Save
+          </button>
+          {record && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => void onDelete(record.id).then(() => setEditing(null))}
+            >
+              Delete
+            </button>
+          )}
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => setEditing(null)}
+          >
+            Cancel
+          </button>
+          {(localError || error) && (
+            <p className="error">{localError || error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfileCard({
   profile,
   focus,
@@ -189,6 +363,10 @@ function ProfileCard({
   basis,
   scores,
   standings,
+  referenceValues,
+  onSaveReference,
+  onDeleteReference,
+  referenceError,
 }: {
   profile: ClubProfile;
   focus: boolean;
@@ -196,6 +374,10 @@ function ProfileCard({
   basis: Basis;
   scores: CategoryScores;
   standings: BagStandings[string];
+  referenceValues: UserReferenceValueRecord[];
+  onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
+  onDeleteReference: (id: string) => Promise<void>;
+  referenceError: string;
 }) {
   const {
     club,
@@ -340,6 +522,13 @@ function ProfileCard({
       {gapText && <p>{gapText}.</p>}
       <CategoryScoresSection scores={scores} standings={standings} />
       <BenchmarkReferences club={club} basis={basis} />
+      <PersonalReference
+        club={club}
+        values={referenceValues}
+        onSave={onSaveReference}
+        onDelete={onDeleteReference}
+        error={referenceError}
+      />
       <div className="table-wrap">
         <table aria-label={`${club} history across sessions`}>
           <caption>
@@ -390,16 +579,49 @@ export function ClubProfiles({
   onSettingsChange,
   focusClub,
   onManageBag,
+  repository,
+  refresh,
 }: {
   data: Dataset;
   settings: AnalysisSettings;
   onSettingsChange: (settings: AnalysisSettings) => void;
   focusClub?: string;
   onManageBag: () => void;
+  repository: Repository;
+  refresh: () => Promise<void>;
 }) {
   const { basis, ...filters } = settings;
   const query = { ...filters, today: localToday() };
   const profiles = clubProfiles(data, basis, query);
+  const [referenceError, setReferenceError] = useState('');
+  const saveReference = async (input: UserReferenceValueSaveInput) => {
+    try {
+      await repository.saveUserReferenceValue(input);
+      await refresh();
+      setReferenceError('');
+    } catch (e) {
+      setReferenceError(
+        e instanceof Error
+          ? e.message
+          : 'Could not save the reference. Refresh and try again.',
+      );
+      throw e;
+    }
+  };
+  const deleteReference = async (id: string) => {
+    try {
+      await repository.deleteUserReferenceValue(id);
+      await refresh();
+      setReferenceError('');
+    } catch (e) {
+      setReferenceError(
+        e instanceof Error
+          ? e.message
+          : 'Could not delete the reference. Refresh and try again.',
+      );
+      throw e;
+    }
+  };
   // Scores reuse the profiles computed above; within-bag standings are
   // derived once for the whole bag (ADR-0004).
   const scoresByClub = profiles.map((profile) => ({
@@ -470,6 +692,10 @@ export function ClubProfiles({
             basis={basis}
             scores={scores}
             standings={standings[profile.club]!}
+            referenceValues={data.userReferenceValues}
+            onSaveReference={saveReference}
+            onDeleteReference={deleteReference}
+            referenceError={referenceError}
           />
         ))}
       </section>
