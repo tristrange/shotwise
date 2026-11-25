@@ -205,7 +205,7 @@ function PersonalReference({
   club: string;
   values: UserReferenceValueRecord[];
   onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete: (id: string, expectedRevision: number) => Promise<void>;
   error: string;
 }) {
   const [editing, setEditing] = useState<ReferenceMetric | null>(null);
@@ -344,7 +344,7 @@ function PersonalReference({
               className="secondary"
               disabled={busy}
               onClick={() =>
-                void onDelete(baseline.id).then(() => {
+                void onDelete(baseline.id, baseline.revision).then(() => {
                   setEditing(null);
                   setBaseline(null);
                 })
@@ -390,7 +390,7 @@ function ProfileCard({
   standings: BagStandings[string];
   referenceValues: UserReferenceValueRecord[];
   onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
-  onDeleteReference: (id: string) => Promise<void>;
+  onDeleteReference: (id: string, expectedRevision: number) => Promise<void>;
   referenceError: string;
 }) {
   const {
@@ -622,9 +622,9 @@ export function ClubProfiles({
       throw e;
     }
   };
-  const deleteReference = async (id: string) => {
+  const deleteReference = async (id: string, expectedRevision: number) => {
     try {
-      await repository.deleteUserReferenceValue(id);
+      await repository.deleteUserReferenceValue(id, expectedRevision);
       await refresh();
       setReferenceError('');
     } catch (e) {

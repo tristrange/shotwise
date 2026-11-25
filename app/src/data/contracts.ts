@@ -41,7 +41,7 @@ export interface Repository {
   saveUserReferenceValue(
     input: UserReferenceValueSaveInput,
   ): Promise<UserReferenceValueRecord>;
-  deleteUserReferenceValue(id: string): Promise<void>;
+  deleteUserReferenceValue(id: string, expectedRevision: number): Promise<void>;
   restore(dataset: Dataset): Promise<void>;
 }
 export type Backend =
