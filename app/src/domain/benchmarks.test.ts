@@ -8,6 +8,8 @@ import {
   benchmarkReferencesForClub,
   compareWithReference,
   normalizeBenchmarkClub,
+  REFERENCE_STATISTIC_LABEL,
+  REFERENCE_TYPE_LABEL,
   referenceBasisCompatible,
   validateUserReferenceValue,
 } from './benchmarks';
@@ -183,6 +185,68 @@ describe('validateUserReferenceValue', () => {
         valueM: 100,
       }),
     ).toBe('Unknown metric');
+  });
+});
+
+describe('reference rating metadata (C1 follow-up, roadmap §13.8)', () => {
+  const legacyRow = {
+    id: crypto.randomUUID(),
+    club: '7i',
+    metric: 'carry',
+    valueM: 150,
+    note: null,
+    revision: 0,
+  };
+
+  it('legacy rows without the new fields parse with safe defaults', () => {
+    const parsed = userReferenceValueSchema.parse(legacyRow);
+    expect(parsed.basis).toBe('unknown');
+    expect(parsed.source).toBe('manual');
+    expect(parsed.referenceType).toBe('goal');
+    expect(parsed.statistic).toBe('other');
+    expect(parsed.recordedOn).toBeNull();
+    expect(parsed.equipmentId).toBeNull();
+  });
+
+  it('accepts full rating metadata: reference type, statistic, date, equipment identity', () => {
+    const parsed = userReferenceValueSchema.parse({
+      ...legacyRow,
+      basis: 'premium-flat',
+      source: 'fitting',
+      referenceType: 'observed',
+      statistic: 'p80',
+      recordedOn: '2026-11-20',
+      equipmentId: crypto.randomUUID(),
+    });
+    expect(parsed.referenceType).toBe('observed');
+    expect(parsed.statistic).toBe('p80');
+    expect(parsed.recordedOn).toBe('2026-11-20');
+    expect(parsed.equipmentId).not.toBeNull();
+  });
+
+  it('rejects invalid reference types, statistics, dates and equipment ids', () => {
+    expect(() =>
+      userReferenceValueSchema.parse({ ...legacyRow, referenceType: 'target' }),
+    ).toThrow();
+    expect(() =>
+      userReferenceValueSchema.parse({ ...legacyRow, statistic: 'p90' }),
+    ).toThrow();
+    expect(() =>
+      userReferenceValueSchema.parse({ ...legacyRow, recordedOn: '20/11/2026' }),
+    ).toThrow();
+    expect(() =>
+      userReferenceValueSchema.parse({ ...legacyRow, recordedOn: '2026-13-40' }),
+    ).toThrow();
+    expect(() =>
+      userReferenceValueSchema.parse({ ...legacyRow, equipmentId: 'not-a-uuid' }),
+    ).toThrow();
+  });
+
+  it('reference type and statistic labels exist for every value (distinct reference concepts)', () => {
+    expect(REFERENCE_TYPE_LABEL.goal).toBe('Personal goal');
+    expect(REFERENCE_TYPE_LABEL.observed).toBe('Observed personal best');
+    expect(REFERENCE_TYPE_LABEL['historical-potential']).toBe('Historical personal potential');
+    expect(REFERENCE_STATISTIC_LABEL.p80).toBe('P80');
   });
 });
 
