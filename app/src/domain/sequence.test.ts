@@ -101,6 +101,41 @@ describe('sequence-aware club inference (' + SEQUENCE_RULE_VERSION + ')', () => 
     expect(out.get(shots[0]!.id)).toBeUndefined();
   });
 
+  it('abstains on an exact tie between two candidate clubs (same-level comparison)', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 12 }, () => shot('9i', 120, 118)), // 9i profile
+      // Eight 9i-labelled shots at wood distances: seven at 240/210, one at 235/205.
+      ...Array.from({ length: 7 }, () => shot('9i', 240, 210)),
+      shot('9i', 235, 205),
+      ...Array.from({ length: 12 }, () => shot('D', 240, 210)), // D profile
+      ...Array.from({ length: 12 }, () => shot('3w', 240, 210)), // identical 3w profile
+    ];
+    const out = assessSequences(shots, [session]);
+    // D and 3w tie exactly: no clear margin, so nothing is flagged.
+    for (const s of shots.slice(12, 20)) expect(out.get(s.id)).toBeUndefined();
+  });
+
+  it('splits own-compatible shots out of a suspect block instead of discarding it', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 20 }, () => shot('9i', 120, 118)), // 9i profile
+      shot('9i', 130, 125), // overlaps: fits 9i and is adjacent to the suspect block
+      ...Array.from({ length: 8 }, () => shot('9i', 150, 140)), // labelled 9i, 7i distances
+      ...Array.from({ length: 12 }, () => shot('7i', 150, 140)), // 7i profile
+    ];
+    const out = assessSequences(shots, [session]);
+    // The overlapping 130/125 shot must not make the eight suspect shots disappear.
+    const flagged = shots.slice(21, 29);
+    for (const s of flagged) {
+      const a = out.get(s.id);
+      expect(a?.kind).toBe('suspected-wrong-club');
+      if (a?.kind === 'suspected-wrong-club') expect(a.suspectedClub).toBe('7i');
+    }
+    // The genuinely 9i-compatible shot is not flagged.
+    expect(out.get(shots[20]!.id)).toBeUndefined();
+  });
+
   it('does not flag short runs or alternating clubs', () => {
     row = 0;
     const shots = [
@@ -212,5 +247,101 @@ describe('sequence-aware club inference (' + SEQUENCE_RULE_VERSION + ')', () => 
     const shuffled = [...shots].reverse();
     const out = assessSequences(shuffled, [session], 'premium-flat');
     for (const s of shots) expect(out.get(s.id)).toEqual(base.get(s.id));
+  });
+
+  it('abstains on an exact tie between two neighbouring clubs', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 10 }, () => shot('7i', 160, 150)),
+      ...Array.from({ length: 3 }, () => shot('?', 160, 150)),
+      ...Array.from({ length: 10 }, () => shot('6i', 160, 150)), // identical profile
+    ];
+    const out = assessSequences(shots, [session]);
+    for (const s of shots.slice(10, 13)) expect(out.get(s.id)!.kind).toBe('abstained');
+  });
+
+  it('enforces the minimum sample on whichever profile source is used', () => {
+    row = 0;
+    const shots = [
+      shot('7i', 160, 150),
+      shot('7i', 161, 151),
+      shot('?', 160, 150),
+    ];
+    const out = assessSequences(shots, [session]);
+    // Only 2 labelled 7i shots exist anywhere — below MIN_PROFILE on both sources.
+    expect(out.get(shots[2]!.id)!.kind).toBe('abstained');
+  });
+
+  it('infers a poor strike as the surrounding club, not a club change', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 10 }, () => shot('7i', 160, 150)),
+      shot('?', 40, 60), // a very short mishit inside the 7i block
+      ...Array.from({ length: 10 }, () => shot('7i', 161, 151)),
+    ];
+    const out = assessSequences(shots, [session]);
+    const a = out.get(shots[10]!.id)!;
+    expect(a.kind).toBe('inferred-club');
+    if (a.kind === 'inferred-club') {
+      expect(a.club).toBe('7i');
+      expect(a.reason).toContain('poor');
+    }
+  });
+
+  it('flags a short matching block as advisory, never exclusion-grade', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 12 }, () => shot('9i', 120, 118)),
+      ...Array.from({ length: 5 }, () => shot('9i', 235, 205)), // 5-shot forgotten switch
+      ...Array.from({ length: 12 }, () => shot('D', 240, 210)),
+    ];
+    const out = assessSequences(shots, [session]);
+    const flagged = shots.slice(12, 17);
+    for (const s of flagged) {
+      const a = out.get(s.id)!;
+      expect(a.kind).toBe('suspected-wrong-club');
+      if (a.kind === 'suspected-wrong-club') expect(a.strength).toBe('advisory');
+    }
+  });
+
+  it('keeps advisory suspicions out of benchmark exclusion in resolveShots', async () => {
+    const { resolveShots } = await import('./assessment');
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 12 }, () => shot('9i', 120, 118)),
+      ...Array.from({ length: 5 }, () => shot('9i', 235, 205)),
+      ...Array.from({ length: 12 }, () => shot('D', 240, 210)),
+    ];
+    const resolved = resolveShots(shots, [session], 'premium-flat');
+    const a = resolved.get(shots[12]!.id)!;
+    expect(a.suspicion?.strength).toBe('advisory');
+    expect(a.suspectedWrongClub).toBe(false);
+  });
+
+  it('excludes reviewed mishits and partials from reference profiles', () => {
+    row = 0;
+    const shots = [
+      ...Array.from({ length: 10 }, () => shot('7i', 160, 150)),
+      // Reviewed mishits inside the 7i block must not move the 7i profile.
+      ...Array.from({ length: 4 }, () =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: ++row,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 40, speedPremium: 60 },
+          review: review({ contact: 'mishit' }),
+        }),
+      ),
+      ...Array.from({ length: 3 }, () => shot('?', 160, 150)),
+      ...Array.from({ length: 10 }, () => shot('7i', 161, 151)),
+    ];
+    const out = assessSequences(shots, [session]);
+    const a = out.get(shots[14]!.id)!;
+    expect(a.kind).toBe('inferred-club');
+    if (a.kind === 'inferred-club') {
+      expect(a.club).toBe('7i');
+      // 20 labelled 7i shots, not 24 — the reviewed mishits are excluded.
+      expect(a.evidence).toBe(20);
+    }
   });
 });

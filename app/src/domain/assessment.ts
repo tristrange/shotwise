@@ -93,7 +93,12 @@ export type ResolvedShot = {
   club: ClubAssessment;
   suspectedWrongClub: boolean;
   /** The automatic wrong-club observation, kept even when manual review wins. */
-  suspicion: { suspectedClub: string; evidence: number; reason: string } | null;
+  suspicion: {
+    suspectedClub: string;
+    evidence: number;
+    strength: 'strong' | 'advisory';
+    reason: string;
+  } | null;
   automatic: ShotAssessment | undefined;
   assessmentVersion: typeof ASSESSMENT_VERSION;
 };
@@ -164,18 +169,23 @@ export function resolveShots(
         ? {
             suspectedClub: sequence.suspectedClub,
             evidence: sequence.evidence,
+            strength: sequence.strength,
             reason: sequence.reason,
           }
         : null;
     // ADR-0001: a manual club confirm/correct wins over the automatic
-    // suspicion — the shot stays eligible for club benchmarks.
+    // suspicion — the shot stays eligible for club benchmarks. Only
+    // exclusion-grade ('strong') suspicions remove unreviewed shots.
     const manualClubDecision = shot.review.club.kind !== 'unreviewed';
     resolved.set(shot.id, {
       shot,
       intent: resolveIntent(shot.review.intent, auto?.intent.value),
       contact: resolveContact(shot.review.contact, auto?.contact.value),
       club: resolveClub(shot, inferredClubs.get(shot.id)),
-      suspectedWrongClub: suspicion !== null && !manualClubDecision,
+      suspectedWrongClub:
+        suspicion !== null &&
+        suspicion.strength === 'strong' &&
+        !manualClubDecision,
       suspicion,
       automatic: auto,
       assessmentVersion: ASSESSMENT_VERSION,

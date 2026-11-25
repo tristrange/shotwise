@@ -24,8 +24,10 @@ export type SequenceAssessment =
       kind: 'inferred-club';
       shotId: string;
       club: string;
-      /** Number of labelled same-club shots in this session supporting the inference. */
+      /** Number of labelled same-club shots behind the profile actually used. */
       evidence: number;
+      /** Which profile supplied the evidence. */
+      source: 'session' | 'reference';
       reason: string;
       ruleVersion: typeof SEQUENCE_RULE_VERSION;
     }
@@ -35,6 +37,8 @@ export type SequenceAssessment =
       recordedClub: string;
       suspectedClub: string;
       evidence: number;
+      /** 'strong' blocks (>= MIN_SWITCH_RUN) exclude from benchmarks; 'advisory' shorter blocks are shown but never excluded. */
+      strength: 'strong' | 'advisory';
       reason: string;
       ruleVersion: typeof SEQUENCE_RULE_VERSION;
     }
@@ -45,10 +49,12 @@ export type SequenceAssessment =
       ruleVersion: typeof SEQUENCE_RULE_VERSION;
     };
 
-/** Minimum labelled shots of a club (session or global) to build a profile. */
+/** Minimum labelled shots of a club (session or reference) to build a usable profile. */
 const MIN_PROFILE = 5;
-/** Minimum run length before a labelled run can be a forgotten tablet switch. */
+/** Minimum run length for an exclusion-grade forgotten-switch flag. */
 const MIN_SWITCH_RUN = 8;
+/** Shorter matching blocks are advisory only — never excluded from benchmarks. */
+const MIN_ADVISORY_RUN = 4;
 /** Relative tolerance around a club's median carry/speed for compatibility. */
 const CARRY_TOLERANCE = 0.15;
 const SPEED_TOLERANCE = 0.15;
@@ -75,6 +81,8 @@ function profiles(
     const session = sessionMap.get(shot.sessionId);
     if (!session || session.archived) continue;
     if (shot.review.exclusion.kind !== 'included') continue;
+    // Reviewed mishits and partials never train reference profiles.
+    if (shot.review.contact === 'mishit' || shot.review.intent === 'partial') continue;
     const club = effectiveClub(shot);
     if (isUnknownClub(club)) continue;
     const carry = shot.measurements[carryKey];
@@ -167,10 +175,14 @@ export function assessSequences(
     const referenceProfiles = profiles(windowShots, sessionMap, basis);
     const ordered = [...sessionShots].sort((a, b) => a.rowIndex - b.rowIndex);
     const sessionProfiles = profiles(ordered, sessionMap, basis, sessionId);
+    // The minimum sample is enforced on whichever source actually supplies the
+    // profile — a one-shot reference fallback is never enough.
     const profileFor = (club: string) => {
       const local = sessionProfiles.get(club);
-      if (local && local.n >= MIN_PROFILE) return local;
-      return referenceProfiles.get(club);
+      if (local && local.n >= MIN_PROFILE) return { profile: local, source: 'session' as const };
+      const ref = referenceProfiles.get(club);
+      if (ref && ref.n >= MIN_PROFILE) return { profile: ref, source: 'reference' as const };
+      return null;
     };
 
     for (let i = 0; i < ordered.length; i++) {
@@ -206,12 +218,47 @@ export function assessSequences(
       }
       const scored = candidates
         .map((candidate) => {
-          const profile = profileFor(candidate);
-          return { candidate, profile, distance: profile ? distance(shot, profile, basis) : Number.POSITIVE_INFINITY };
+          const found = profileFor(candidate);
+          return {
+            candidate,
+            found,
+            distance: found ? distance(shot, found.profile, basis) : Number.POSITIVE_INFINITY,
+          };
         })
-        .filter((s) => s.profile && compatible(shot, s.profile!, basis))
+        .filter((s) => s.found && compatible(shot, s.found!.profile, basis))
         .sort((a, b) => a.distance - b.distance);
       if (!scored.length) {
+        // Poor-strike context: when both labelled neighbours agree on one club
+        // and the shot looks like a low-output strike of that club, infer it —
+        // sequence context must apply to mishits too, or reliability estimates
+        // are biased toward well-struck shots.
+        const neighbourClub =
+          prev && next && effectiveClub(prev) === effectiveClub(next)
+            ? effectiveClub(prev)
+            : undefined;
+        const neighbourProfile = neighbourClub ? profileFor(neighbourClub) : null;
+        const carry = shot.measurements[BASES[basis].carry];
+        const speed = shot.measurements[BASES[basis].speed];
+        const lowOutput =
+          neighbourProfile !== null &&
+          ((carry !== null &&
+            carry > 0 &&
+            carry < 0.7 * neighbourProfile.profile.carryMedian) ||
+            (speed !== null &&
+              speed > 0 &&
+              speed < 0.85 * neighbourProfile.profile.speedMedian));
+        if (neighbourClub && neighbourProfile && lowOutput) {
+          out.set(shot.id, {
+            kind: 'inferred-club',
+            shotId: shot.id,
+            club: neighbourClub,
+            evidence: neighbourProfile.profile.n,
+            source: neighbourProfile.source,
+            reason: `Between ${neighbourClub} blocks with measurements of a poor ${neighbourClub} strike (${neighbourProfile.profile.n} labelled in view) — likely a ${neighbourClub} mishit, not a club change.`,
+            ruleVersion: SEQUENCE_RULE_VERSION,
+          });
+          continue;
+        }
         out.set(shot.id, {
           kind: 'abstained',
           shotId: shot.id,
@@ -220,7 +267,8 @@ export function assessSequences(
         });
         continue;
       }
-      if (scored.length > 1 && scored[1]!.distance < scored[0]!.distance / 0.75) {
+      // '<=' so exact ties abstain instead of silently preferring the previous club.
+      if (scored.length > 1 && scored[1]!.distance <= scored[0]!.distance / 0.75) {
         // Two neighbouring clubs both fit and are close — ambiguous transition.
         out.set(shot.id, {
           kind: 'abstained',
@@ -231,13 +279,13 @@ export function assessSequences(
         continue;
       }
       const winner = scored[0]!;
-      const evidence = (sessionProfiles.get(winner.candidate)?.n ?? referenceProfiles.get(winner.candidate)?.n ?? 0);
       out.set(shot.id, {
         kind: 'inferred-club',
         shotId: shot.id,
         club: winner.candidate,
-        evidence,
-        reason: `Surrounded by ${winner.candidate} shots (${evidence} labelled in view) with matching carry and speed.`,
+        evidence: winner.found!.profile.n,
+        source: winner.found!.source,
+        reason: `Surrounded by ${winner.candidate} shots (${winner.found!.profile.n} labelled in ${winner.found!.source === 'session' ? 'this session' : 'the reference window'}) with matching carry and speed.`,
         ruleVersion: SEQUENCE_RULE_VERSION,
       });
     }
@@ -258,47 +306,115 @@ export function assessSequences(
       }
     }
     for (const run of runs) {
-      const own = referenceProfiles.get(run.club);
-      if (!own || own.n < MIN_PROFILE) continue;
       // A forgotten tablet switch shows up as a contiguous sub-block of the
       // labelled run whose measurements match another club, not the label.
       const others = [...referenceProfiles.entries()].filter(
         ([club, profile]) => club !== run.club && clubOrder(club) < 200 && profile.n >= MIN_PROFILE,
       );
+      // Rank all candidate clubs together per shot; a clear winner is required
+      // before any shot is flagged, so alternatives cannot overwrite each other
+      // by iteration order.
+      const best = new Map<
+        string,
+        { candidate: string; distance: number; block: Shot[] }
+      >();
+      // Own reference for the whole run, computed once: the run cannot train
+      // the reference it is compared against, and recomputing per block would
+      // be O(history) per candidate. When the club has no history outside the
+      // run, fall back to excluding just the candidate block.
+      const runIds = new Set(run.shots.map((s) => s.id));
+      const ownRun = profiles(
+        windowShots.filter((s) => !runIds.has(s.id)),
+        sessionMap,
+        basis,
+      ).get(run.club);
       for (const [candidate, profile] of others) {
-        const mask = run.shots.map(
-          (s) => compatible(s, profile, basis) && !compatible(s, own, basis),
-        );
-        // Maximal contiguous blocks of length >= MIN_SWITCH_RUN.
+        const mask = run.shots.map((s) => compatible(s, profile, basis));
+        // Maximal contiguous candidate-compatible blocks.
         let start = -1;
         const blocks: Shot[][] = [];
         for (let i = 0; i <= mask.length; i++) {
           if (i < mask.length && mask[i]) {
             if (start < 0) start = i;
           } else if (start >= 0) {
-            if (i - start >= MIN_SWITCH_RUN) blocks.push(run.shots.slice(start, i));
+            blocks.push(run.shots.slice(start, i));
             start = -1;
           }
         }
         for (const block of blocks) {
-          const ownDistance =
-            block.reduce((sum, s) => sum + distance(s, own, basis), 0) / block.length;
-          const otherDistance =
-            block.reduce((sum, s) => sum + distance(s, profile, basis), 0) / block.length;
-          if (otherDistance < SWITCH_CLOSENESS * ownDistance && otherDistance < 2) {
-            for (const shot of block) {
-              out.set(shot.id, {
-                kind: 'suspected-wrong-club',
-                shotId: shot.id,
-                recordedClub: run.club,
-                suspectedClub: candidate,
-                evidence: block.length,
-                reason: `This block of ${block.length} ${run.club}-labelled shots matches ${candidate} better — possible forgotten club switch. Recorded label kept.`,
-                ruleVersion: SEQUENCE_RULE_VERSION,
-              });
+          const blockIds = new Set(block.map((s) => s.id));
+          const own =
+            ownRun ??
+            profiles(
+              windowShots.filter((s) => !blockIds.has(s.id)),
+              sessionMap,
+              basis,
+            ).get(run.club);
+          if (!own || own.n < MIN_PROFILE) continue;
+          // Split out shots that also fit the recorded club: an overlapping
+          // genuine shot must not drag its whole block out of the suspect set.
+          // Suspects stay contiguous in the original run order.
+          const suspectIdx = block
+            .map((s, i) => (compatible(s, own, basis) ? -1 : i))
+            .filter((i) => i >= 0);
+          const subs: Shot[][] = [];
+          let subStart = -1;
+          let prev = -1;
+          for (let k = 0; k <= suspectIdx.length; k++) {
+            const i = k < suspectIdx.length ? suspectIdx[k]! : -1;
+            if (subStart >= 0 && i === prev + 1) {
+              prev = i;
+              continue;
+            }
+            if (subStart >= 0 && prev - subStart + 1 >= MIN_ADVISORY_RUN)
+              subs.push(block.slice(subStart, prev + 1));
+            if (i >= 0) {
+              subStart = i;
+              prev = i;
+            } else {
+              subStart = -1;
+            }
+          }
+          for (const sub of subs) {
+            const ownDistance =
+              sub.reduce((sum, s) => sum + distance(s, own, basis), 0) / sub.length;
+            const otherDistance =
+              sub.reduce((sum, s) => sum + distance(s, profile, basis), 0) / sub.length;
+            if (!(otherDistance < SWITCH_CLOSENESS * ownDistance && otherDistance < 2)) continue;
+            for (const shot of sub) {
+              const current = best.get(shot.id);
+              if (!current || otherDistance < current.distance)
+                best.set(shot.id, { candidate, distance: otherDistance, block: sub });
             }
           }
         }
+      }
+      // Second-best distances per shot, computed over the same winning block so
+      // tied candidates cannot win on a block-average vs per-shot mismatch.
+      const alternatives = new Map<string, number>();
+      for (const [shotId, b] of best) {
+        for (const [candidate, profile] of others) {
+          if (candidate === b.candidate) continue;
+          const d =
+            b.block.reduce((sum, s) => sum + distance(s, profile, basis), 0) / b.block.length;
+          const cur = alternatives.get(shotId);
+          if (cur === undefined || d < cur) alternatives.set(shotId, d);
+        }
+      }
+      for (const [shotId, b] of best) {
+        const alt = alternatives.get(shotId);
+        if (alt !== undefined && !(b.distance < 0.75 * alt)) continue; // overlapping alternatives
+        const shot = run.shots.find((x) => x.id === shotId)!;
+        out.set(shot.id, {
+          kind: 'suspected-wrong-club',
+          shotId: shot.id,
+          recordedClub: run.club,
+          suspectedClub: b.candidate,
+          evidence: b.block.length,
+          strength: b.block.length >= MIN_SWITCH_RUN ? 'strong' : 'advisory',
+          reason: `This block of ${b.block.length} ${run.club}-labelled shots matches ${b.candidate} better — possible forgotten club switch. Recorded label kept.`,
+          ruleVersion: SEQUENCE_RULE_VERSION,
+        });
       }
     }
   }
