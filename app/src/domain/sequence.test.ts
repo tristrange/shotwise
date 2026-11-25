@@ -142,4 +142,75 @@ describe('sequence-aware club inference (' + SEQUENCE_RULE_VERSION + ')', () => 
     // effectiveClub is 5i (manual), so it is labelled — no inference produced.
     expect(out.get(shots[10]!.id)).toBeUndefined();
   });
+
+  it('is append-stable: later active or archived visits never change earlier results', () => {
+    const early = makeSession({ id: 'early', date: '2026-10-01' });
+    const shots = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          sessionId: early.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 160, speedPremium: 150 },
+        }),
+      ),
+      ...Array.from({ length: 3 }, (_, i) =>
+        makeShot({
+          sessionId: early.id,
+          rowIndex: 11 + i,
+          recordedClub: '?',
+          measurements: { flatCarryPremium: 160, speedPremium: 150 },
+        }),
+      ),
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeShot({
+          sessionId: early.id,
+          rowIndex: 14 + i,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 161, speedPremium: 151 },
+        }),
+      ),
+    ];
+    const before = assessSequences(shots, [early], 'premium-flat');
+    const unknownIds = shots.slice(10, 13).map((s) => s.id);
+    for (const id of unknownIds) {
+      expect(before.get(id)?.kind).toBe('inferred-club');
+    }
+    // A later active visit with a very different 7i distribution.
+    const later = makeSession({ id: 'later', date: '2026-11-16' });
+    const laterShots = Array.from({ length: 10 }, (_, i) =>
+      makeShot({
+        sessionId: later.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 200, speedPremium: 220 },
+      }),
+    );
+    const afterActive = assessSequences([...shots, ...laterShots], [early, later], 'premium-flat');
+    for (const id of unknownIds) expect(afterActive.get(id)).toEqual(before.get(id));
+    // An archived visit 62 days later must not move any window either.
+    const archived = makeSession({ id: 'arch', date: '2026-12-02', archived: true });
+    const archivedShots = Array.from({ length: 10 }, (_, i) =>
+      makeShot({
+        sessionId: archived.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 90, speedPremium: 90 },
+      }),
+    );
+    const afterArchived = assessSequences(
+      [...shots, ...laterShots, ...archivedShots],
+      [early, later, archived],
+      'premium-flat',
+    );
+    for (const id of unknownIds) expect(afterArchived.get(id)).toEqual(before.get(id));
+  });
+
+  it('is invariant under input permutation', () => {
+    const shots = missingLabelBlock(159, 149);
+    const base = assessSequences(shots, [session], 'premium-flat');
+    const shuffled = [...shots].reverse();
+    const out = assessSequences(shuffled, [session], 'premium-flat');
+    for (const s of shots) expect(out.get(s.id)).toEqual(base.get(s.id));
+  });
 });

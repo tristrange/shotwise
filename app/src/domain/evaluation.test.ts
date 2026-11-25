@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { CLASSIFIER_VERSION } from './classify';
+import { SEQUENCE_RULE_VERSION } from './sequence';
 import { classifierScenarios } from './evaluationScenarios';
 import {
   evaluateClassifierScenarios,
@@ -29,8 +31,8 @@ describe('classifier evaluation methodology (roadmap §5.8)', () => {
       'manual-override',
     ]);
     for (const report of reports) {
-      expect(report.classifierVersion).toBe('intent-contact-1');
-      expect(report.ruleVersion).toBe('sequence-1');
+      expect(report.classifierVersion).toBe(CLASSIFIER_VERSION);
+      expect(report.ruleVersion).toBe(SEQUENCE_RULE_VERSION);
       for (const layer of ['automatic', 'resolved'] as const) {
         for (const d of report[layer]) {
           expect(d.eligible).toBeGreaterThan(0);

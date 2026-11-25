@@ -5,7 +5,7 @@ import { assessSequences, SEQUENCE_RULE_VERSION } from './sequence';
 
 /**
  * Classifier evaluation methodology (roadmap §5.8). Assesses the automatic
- * layers (`intent-contact-1`, `sequence-1`) against representative labelled
+ * layers (`intent-contact-2`, `sequence-2`) against representative labelled
  * scenarios — not only shots the algorithm flagged, to avoid selection bias —
  * and reports false positives, false negatives, abstentions and coverage per
  * dimension. Ground truth is supplied explicitly per scenario; manual reviews
