@@ -77,6 +77,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     truth.set('mis-bad-2', { intent: 'full', contact: 'mishit', club: '7i' });
     scenarios.push({
       name: 'mishits',
+      task: 'intent-contact',
       description: 'Weak carry+speed among normal iron shots are labelled mishits.',
       sessions: [early, late],
       shots,
@@ -100,6 +101,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     for (let i = 0; i < 6; i++) truth.set(`pw-part-${i}`, { intent: 'partial', contact: 'typical', club: 'SW' });
     scenarios.push({
       name: 'partial-wedges',
+      task: 'intent-contact',
       description: 'Low-carry wedges are partials, still typically struck.',
       sessions: [early, late],
       shots,
@@ -126,6 +128,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     const truth = truthFor(shots, { club: '7i', intent: 'full', contact: 'typical' });
     scenarios.push({
       name: 'unknown-labels',
+      task: 'missing-label',
       description: 'Unknown labels in a 7i run are inferred as 7i.',
       sessions: [early, late],
       shots,
@@ -152,6 +155,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     for (let i = 0; i < 10; i++) truth.set(`sw-${i}`, { club: '8i', intent: 'full', contact: 'typical' });
     scenarios.push({
       name: 'forgotten-switch',
+      task: 'wrong-label',
       description: 'A 10-shot 9i-labelled block matching 8i is flagged as a suspected wrong club.',
       sessions: [early, late],
       shots,
@@ -178,6 +182,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     for (const shot of shots) truth.set(shot.id, { club: shot.recordedClub, intent: 'full', contact: 'typical' });
     scenarios.push({
       name: 'alternating-clubs',
+      task: 'wrong-label',
       description: 'Alternating 7i/8i shots keep their labels with zero wrong-club flags.',
       sessions: [early, late],
       shots,
@@ -202,6 +207,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     for (const shot of shots) truth.set(shot.id, { club: shot.recordedClub, intent: 'full', contact: 'typical' });
     scenarios.push({
       name: 'sparse-history',
+      task: 'intent-contact',
       description: 'Fewer than 10 earlier shots per club: the classifier abstains.',
       sessions: [only],
       shots,
@@ -222,6 +228,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     const truth = truthFor(shots, { intent: 'full', contact: 'typical', club: 'D' });
     scenarios.push({
       name: 'improving-golfer',
+      task: 'intent-contact',
       description: 'A 40 m carry gain over old history is typical, not a mishit, inside the recent window.',
       sessions: [old, mid, current],
       shots,
@@ -243,6 +250,7 @@ export function classifierScenarios(): ClassifierScenario[] {
     const truth = truthFor(shots, { intent: 'full', contact: 'typical', club: '7i' });
     scenarios.push({
       name: 'manual-override',
+      task: 'intent-contact',
       description: 'The automatic layer may flag it, but the manual review wins in the resolved view.',
       sessions: [early, late],
       shots,

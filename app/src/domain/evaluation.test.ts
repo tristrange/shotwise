@@ -136,4 +136,31 @@ describe('classifier evaluation methodology (roadmap §5.8)', () => {
       expect(evaluateScenario(reversed)).toEqual(evaluateScenario(scenario));
     }
   });
+
+  it('reports abstentions by truth class and end-to-end recall per task', () => {
+    for (const report of reports) {
+      expect(['intent-contact', 'missing-label', 'wrong-label']).toContain(report.task);
+      for (const layer of ['automatic', 'resolved'] as const)
+        for (const d of report[layer]) {
+          // End-to-end recall counts abstained truth shots as misses, so it
+          // can never exceed accuracy on assessed shots.
+          if (d.eligible > 0) {
+            expect(d.recallEndToEnd).not.toBeNull();
+            expect(d.recallEndToEnd!).toBeLessThanOrEqual(d.accuracyOnAssessed ?? 1);
+          }
+          expect(d.abstainedByTruth.reduce((s, a) => s + a.count, 0)).toBe(d.abstained);
+        }
+    }
+    // The sparse-history scenario must show its abstentions attributed to the
+    // truth labels, not swallowed into a single number.
+    const sparse = dimension(byName.get('sparse-history')!, 'contact', 'automatic');
+    expect(sparse.abstained).toBeGreaterThan(0);
+    expect(sparse.abstainedByTruth).toEqual([{ label: 'typical', count: sparse.abstained }]);
+    expect(sparse.recallEndToEnd).toBe(0);
+    // Tasks are reported separately: missing-label and wrong-label scenarios
+    // exist alongside intent-contact.
+    expect(new Set(reports.map((r) => r.task))).toEqual(
+      new Set(['intent-contact', 'missing-label', 'wrong-label']),
+    );
+  });
 });
