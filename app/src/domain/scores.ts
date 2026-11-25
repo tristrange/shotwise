@@ -34,6 +34,14 @@ export type CategoryScoreId =
   | 'directionalControl'
   | 'reliability';
 
+/** Display and iteration order for the four categories. */
+export const CATEGORY_SCORE_ORDER: readonly CategoryScoreId[] = [
+  'distancePotential',
+  'consistency',
+  'directionalControl',
+  'reliability',
+];
+
 export type ScoreUnit = 'm' | 'deg' | 'share';
 
 export type CategoryScoreAux = {
