@@ -25,6 +25,14 @@ describe('normalizeBenchmarkClub', () => {
     expect(normalizeBenchmarkClub('hybrid')).toBe('hybrid');
     expect(normalizeBenchmarkClub('PW')).toBe('pw');
   });
+
+  it('maps recorded numbered wood and hybrid labels to registry keys', () => {
+    expect(normalizeBenchmarkClub('3w')).toBe('3-wood');
+    expect(normalizeBenchmarkClub('5W')).toBe('5-wood');
+    expect(normalizeBenchmarkClub('4h')).toBe('hybrid');
+    expect(normalizeBenchmarkClub('4H')).toBe('hybrid');
+    expect(normalizeBenchmarkClub('hy')).toBe('hybrid');
+  });
 });
 
 describe('benchmark registry hygiene', () => {
@@ -116,6 +124,17 @@ describe('benchmarkReferencesForClub', () => {
   it('returns references for iron labels covered by the registry', () => {
     const refs = benchmarkReferencesForClub('7i');
     expect(refs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+  });
+
+  it('returns references for recorded wood and hybrid labels', () => {
+    for (const label of ['3w', '5w']) {
+      const refs = benchmarkReferencesForClub(label);
+      expect(refs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+      expect(refs.every((r) => r.club.endsWith('-wood'))).toBe(true);
+    }
+    const hybridRefs = benchmarkReferencesForClub('4h');
+    expect(hybridRefs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);
+    expect(hybridRefs.every((r) => r.club === 'hybrid')).toBe(true);
   });
 });
 

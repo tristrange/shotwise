@@ -130,12 +130,18 @@ export const BENCHMARK_SOURCES: readonly BenchmarkSource[] = [
   },
 ];
 
-/** Normalize a recorded club label to a registry key ('D'/'DR' -> 'driver'). */
+/**
+ * Normalize a recorded club label to a registry key: 'D'/'DR'/'1w' ->
+ * 'driver', '3w' -> '3-wood', '4h'/'hybrid' -> 'hybrid', '7i' -> '7i'.
+ */
 export function normalizeBenchmarkClub(club: string): string {
   const value = club.trim().toLowerCase();
   if (['d', 'dr', 'driver', '1w'].includes(value)) return 'driver';
-  if (/^\d?w$/.test(value)) return 'wood';
-  if (/^hybrid$|^hy$/.test(value)) return 'hybrid';
+  const wood = value.match(/^(\d+)w$/);
+  if (wood) return `${wood[1]}-wood`;
+  if (/^(hybrid|hy)$/.test(value)) return 'hybrid';
+  const hybrid = value.match(/^(\d+)h$/);
+  if (hybrid) return 'hybrid';
   const iron = value.match(/^(\d+)i$/);
   if (iron) return `${iron[1]}i`;
   if (value === 'pw') return 'pw';
