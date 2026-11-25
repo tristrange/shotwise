@@ -1106,3 +1106,116 @@ Two points the owner wants emphasized when working from this roadmap:
 2. **Treat club scoring as the final milestone, not the first analytics feature.** Once automatic classifications, robust strong-strike estimates, reliable consistency measurements and suitable external benchmarks exist, scores will rest on a much stronger foundation.
 
 Intended working style: hand the agent the entire roadmap, have it compare the roadmap against the current repository and propose the first few PRs. Then use a separate targeted code review (e.g. Codex) for the more consequential changes — particularly classification, database migrations and scoring.
+
+---
+
+# 13. vNext completion audit — 2026-11-25
+
+Targeted audit of merged PRs #52–#74 against this roadmap. A merged PR number is not treated as a completed objective; status below reflects the implemented behaviour, verified against the code.
+
+## 13.1 Fully delivered
+
+- §2.1 PWA installability (#54), §2.2 mobile hero fit (#55), §2.3 five-tab bottom navigation (#56) — Phase 1 complete.
+- §3.1 Expandable club summaries on Overview (#57).
+- Phase 3 classification foundation: precedence audit + ADR-0001 (#59), automatic intent/contact assessment `intent-contact-1` (#60), sequence-aware club inference `sequence-1` (#61), analytics consuming resolved assessments so review is optional (#62), labelled-scenario evaluation methodology (#63).
+- Phase 4: strong-strike carry P80 / ADR-0002 (#64), All / Typical / Strong-strike controls (#65), potential shown alongside reliability from the broader cohort (#66).
+- §7.2 benchmark research with licensing verdicts (#67) and the source-aware link-only benchmark model + club-profile link-outs (#68, #69).
+- Phase 6 definitions: category scores `category-scores-1` + ADR-0003 (#70), category breakdown UI (#71), no-composite decision + within-bag standings + ADR-0004 (#72).
+- Personal reference values: persistence + migration (#73), editing UI in club profiles (#74). Storage and display only — see 13.2.
+
+## 13.2 Partially implemented
+
+- §8 club ratings: categories exist as **raw metrics** with within-bag standings (ADR-0004). No normalized 0–100 category ratings, no provisional composite. Within-bag standings on raw metrics are confounded by club type: raw carry ranks the driver first by construction; raw carry IQR in metres favours shorter clubs. ADR-0004 should be revisited (normalization, reference-relative potential, relative variability, documented weights) now that personal reference values exist — see 13.5.
+- §7.5 personal benchmark comparisons: reference values are persisted and displayed, but there is no comparison (typical vs reference, strong-strike vs reference, absolute difference, % of reference, visual bars), and reference records carry no measurement-basis/provenance metadata (`userReferenceValueSchema` has only metric carry|total, valueM, note). Not yet usable by the distance-potential rating.
+- §7.3–7.5 external numerical benchmarks: link-only registry only. No embedded numerical dataset; see 13.3.
+- §5.3 classifier signals: `classify.ts` uses carry and ball speed only. Launch angle, apex, carry-to-total, target and sequence signals are not used; a severe low-launch mishit with retained ball speed is classified `typical` (mishit requires carry **and** speed below thresholds).
+- §3.2 / §5.2 PW handling: PW participates in iron-style analytics (#58), but intent for PW is always `full` when unresolved — partial PW shots are not distinguished and can be flagged as mishits.
+- §5.4 sequence inference: implemented, but with correctness issues — see 13.4.
+- §5.7/§11 evaluation: synthetic labelled scenarios only; no evaluation on real Inrange exports yet.
+- Phase 2 PR 6 (incremental visual cleanup of Overview and club details): not performed as a milestone; Overview and profiles still risk becoming text-heavy as analytics are added.
+
+## 13.3 Deferred
+
+- Numerical external benchmark integration (§7): every researched source is link-only under its terms (docs/external-benchmark-sources.md); no written license exists. Deferred until a licensable, measurement-compatible source is found; personal reference values are the functional alternative. Do not copy restricted datasets.
+- Composite 0–100 overall club score: declined by ADR-0004 pending defensible normalization. To be re-proposed as a new ADR (provisional composite with documented weights) once reference-relative normalization exists; not marked complete.
+- Handicap-equivalent ratings: unsupported by design (§7.5).
+
+## 13.4 Known limitations and outstanding correctness issues
+
+Reconciled audit of PRs #52–#74 plus an independent Codex review (2026-11-25); every item verified against the merged code.
+
+1. **Manual club decisions can still be excluded.** `suspectedWrongClub` is set regardless of a manual confirm/correct, and club-scoped cohorts drop such shots; the Review badge is suppressed on reviewed rows (`assessment.ts:141`, `analytics.ts:197`, `ShotReview.tsx:858`).
+2. **Historical inference is not append-stable.** The sequence window is anchored to the latest session date (including archived sessions), so adding a later import or archive can remove or change earlier inferences; profiles are pooled across the whole window, so later shots influence earlier ones (`sequence.ts:137-142`, `sequence.ts:63`).
+3. **Sequence references can be contaminated and self-training.** Profiles include mishits, partials and wrong-label blocks; a suspect switch block contributes to its own reference; alternative candidates overwrite each other in iteration order (`sequence.ts:63`, `sequence.ts:232-280`).
+4. **Evidence minima are inconsistently enforced in sequence inference.** A global-profile fallback can rest on one labelled shot; exact distance ties resolve to the previous club; the reported evidence count can name the local sample while the global profile supplied the evidence (`sequence.ts:154-186`).
+5. **Intent and contact are coupled through carry.** Partial wedges always get `typical` contact; PW is always assumed full and a short PW can be flagged `mishit`; the mishit rule needs both low carry and low speed, so low-launch strikes with retained ball speed pass as `typical`; launch, apex, carry-to-total, target and sequence signals are unused (`classify.ts:144-192`).
+6. **Inferred clubs get no intent/contact assessment**, and an unresolved unknown club passes `isFullSwingResolved` (`classify.ts:56-161`, `assessment.ts:106`).
+7. **Baseline chronology is not total-ordered.** Same-date sessions tie at the 50-shot cap (input-order dependent) and earlier same-day visits are discarded (`classify.ts:68-105`).
+8. **Club-benchmark eligibility differs across screens.** Progress, wedge analysis and Overview club figures can include suspected-wrong-club rows that club-scoped views, recap, gapping and profiles exclude (`progress.ts:12`, `wedgePractice.ts:61`, `Analysis.tsx:72`).
+9. **P80 is not invariant across performance modes.** Gapping recomputes P80 on the strong-filtered subset while Clubs uses the full eligible cohort; the strong view is labelled "Typical carry" (`analytics.ts:546-573`, `ClubGaps.tsx:80`).
+10. **Cohort contract inconsistencies.** "Typical" includes partial shots with typical contact in Overview/Progress/Explorer, while Gapping excludes partials and mishits even in All mode; Hide-likely-mishits stays active but hidden in Strong mode; switching basis reclassifies shots while Review badges are always premium-flat (`analytics.ts:174`, `analytics.ts:507`, `Analysis.tsx:91`, `ShotReview.tsx:70`).
+11. **Reliability denominators mix manual and resolved counts** across recap/compare/scores; the `reviewed` cohort name accepts fully automatic classifications; an automatically flagged best shot is labelled "confirmed mishit" (`analytics.ts:252`, `recap.ts:311`, `compare.ts:265`, `scores.ts:226`, `ClubProfiles.tsx:530`).
+12. **Potential reporting hides weak evidence.** `missing` is always zero in the strong-strike population, zero carries count as measured, `reliable` only means n ≥ 10, and a single unreviewed outlier can set the personal best (`potential.ts:61`, `clubProfiles.ts:221`).
+13. **Stale reference delete succeeds.** Delete takes only the ID — no expected revision — through UI, repository and RPC (`ClubProfiles.tsx:624`, migration `20261126090000_user_reference_values.sql`).
+14. **Write/restore boundary mismatch.** Restore enforces ≤1000 reference rows but save does not; DB validation accepts `unknown` club labels the form rejects; the Settings emptiness check omits references (migration, `App.tsx:556`).
+15. **Rollout skew risk.** The client unconditionally reads `userReferenceValues` in the snapshot, so it cannot load against a pre-migration RPC, while GitHub Pages deploys independently of the hosted Supabase migration (`snapshot.ts:17`, `.github/workflows/ci.yml`).
+16. **Evaluation metrics can conceal misses.** Abstentions are not counted as errors and club accuracy credits unchanged recorded labels; synthetic fixtures largely mirror the decision rules (`evaluation.ts:81-156`).
+17. **Cold assessment is O(n²)** (per-shot full-history scan), the resolve cache holds one basis, Review runs both classifiers separately, and Progress re-scans the cohort per club/session (`classify.ts:69`, `assessment.ts:119`, `ShotReview.tsx:70`, `progress.ts:26`).
+18. **Standings rank raw metrics**, confounded by club type: raw carry ranks the driver first by construction; raw IQR in metres favours short clubs (`standings.ts:28`).
+19. **Reference records lack basis/type/provenance metadata**, are displayed on every basis, and no comparison is computed yet (`model.ts:177-191`, `ClubProfiles.tsx:198`).
+20. **Real-world classifier accuracy is unevaluated**; synthetic scenarios do not establish it.
+
+## 13.5 Remaining implementation work (consolidated plan, 2026-11-25)
+
+Priorities follow the owner's direction: correctness and statistical reliability before new scoring. Small, independently reviewable PRs; no implementation starts until the owner approves this plan.
+
+### Phase A — correctness and data integrity (before any new scoring)
+
+- **A1 Manual precedence over suspicion** — a manually confirmed/corrected club clears automatic `suspectedWrongClub` for eligibility (observation kept for diagnostics); Review badge explains reviewed-but-flagged rows. Tests: confirm and correct through the actual club cohort.
+- **A2 Append-stable sequence inference (`sequence-2`)** — per-visit anchored reference windows; archived sessions must not move the window anchor; later visits excluded from earlier visits' references; total-ordered chronology (session id tiebreak) at the baseline cap. Tests: append-future invariance, input-permutation invariance, exact ties.
+- **A3 Classifier signals and independence (`intent-contact-2`)** — decouple intent from contact; low-output (short carry + low speed) signal; launch/apex/carry-to-total corroboration where measured; target evidence only when trustworthy; PW partial detection without assuming all PW full; resolve club identity (manual, then provisional sequence inference) before intent/contact assessment; unknown clubs never pass the full-swing predicate. Tests: paired partial / partial-mishit / low-flight-retained-speed / missing-input cases.
+- **A4 Sequence evidence quality (`sequence-2`)** — minimum sample enforced on whichever profile source is used; separation margin handling exact ties; evidence count reports the actual source; candidate blocks excluded from their own reference; reviewed mishits/partials excluded from profiles; alternatives ranked together with abstention on overlap; shorter switches advisory, not exclusionary.
+- **A5 One club-benchmark eligibility rule** — shared predicate applied before the Recent cap across Overview, Progress, wedge analysis, recap, compare, gapping, explorer and profiles; suspected rows stay in session totals with a reason. Test: one fixture asserting contributing shot IDs per screen.
+- **A6 One P80** — P80 computed once per window/visit from the untrimmed eligible cohort, invariant under performance mode; strong-view labels named explicitly. Tests: P80 equality across modes and visit scopes.
+- **A7 Cohort contract and filter visibility** — separate descriptive shot views from full-swing benchmark populations; every active filter discoverable (no hidden Hide-mishits in Strong mode); declared assessment-basis policy so a display basis switch does not silently reclassify; Review shows the basis used.
+- **A8 Reliability and evidence reporting** — one derived full-swing population; manual/automatic/unassessed counts reconcile across recap, compare and category scores; rates named by provenance; mishit rate shown with a missingness sensitivity range; potential exposes measured/missing/zero/uncertain-contact/assumed-intent/provisional-club counts; `reliable` renamed to sample sufficiency; isolated suspect maxima qualified in personal best.
+- **A9 Reference-value persistence fixes** — revision-checked delete through UI, repository, RPC and a backward-compatible migration; align write/parse/restore limits (incl. the 1000-row bound); reject `unknown` labels in DB validation; include references in the Settings emptiness check. DB tests: save-then-stale-delete, boundary round trip, reference-only account.
+- **A10 Rollout compatibility** — database-first release order documented in `docs/database.md`; tolerant snapshot load (or versioned table list) so old clients keep working; RPC contract smoke test in CI.
+- **A11 Measured performance pass** — index chronological evidence by club and visit; bounded baselines; walk each unknown run once; multi-basis resolve cache; group Progress/profile inputs once per query. Test: identical documented results and paired cold/warm timings at fixed sizes.
+
+### Phase B — evaluation (after A3/A4 land)
+
+- **B1 Evaluation contract** — abstentions reported by truth class; end-to-end recall over labelled positives counting abstained positives as misses; missing-label inference, wrong-label detection and alternative identification scored separately against a recorded-label baseline; permutation and future-append invariance tests.
+- **B2 Real-world pilot harness** — opt-in, local-only: block-level practice capture, randomized labelled sample across flagged/unflagged/abstained rows with an explicit unsure option, challenge blocks (low flight, partial PW, equipment change, alternating clubs, masked labels), whole visits held out for threshold checks, aggregate-only reports; raw exports never committed. Reports coverage, false positives, false negatives and abstentions without overclaiming.
+
+### Phase C — personal comparisons and ratings (after A and B)
+
+- **C1 Reference compatibility metadata** — backward-compatible migration adding measurement basis, metric, reference type (goal vs observed vs historical personal potential), statistic (median/P80/…), source, date and optional equipment id; legacy rows stay displayable with unknown compatibility; comparison eligibility matrix tests. The three reference concepts (external benchmark / personal goal / automatic historical potential, §13.6) must be visually distinguished and never mixed silently.
+- **C2 Personal reference comparisons** — typical and strong-strike carry vs compatible reference, absolute difference, % of reference, compact bars; carry↔carry / total↔total and basis-compatible gating only. Comparisons must remain optional; analytics are useful with no reference configured.
+- **C3 Normalized ratings (new ADR-0005, then `category-scores-2`)** — target-relative category scores on a common 0–100 scale (P80/reference capped at target, measured distance still shown; IQR/median relative variability against declared spread tolerances; directional control vs a declared corridor with launch-direction error separate, curvature never treated as dispersion; mishit rate vs declared tolerances with coverage and sensitivity range), provisional composite with the owner-approved weights 20/25/30/25 as versioned constants, progressive evidence levels per §13.6 decision 5 (no hard 3-visit gate; leave-one-visit-out sensitivity at the top level), missing categories withheld with the composite suppressed or flagged when the category set differs materially. Replace raw-metric standings per decision 2. **Gate: the owner reviews the proposed normalization functions, tolerance anchors, missing-data policy and illustrative scores for several clubs before implementation.**
+
+### Phase D — deferred and process
+
+- **D1 External numerical benchmarks** — independent re-verification of licensing conclusions (copyrighted presentation vs published aggregate facts vs contractual restrictions); unless a written license exists, §7 numerical comparison stays formally deferred with link-only references and personal references as the alternative. Link-only is a reference resource, not the completed benchmarking feature; the limitation must be documented explicitly if numerical comparison stays blocked.
+- **D2 Visual simplification (roadmap PR 6), split** — (a) early visual cleanup of existing pages and club profiles, independent of classification/scoring; (b) comparison/rating visualizations integrated as C2/C3 land: compact metric grids, comparison bars, category-score breakdowns, carry distribution plots, sparklines, contextual help behind disclosure, mobile-first pass.
+
+## 13.6 Owner product decisions — 2026-11-25
+
+Approved after reviewing the consolidated plan and the independent Codex review. These decisions govern implementation.
+
+1. **Composite club score.** ADR-0004 is reopened through a new ADR-0005. The product wants an overall club performance rating plus four category ratings on a common 0–100 scale — a designed performance index, not a validated golf-skill or handicap measure. Approved provisional weights, as versioned methodology constants: distance potential 20%, consistency 25%, directional control 30%, reliability 25%. Normalization functions and tolerance anchors must be proposed for owner review before C3 is implemented, and must account for the different roles and natural distances of different clubs. Mixed units are not a reason to abandon the composite. No external population percentiles, no handicap equivalents.
+2. **Raw standings.** Remove misleading raw-metric standings (especially raw-carry distance and absolute-carry-IQR rankings) once normalized ratings exist; retain the underlying raw measurements. A longer club must not automatically score better; a shorter club must not automatically win consistency.
+3. **Assessment basis.** A canonical classification basis independent of the selected display basis. Prefer directly measured range-ball data over premium-ball estimates where appropriate, with a documented deterministic per-shot missing-measurement policy. Changing the display basis must never silently alter club identity, intent or contact classification.
+4. **Rollout policy.** Database-first release discipline **and** client/database version compatibility (both).
+5. **Progressive evidence levels, not a hard visit gate.** <10 eligible shots: raw measurements, usually no numerical rating. 10–19: early provisional estimates. 20–29: more informative provisional ratings. 30+ shots across ≥3 visits: better-supported ratings. Categories may have different minimums where justified; multiple visits strengthen evidence rather than block early ratings (40 balls with a new club in one session is useful). Sample sufficiency is never presented as statistical validation.
+6. **Directional control.** Corridor-based / lateral-error measures where the export supports them, accounting for club role, shot distance and measurement compatibility. Launch-direction control is shown separately when finishing-position data is unavailable — never silently substituted as equivalent. Curvature alone is never landing dispersion.
+
+**Purpose of ratings.** Help the golfer see which clubs they perform well with, which to practise more, which aspects need work, whether they have distance potential but poor reliability, and whether they underperform relative to reasonable expectations. Overall score displayed on Overview beside each club's main statistics; tapping the club/score reveals the four category ratings as compact bars; methodology on demand only.
+
+**Benchmarks stay optional.** Three reference concepts, clearly distinguished: (1) compatible external golfer benchmarks when available; (2) user-defined personal goals/references; (3) automatically derived historical personal potential (shows attainment of previously demonstrated ability, not comparison with other golfers). Consistency, direction and reliability ratings must be useful without any external benchmark or manually entered target. Provisional composites with missing dimensions must show coverage/weighting and must not be ranked against composites with materially different category sets. Personal references are never mandatory setup. External numerical benchmarking remains an active objective.
+
+**Classification.** Manual review stays optional; useful descriptive analytics from the first imported session; abstention must not make the app unusable for new golfers. Club identity, intent and contact stay independent. Sequence context applies to poor shots too — a very short mishit between confirmed 7i blocks may still be a 7i shot; never infer identities only for well-struck shots (that would bias reliability estimates). Chronological sorting must be deterministic without treating arbitrary session-id order as real-world chronology. Real-world evaluation stays lightweight, opt-in and independent of normal use. Distinguish synthetic test correctness, real-world evaluation results and unvalidated product assumptions.
+
+**Visuals.** Mobile-first; compact club cards; expandable metrics; minimal permanently visible text; show the result first, explain on request; no unnecessary dashboards or configuration steps. Reevaluate whether Review needs a permanent primary tab once automatic classification is reliable enough.
+
+**Approval scope.** A9, A10 and A1–A4 are approved to start in dependency order, then A5–A8 and A11 in small PRs. C3 requires the owner to review proposed normalization functions, tolerance anchors, missing-data policy and illustrative scores for several clubs first. Classification and scoring methodology keep separate versioning. Guiding direction: useful and intuitive, appropriately qualified analytics for a normal golfer — not maximum statistical conservatism.
