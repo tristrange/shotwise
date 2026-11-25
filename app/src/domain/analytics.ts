@@ -595,10 +595,12 @@ export function clubGaps(
     const club = resolvedClub(r);
     groups.set(club, [...(groups.get(club) ?? []), shot]);
   }
-  // P80 (distance potential) is computed once per club from the mode-invariant
-  // eligible cohort — never from the strong-filtered subset — so the reported
-  // potential does not change with the selected performance mode (ADR-0002).
+  // P80 (distance potential) and the spread band (P10–P90) are computed once
+  // per club from the mode-invariant eligible cohort — never from the
+  // strong-filtered subset — so neither changes with the selected performance
+  // mode (ADR-0002). The median still follows the selected mode.
   const potentialCarries = new Map<string, number[]>();
+  const bandGroups = new Map<string, Shot[]>();
   for (const shot of eligibleShots(data, basis, {
     ...query,
     contact: 'all',
@@ -610,19 +612,21 @@ export function clubGaps(
     if (carry === null) continue;
     const club = resolvedClub(r);
     potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry]);
+    bandGroups.set(club, [...(bandGroups.get(club) ?? []), shot]);
   }
 
   const rows: ClubGap[] = [...groups]
     .map(([club, shots]) => {
       const stats = metricStats(shots, key);
+      const band = metricStats(bandGroups.get(club) ?? [], key);
       return {
         club,
         n: stats.n,
         median: stats.median ?? 0,
-        low: stats.p10,
-        high: stats.p90,
+        low: band.p10,
+        high: band.p90,
         potential: potentialCarry(potentialCarries.get(club) ?? []),
-        reliable: stats.n >= MIN_GAP_SAMPLES,
+        reliable: band.n >= MIN_GAP_SAMPLES,
         gap: null,
         flag: null,
       };

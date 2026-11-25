@@ -54,6 +54,41 @@ describe('gapping analysis windows', () => {
     expect(practiceInsights(data, 'premium-flat', allTimeQuery)).toEqual([]);
   });
 
+  it('reads the gapping spread band from the broader cohort in strong-strike mode', () => {
+    const session = makeSession({ date: '2026-11-16' });
+    // 20 typical carries 100..119 plus 4 strong 160s: in strong mode the
+    // median follows the strong subset, but the P10-P90 band must still
+    // describe the broader eligible population.
+    const shots = [
+      ...Array.from({ length: 20 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 100 + i, speedPremium: 150 },
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: 30 + i,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 160, speedPremium: 210 },
+        }),
+      ),
+    ];
+    const data = { ...emptyDataset, sessions: [session], shots };
+    const strong = clubGaps(data, 'premium-flat', {
+      ...allTimeQuery,
+      contact: 'strong',
+    })[0]!;
+    const all = clubGaps(data, 'premium-flat', allTimeQuery)[0]!;
+    expect(strong.median).toBe(160); // strong-strike median
+    expect(strong.low).toBe(all.low); // broader band, mode-invariant
+    expect(strong.high).toBe(all.high);
+    expect(strong.potential).toBe(all.potential);
+  });
+
   it('applies review filters after the cutoff date without backfilling older shots', () => {
     const sessions = ['2026-11-16', '2026-11-10', '2026-10-01'].map((date) =>
       makeSession({ date }),
