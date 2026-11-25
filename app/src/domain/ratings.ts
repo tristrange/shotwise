@@ -448,22 +448,28 @@ export function clubRating(
   const reliabilityShots = filterCohort(selected, resolved, 'reliability');
   const broader = filterCohort(selected, resolved, 'broader');
   const key = BASES[RATING_BASIS].carry;
-  const visits = new Set(selected.map((s) => s.sessionId)).size;
+  // Zero or negative carry is a missing measurement, never a distance
+  // (ADR-0005 §6): nonpositive carries are excluded from every carry
+  // statistic, while the shots stay in the reliability and lateral
+  // populations. Each category counts the visits of its OWN contributing
+  // population, so partial-only sessions never strengthen another
+  // category's evidence.
+  const visitsOf = (shots: { sessionId: string }[]) =>
+    new Set(shots.map((s) => s.sessionId)).size;
 
   // Distance potential: strong-strike (broader) population, positive carries only.
-  const strongCarries = broader.flatMap((s) => {
-    const v = s.measurements[key];
-    return v !== null && v > 0 ? [v] : [];
-  });
+  const strongShots = broader.filter((s) => (s.measurements[key] ?? 0) > 0);
+  const strongCarries = strongShots.map((s) => s.measurements[key] as number);
   const p80 = potentialCarry(strongCarries);
   const reference = resolveRatingReference(club, data, query, references);
+  const distanceVisits = visitsOf(strongShots);
   const distance: ClubRating['distancePotential'] = {
     score: distanceScore(p80, reference?.valueM ?? null),
     p80,
     reference,
     n: strongCarries.length,
-    visits,
-    evidence: evidenceLevel(strongCarries.length, visits),
+    visits: distanceVisits,
+    evidence: evidenceLevel(strongCarries.length, distanceVisits),
     note:
       p80 === null
         ? `Needs ${MIN_RATING_SAMPLES.distancePotential} measured carries on the ${BASES[RATING_BASIS].label} rating basis`
@@ -472,14 +478,18 @@ export function clubRating(
           : null,
   };
 
-  // Consistency: full-swing population (mishits included), relative IQR.
-  const consistencyShots = reliabilityShots;
+  // Consistency: full-swing population (mishits included), relative IQR over
+  // positive measured carries only.
+  const consistencyShots = reliabilityShots.filter(
+    (s) => (s.measurements[key] ?? 0) > 0,
+  );
   const carryStats = metricStats(consistencyShots, key);
   const relIqr =
     carryStats.iqr !== null && carryStats.median !== null && carryStats.median > 0
       ? carryStats.iqr / carryStats.median
       : null;
   const consistencyN = carryStats.n;
+  const consistencyVisits = visitsOf(consistencyShots);
   const consistency: ClubRating['consistency'] = {
     score:
       consistencyN >= MIN_RATING_SAMPLES.consistency ? consistencyScore(relIqr, role) : null,
@@ -487,8 +497,8 @@ export function clubRating(
     median: carryStats.median,
     relIqr,
     n: consistencyN,
-    visits,
-    evidence: evidenceLevel(consistencyN, visits),
+    visits: consistencyVisits,
+    evidence: evidenceLevel(consistencyN, consistencyVisits),
     note:
       carryStats.iqr === null
         ? 'Needs 4 measured carries for a raw IQR'
@@ -498,10 +508,11 @@ export function clubRating(
   };
 
   // Directional control: P80 |fromCentre| / median carry; launch is display-only.
-  const latValues = consistencyShots.flatMap((s) =>
-    s.measurements.fromCentre === null ? [] : [s.measurements.fromCentre],
-  );
-  const launchValues = consistencyShots.flatMap((s) =>
+  // The lateral population keeps shots regardless of carry (a zero-carry
+  // placeholder is missing distance, not missing direction).
+  const latShots = reliabilityShots.filter((s) => s.measurements.fromCentre !== null);
+  const latValues = latShots.map((s) => s.measurements.fromCentre as number);
+  const launchValues = reliabilityShots.flatMap((s) =>
     s.measurements.launchDirection === null ? [] : [s.measurements.launchDirection],
   );
   const medianCarry = carryStats.median;
@@ -518,6 +529,7 @@ export function clubRating(
       : null;
   const launchP80 = quantile(launchValues.map(Math.abs), 0.8);
   const directionN = latValues.length;
+  const directionVisits = visitsOf(latShots);
   const directionalControl: ClubRating['directionalControl'] = {
     score:
       directionN >= MIN_RATING_SAMPLES.directionalControl
@@ -531,8 +543,8 @@ export function clubRating(
     launchScore: launchP80 === null ? null : launchDirectionScore(launchP80),
     launchP80Deg: launchP80,
     n: directionN,
-    visits,
-    evidence: evidenceLevel(directionN, visits),
+    visits: directionVisits,
+    evidence: evidenceLevel(directionN, directionVisits),
     note: latValues.length
       ? null
       : launchValues.length
@@ -543,13 +555,16 @@ export function clubRating(
   // Reliability: assessed full swings; sampling + missingness uncertainty kept distinct.
   let assessed = 0;
   let mishits = 0;
+  const assessedShots: typeof reliabilityShots = [];
   for (const shot of reliabilityShots) {
     const contact = resolved.get(shot.id)?.contact;
     if (contact === undefined || contact === 'uncertain') continue;
     assessed += 1;
+    assessedShots.push(shot);
     if (contact === 'mishit') mishits += 1;
   }
   const unassessed = reliabilityShots.length - assessed;
+  const reliabilityVisits = visitsOf(assessedShots);
   const rate = assessed ? mishits / assessed : null;
   const wilson = assessed ? wilsonInterval(mishits, assessed) : null;
   // Missingness sensitivity over the FULL-swing population: the assessed
@@ -572,8 +587,8 @@ export function clubRating(
     wilson,
     sensitivity,
     n: assessed,
-    visits,
-    evidence: evidenceLevel(assessed, visits),
+    visits: reliabilityVisits,
+    evidence: evidenceLevel(assessed, reliabilityVisits),
     note:
       assessed < MIN_RATING_SAMPLES.reliability
         ? `Needs ${MIN_RATING_SAMPLES.reliability} assessed full swings`

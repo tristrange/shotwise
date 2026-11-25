@@ -377,6 +377,79 @@ describe('clubRating on the fixed premium-flat rating basis', () => {
     expect(after).toBe(before); // the new current-window session is excluded
   });
 
+  it('zero/negative carries are missing measurements, never distances (ADR-0005 §6)', () => {
+    // Reviewer case: 9 positive carries + 1 zero placeholder must NOT satisfy
+    // the 10-measurement gate.
+    const data = clubDataset({
+      sessions: [{ date: TODAY, count: 10, base: 140 }],
+      fromCentre: [3],
+      launchDirection: [2],
+    });
+    data.shots[3].measurements.flatCarryPremium = 0;
+    const r = clubRating(data, query, '7i', [ref()])!;
+    expect(r.consistency.n).toBe(9);
+    expect(r.consistency.score).toBeNull();
+    expect(r.distancePotential.n).toBe(9);
+    expect(r.distancePotential.p80).toBeNull(); // potentialCarry needs 10 measured
+    // ...but the shot still counts in the reliability and lateral populations.
+    expect(r.reliability.assessed + r.reliability.unassessed).toBe(10);
+    expect(r.directionalControl.n).toBe(10);
+  });
+
+  it('zero carries do not distort the median/IQR or the direction denominator', () => {
+    const data = clubDataset({
+      sessions: [{ date: TODAY, count: 12, base: 140 }],
+      fromCentre: [3],
+      launchDirection: [2],
+    });
+    data.shots[0].measurements.flatCarryPremium = 0;
+    const r = clubRating(data, query, '7i', [ref()])!;
+    expect(r.consistency.n).toBe(11);
+    expect(r.consistency.median!).toBeGreaterThan(100); // not dragged toward 0
+    expect(r.consistency.score).not.toBeNull();
+  });
+
+  it('evidence levels use each category’s own contributing visits, not the whole selection', () => {
+    // 30 eligible full swings from ONE session, plus partial-only shots in two
+    // other recent sessions: categories must stay provisional-high-sample,
+    // not "supported".
+    const data = structuredClone(emptyDataset);
+    const full = makeSession({ date: TODAY });
+    const partialA = makeSession({ date: '2026-11-15' });
+    const partialB = makeSession({ date: '2026-11-05' });
+    data.sessions.push(full, partialA, partialB);
+    for (let i = 0; i < 30; i++) {
+      data.shots.push(
+        makeShot({
+          sessionId: full.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 135 + (i % 9), fromCentre: 3, launchDirection: 2 },
+          review: { intent: 'full', contact: 'typical' },
+        }),
+      );
+    }
+    for (const s of [partialA, partialB]) {
+      for (let i = 0; i < 5; i++) {
+        data.shots.push(
+          makeShot({
+            sessionId: s.id,
+            rowIndex: i + 1,
+            recordedClub: '7i',
+            measurements: { flatCarryPremium: 60, fromCentre: 2, launchDirection: 1 },
+            review: { intent: 'partial', contact: 'typical' },
+          }),
+        );
+      }
+    }
+    const r = clubRating(data, query, '7i', [ref()])!;
+    expect(r.consistency.n).toBe(30);
+    expect(r.consistency.visits).toBe(1);
+    expect(r.consistency.evidence).toBe('provisional-high-sample');
+    expect(r.reliability.evidence).toBe('provisional-high-sample');
+    expect(r.distancePotential.evidence).toBe('provisional-high-sample');
+  });
+
   it('clubRatings covers every club in bag order and never reads a display basis', () => {
     const data = clubDataset({
       sessions: [{ date: TODAY, count: 12, base: 140 }],
