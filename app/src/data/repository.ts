@@ -96,8 +96,8 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
             .parse(userReferenceValueSaveInputSchema.parse(input)),
         }),
       ),
-    deleteUserReferenceValue: async (id) => {
-      await rpc('delete_reference_value', { p_id: id });
+    deleteUserReferenceValue: async (id, expectedRevision) => {
+      await rpc('delete_reference_value', { p_id: id, p_revision: expectedRevision });
     },
     restore: async (dataset) => {
       await rpc('restore_backup', {

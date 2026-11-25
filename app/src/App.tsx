@@ -559,7 +559,8 @@ function Backup({
     data.imports.length === 0 &&
     data.events.length === 0 &&
     data.equipment.length === 0 &&
-    data.equipmentAssignments.length === 0;
+    data.equipmentAssignments.length === 0 &&
+    data.userReferenceValues.length === 0;
   return (
     <>
       <section className="panel">

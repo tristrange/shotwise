@@ -254,7 +254,10 @@ export type Database = {
         Returns: Json;
       };
       dataset_version: { Args: Record<PropertyKey, never>; Returns: number };
-      delete_reference_value: { Args: { p_id: string }; Returns: undefined };
+      delete_reference_value: {
+        Args: { p_id: string; p_revision: number };
+        Returns: undefined;
+      };
       restore_backup: { Args: { p_dataset: Json }; Returns: undefined };
       save_equipment: { Args: { p_equipment: Json }; Returns: Json };
       save_reference_value: { Args: { p_value: Json }; Returns: Json };

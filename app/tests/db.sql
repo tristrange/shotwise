@@ -298,16 +298,61 @@ do $$ declare v0 bigint; r jsonb; rev integer; begin
  if jsonb_array_length(public.dataset_page('userReferenceValues',0,100))<>3 then raise exception 'reference count'; end if;
  if (public.dataset_page('userReferenceValues',0,1)||public.dataset_page('userReferenceValues',1,1)||public.dataset_page('userReferenceValues',2,1)) is distinct from public.dataset_page('userReferenceValues',0,100) then raise exception 'reference paging not deterministic'; end if;
  v0:=public.dataset_version();
- perform public.delete_reference_value((r->>'id')::uuid);
+ perform public.delete_reference_value((r->>'id')::uuid,(r->>'revision')::integer);
  if public.dataset_version()<>v0+1 then raise exception 'reference delete version'; end if;
  if jsonb_array_length(public.dataset_page('userReferenceValues',0,100))<>2 then raise exception 'reference delete count'; end if;
- perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid)',r->>'id'),'Reference value conflict');
+ perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid,%s)',r->>'id',(r->>'revision')::integer),'Reference value conflict');
 end $$;
+
+-- A9: delete requires the expected revision — a stale tab cannot remove a newer edit.
+do $$ declare v0 bigint; r jsonb; rev integer; begin
+ r:=public.save_reference_value(jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000010','club','5i','metric','carry','valueM',135,'note',null,'revision',null));
+ rev:=(r->>'revision')::integer;
+ r:=public.save_reference_value(jsonb_set(jsonb_set(r,'{valueM}','138'),'{revision}',to_jsonb(rev)));
+ rev:=(r->>'revision')::integer;
+ v0:=public.dataset_version();
+ perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid,%s)',r->>'id',rev-1),'Reference value conflict');
+ if public.dataset_version()<>v0 then raise exception 'stale reference delete bumped version'; end if;
+ if not exists(select 1 from jsonb_array_elements(public.dataset_page('userReferenceValues',0,100)) v where v->>'id'=r->>'id') then raise exception 'stale reference delete removed the row'; end if;
+ perform public.delete_reference_value((r->>'id')::uuid,rev);
+ if public.dataset_version()<>v0+1 then raise exception 'reference delete version'; end if;
+ if exists(select 1 from jsonb_array_elements(public.dataset_page('userReferenceValues',0,100)) v where v->>'id'=r->>'id') then raise exception 'reference delete left the row'; end if;
+ perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid,%s)',r->>'id',rev),'Reference value conflict');
+ -- Unknown club labels are rejected at the database boundary, matching the form.
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000011','club','unknown','metric','carry','valueM',140,'note',null,'revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000011','club','?','metric','carry','valueM',140,'note',null,'revision',null)),'Invalid reference value');
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000011','club','--','metric','carry','valueM',140,'note',null,'revision',null)),'Invalid reference value');
+end $$;
+
+-- A9: write and restore limits are aligned at 1000 rows; the export pages fully.
+set local role postgres;
+insert into public.user_reference_values
+ select gen_random_uuid(), 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, jsonb_build_object('id',gen_random_uuid()::text,'club','c'||g,'metric','carry','valueM',100,'note',null,'revision',0) from generate_series(1,1000) g;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',true);
+do $$ begin
+ perform pg_temp.must_fail(format('select public.save_reference_value(%L::jsonb)',jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000012','club','9i','metric','carry','valueM',130,'note',null,'revision',null)),'Reference value limit reached');
+ if jsonb_array_length(public.dataset_page('userReferenceValues',0,1000))<>1000 then raise exception 'reference export not fully paged'; end if;
+end $$;
+set local role postgres;
+delete from public.user_reference_values where owner_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid;
+set local role authenticated;
+
+-- A9: a reference-only account is not empty, so restore stays rejected server-side.
+set local role postgres;
+insert into public.user_reference_values values(gen_random_uuid(),'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid,jsonb_build_object('id','bbbbbbbb-0000-4000-8000-000000000013','club','7i','metric','carry','valueM',142,'note',null,'revision',0));
+set local role authenticated;
+select set_config('request.jwt.claim.sub','ffffffff-ffff-4fff-8fff-ffffffffffff',true);
+do $$ begin perform pg_temp.must_fail('select public.restore_backup(''{}''::jsonb)','Restore requires empty dataset'); end $$;
+set local role postgres;
+delete from public.user_reference_values where owner_id='ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
 
 -- Owner isolation: another owner sees none of it and cannot write or delete it.
 select set_config('request.jwt.claim.sub','33333333-3333-4333-8333-333333333333',true);
 select pg_temp.assert_true(public.dataset_page('userReferenceValues',0,100)='[]'::jsonb,'reference owner isolation');
-do $$ begin perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid)','bbbbbbbb-0000-4000-8000-000000000003'),'Reference value conflict'); end $$;
+do $$ begin perform pg_temp.must_fail(format('select public.delete_reference_value(%L::uuid,%s)','bbbbbbbb-0000-4000-8000-000000000003',0),'Reference value conflict'); end $$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
 do $$ begin begin insert into public.user_reference_values values(gen_random_uuid(),auth.uid(),'{}'); raise exception 'direct reference write allowed'; exception when insufficient_privilege then null; end; end $$;
 
@@ -337,6 +382,6 @@ do $$ begin
  begin perform public.save_equipment('{}'::jsonb); raise exception 'anon equipment write allowed'; exception when insufficient_privilege then null; end;
  begin perform public.assign_equipment('{}'::jsonb); raise exception 'anon assignment write allowed'; exception when insufficient_privilege then null; end;
  begin perform public.save_reference_value('{}'::jsonb); raise exception 'anon reference write allowed'; exception when insufficient_privilege then null; end;
- begin perform public.delete_reference_value(gen_random_uuid()); raise exception 'anon reference delete allowed'; exception when insufficient_privilege then null; end;
+ begin perform public.delete_reference_value(gen_random_uuid(),0); raise exception 'anon reference delete allowed'; exception when insufficient_privilege then null; end;
 end $$;
 rollback;
