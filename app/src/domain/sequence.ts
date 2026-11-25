@@ -318,8 +318,16 @@ export function assessSequences(
         string,
         { candidate: string; distance: number; block: Shot[] }
       >();
-      // Own reference for the whole run: the run cannot train the reference it
-      // is compared against.
+      // Own reference for the whole run, computed once: the run cannot train
+      // the reference it is compared against, and recomputing per block would
+      // be O(history) per candidate. When the club has no history outside the
+      // run, fall back to excluding just the candidate block.
+      const runIds = new Set(run.shots.map((s) => s.id));
+      const ownRun = profiles(
+        windowShots.filter((s) => !runIds.has(s.id)),
+        sessionMap,
+        basis,
+      ).get(run.club);
       for (const [candidate, profile] of others) {
         const mask = run.shots.map((s) => compatible(s, profile, basis));
         // Maximal contiguous candidate-compatible blocks.
@@ -334,15 +342,14 @@ export function assessSequences(
           }
         }
         for (const block of blocks) {
-          // Own reference for the block, with the block excluded from its own
-          // reference profile so a suspect block cannot train the reference it
-          // is compared against.
           const blockIds = new Set(block.map((s) => s.id));
-          const own = profiles(
-            windowShots.filter((s) => !blockIds.has(s.id)),
-            sessionMap,
-            basis,
-          ).get(run.club);
+          const own =
+            ownRun ??
+            profiles(
+              windowShots.filter((s) => !blockIds.has(s.id)),
+              sessionMap,
+              basis,
+            ).get(run.club);
           if (!own || own.n < MIN_PROFILE) continue;
           // Split out shots that also fit the recorded club: an overlapping
           // genuine shot must not drag its whole block out of the suspect set.
