@@ -4,6 +4,8 @@ import {
   referenceMetricSchema,
   userReferenceValueSchema,
   type Basis,
+  type ReferenceBasis,
+  type UserReferenceValueRecord,
 } from './model';
 
 /**
@@ -202,6 +204,77 @@ export function benchmarkReferencesForClub(
     caveat: `${METRIC_LABEL[source.metric]}, ${VENUE_LABEL[source.venue]} — not directly comparable to every Inrange basis`,
     audience: source.audience,
   }));
+}
+
+/**
+ * Basis compatibility for personal-reference comparisons (roadmap §13, C2):
+ * a range-ball reference only compares with range-ball measurements and a
+ * premium reference only with premium estimates. An 'unknown' basis (legacy
+ * rows) is never silently compared — the reference is shown, the comparison
+ * is withheld with a reason.
+ */
+export function referenceBasisCompatible(
+  referenceBasis: ReferenceBasis,
+  basis: Basis,
+): boolean {
+  if (referenceBasis === 'unknown') return false;
+  return referenceBasis === (isRangeBallBasis(basis) ? 'range' : 'premium');
+}
+
+export type ReferenceComparisonRow = {
+  value: number | null;
+  delta: number | null;
+  pct: number | null;
+};
+
+export type ReferenceComparison = {
+  compatible: boolean;
+  /** Why no comparison is shown, when incompatible. */
+  reason: string | null;
+  typical: ReferenceComparisonRow;
+  strong: ReferenceComparisonRow;
+};
+
+function comparisonRow(
+  referenceM: number,
+  measured: number | null,
+): ReferenceComparisonRow {
+  if (measured === null) return { value: null, delta: null, pct: null };
+  return {
+    value: measured,
+    delta: measured - referenceM,
+    pct: referenceM > 0 ? measured / referenceM : null,
+  };
+}
+
+/**
+ * Compare measured typical and strong-strike (P80) values against a personal
+ * reference. Only call with matching metric semantics — a 'carry' reference
+ * against carry stats; a 'total' reference must never be compared with carry
+ * numbers. Incompatible bases yield compatible:false with a reason, never a
+ * silent comparison.
+ */
+export function compareWithReference(
+  reference: UserReferenceValueRecord,
+  measured: { typical: number | null; strong: number | null },
+  basis: Basis,
+): ReferenceComparison {
+  if (!referenceBasisCompatible(reference.basis, basis))
+    return {
+      compatible: false,
+      reason:
+        reference.basis === 'unknown'
+          ? 'Reference basis unknown — set it when editing so it can be compared safely'
+          : `Reference is ${reference.basis}-ball; current view is ${isRangeBallBasis(basis) ? 'range' : 'premium'}-ball`,
+      typical: { value: null, delta: null, pct: null },
+      strong: { value: null, delta: null, pct: null },
+    };
+  return {
+    compatible: true,
+    reason: null,
+    typical: comparisonRow(reference.valueM, measured.typical),
+    strong: comparisonRow(reference.valueM, measured.strong),
+  };
 }
 
 /** Validate a user-entered reference value before storing it. */
