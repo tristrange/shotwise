@@ -750,8 +750,9 @@ test('shows non-authoritative automatic assessment badges in review', async ({
   });
   await login(page, account);
   await nav(page, 'Review');
-  // Summary pill: one likely mishit (short+slow 7i) and one likely partial (short SW).
-  await expect(page.getByText(/auto: 1 likely mishits · 1 likely partials/)).toBeVisible();
+  // Summary pill: the short+slow 7i is a likely mishit, and the short+slow SW is
+  // both a likely partial and a likely mishit (intent and contact are independent).
+  await expect(page.getByText(/auto: 2 likely mishits · 1 likely partials/)).toBeVisible();
   await page.getByRole('button', { name: 'All shots', exact: true }).click();
   await expect(page.getByText('auto: likely mishit').first()).toBeVisible();
   await expect(page.getByText('auto: likely partial').first()).toBeVisible();
@@ -763,7 +764,7 @@ test('shows non-authoritative automatic assessment badges in review', async ({
     .getByRole('combobox', { name: /^Set contact/ })
     .selectOption('typical');
   await page.getByRole('button', { name: 'Save review', exact: true }).click();
-  await expect(page.getByText(/auto: 0 likely mishits · 1 likely partials/)).toBeVisible();
+  await expect(page.getByText(/auto: 1 likely mishits · 1 likely partials/)).toBeVisible();
   await expect(mishitShot.getByText('auto: likely mishit')).toHaveCount(0);
 });
 
