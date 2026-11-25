@@ -1,10 +1,12 @@
 import { makeSession, makeShot } from '../src/domain/fixtures';
 import { resolveShots } from '../src/domain/assessment';
-import type { Session, Shot } from '../src/domain/model';
+import { clubRatings } from '../src/domain/ratings';
+import type { Dataset, Session, Shot } from '../src/domain/model';
 
 /**
  * Performance smoke check (roadmap §13, item A11): resolves synthetic histories
- * of increasing size and prints cold (first call) and warm (cached) timings.
+ * of increasing size and prints cold (first call) and warm (cached) timings,
+ * plus the ADR-0005 ratings pass (ratings-2) over the same synthetic dataset.
  * Synthetic data only — no personal exports. The resolve cache is per shots
  * array, so each size gets a fresh dataset for the cold measurement.
  *
@@ -43,6 +45,8 @@ function dataset(totalShots: number): { sessions: Session[]; shots: Shot[] } {
   return { sessions, shots };
 }
 
+const TODAY = '2026-11-25';
+
 for (const size of [500, 3000, 6000, 12000]) {
   const { sessions, shots } = dataset(size);
   const coldStart = performance.now();
@@ -51,7 +55,26 @@ for (const size of [500, 3000, 6000, 12000]) {
   const warmStart = performance.now();
   resolveShots(shots, sessions, 'range-flat'); // different display basis: cached
   const warmMs = performance.now() - warmStart;
+  const data: Dataset = {
+    version: 1,
+    sessions,
+    shots,
+    imports: [],
+    events: [],
+    equipment: [],
+    equipmentAssignments: [],
+    userReferenceValues: [],
+  };
+  const ratingStart = performance.now();
+  const ratings = clubRatings(data, {
+    mode: 'recent',
+    today: TODAY,
+    intent: 'all',
+    contact: 'all',
+  });
+  const ratingMs = performance.now() - ratingStart;
   console.log(
-    `${String(size).padStart(6)} shots  cold ${coldMs.toFixed(1).padStart(8)} ms  warm ${warmMs.toFixed(2).padStart(7)} ms  resolved ${resolved.size}`,
+    `${String(size).padStart(6)} shots  cold ${coldMs.toFixed(1).padStart(8)} ms  warm ${warmMs.toFixed(2).padStart(7)} ms  resolved ${resolved.size}` +
+      `  ratings ${ratingMs.toFixed(1).padStart(8)} ms  clubs ${ratings.length}`,
   );
 }
