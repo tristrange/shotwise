@@ -58,6 +58,7 @@ export async function parseBackup(text: string): Promise<Dataset> {
     data.imports,
     data.events,
     data.equipment,
+    data.userReferenceValues,
   ]) {
     if (new Set(rows.map((row) => row.id)).size !== rows.length)
       throw new Error('Backup contains duplicate record IDs.');
@@ -67,6 +68,14 @@ export async function parseBackup(text: string): Promise<Dataset> {
     data.equipmentAssignments.length
   )
     throw new Error('Backup contains duplicate assignment shot IDs.');
+  if (
+    new Set(
+      data.userReferenceValues.map(
+        (row) => `${row.metric}:${row.club.toLowerCase()}`,
+      ),
+    ).size !== data.userReferenceValues.length
+  )
+    throw new Error('Backup contains duplicate club reference values.');
   const sessions = new Set(data.sessions.map((s) => s.id));
   const shots = new Map(data.shots.map((s) => [s.id, s]));
   const equipment = new Set(data.equipment.map((e) => e.id));

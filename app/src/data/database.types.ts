@@ -222,6 +222,25 @@ export type Database = {
           },
         ];
       };
+      user_reference_values: {
+        Row: {
+          data: NonNullable<Json>;
+          id: string;
+          owner_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          data: NonNullable<Json>;
+          id: string;
+          owner_id: string;
+        };
+        Update: {
+          data?: NonNullable<Json>;
+          id?: string;
+          owner_id?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -235,8 +254,10 @@ export type Database = {
         Returns: Json;
       };
       dataset_version: { Args: Record<PropertyKey, never>; Returns: number };
+      delete_reference_value: { Args: { p_id: string }; Returns: undefined };
       restore_backup: { Args: { p_dataset: Json }; Returns: undefined };
       save_equipment: { Args: { p_equipment: Json }; Returns: Json };
+      save_reference_value: { Args: { p_value: Json }; Returns: Json };
       undo_reviews: { Args: { p_shots: Json }; Returns: undefined };
       update_session: { Args: { p_session: Json }; Returns: undefined };
     };

@@ -106,6 +106,7 @@ describe('portable private backups', () => {
       events: [],
       equipment: [],
       equipmentAssignments: [],
+      userReferenceValues: [],
     };
     expect((await parseBackup(serializeBackup(data))).shots[0]?.id).toBe(
       shot.id,
@@ -123,6 +124,7 @@ describe('portable private backups', () => {
       events: [],
       equipment: [],
       equipmentAssignments: [],
+      userReferenceValues: [],
     };
     const restored = await parseBackup(serializeBackup(dataset));
     expect(restored.shots[0]?.id).toBe(shot.id);
@@ -143,6 +145,7 @@ describe('portable private backups', () => {
           events: [],
           equipment: [],
           equipmentAssignments: [],
+          userReferenceValues: [],
         }),
       ),
     ).rejects.toThrow();
@@ -170,6 +173,7 @@ describe('equipment backups', () => {
         events: [],
         equipment: [],
         equipmentAssignments: [],
+        userReferenceValues: [],
       },
       shot,
     };
@@ -240,6 +244,7 @@ describe('equipment backups', () => {
       ...dataset,
       equipment: [club, { ...club }],
       equipmentAssignments: [],
+      userReferenceValues: [],
     });
     await expect(parseBackup(duplicate)).rejects.toThrow('duplicate');
     const orphanEquipment = serializeBackup({

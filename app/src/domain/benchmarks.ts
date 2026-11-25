@@ -1,4 +1,9 @@
-import { isUnknownClub, type Basis } from './model';
+import {
+  isUnknownClub,
+  referenceMetricSchema,
+  type Basis,
+  type UserReferenceValueRecord,
+} from './model';
 
 /**
  * Source-aware external benchmark data model (roadmap §7, Phase 5 PR 16;
@@ -55,13 +60,13 @@ export type BenchmarkReference = {
 /**
  * A user-entered reference value (e.g. from a fitting session). Always kept
  * separate from imported measurements and labelled as user-entered — never
- * mixed into analytics cohorts.
+ * mixed into analytics cohorts. The persisted record adds id and revision.
  */
-export type UserReferenceValue = {
-  club: string;
-  metric: BenchmarkMetric;
-  valueM: number;
-  note?: string;
+export type UserReferenceValue = Omit<
+  UserReferenceValueRecord,
+  'id' | 'revision' | 'note'
+> & {
+  note?: string | null;
 };
 
 /**
@@ -206,7 +211,8 @@ export function validateUserReferenceValue(
   if (!Number.isFinite(value.valueM) || value.valueM <= 0)
     return 'Reference must be a positive distance in metres';
   if (value.valueM > 500) return 'Reference looks implausible (> 500 m)';
-  if (!['carry', 'total'].includes(value.metric)) return 'Unknown metric';
+  if (!referenceMetricSchema.options.includes(value.metric))
+    return 'Unknown metric';
   return null;
 }
 

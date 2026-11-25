@@ -174,6 +174,29 @@ export const equipmentAssignmentPreviewSchema = z.object({
 export type EquipmentAssignmentPreview = z.infer<
   typeof equipmentAssignmentPreviewSchema
 >;
+export const referenceMetricSchema = z.enum(['carry', 'total']);
+export type ReferenceMetric = z.infer<typeof referenceMetricSchema>;
+/**
+ * A user-entered per-club reference value (e.g. from a fitting session or a
+ * printed distance chart). Stored separately from imported measurements and
+ * never mixed into analytics cohorts; labelled "user-entered" in the UI.
+ */
+export const userReferenceValueSchema = z.object({
+  id: idSchema,
+  club: z.string().trim().min(1).max(30),
+  metric: referenceMetricSchema,
+  valueM: z.number().finite().gt(0).lte(500),
+  note: z.string().trim().max(200).nullable(),
+  revision: z.number().int().nonnegative().max(2_147_483_647),
+});
+export type UserReferenceValueRecord = z.infer<typeof userReferenceValueSchema>;
+/** revision is null to create and the expected integer revision to update. */
+export const userReferenceValueSaveInputSchema = userReferenceValueSchema.extend(
+  { revision: userReferenceValueSchema.shape.revision.nullable() },
+);
+export type UserReferenceValueSaveInput = z.infer<
+  typeof userReferenceValueSaveInputSchema
+>;
 export const datasetSchema = z.object({
   version: z.number().int().nonnegative(),
   sessions: z.array(sessionSchema),
@@ -182,6 +205,8 @@ export const datasetSchema = z.object({
   events: z.array(eventSchema),
   equipment: z.array(equipmentSchema),
   equipmentAssignments: z.array(equipmentAssignmentSchema),
+  // Optional so backups written before this field existed still parse.
+  userReferenceValues: z.array(userReferenceValueSchema).default([]),
 });
 export type Dataset = z.infer<typeof datasetSchema>;
 export const emptyDataset: Dataset = {
@@ -192,6 +217,7 @@ export const emptyDataset: Dataset = {
   events: [],
   equipment: [],
   equipmentAssignments: [],
+  userReferenceValues: [],
 };
 export const basisSchema = z.enum([
   'premium-flat',

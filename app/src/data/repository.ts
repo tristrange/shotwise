@@ -6,6 +6,8 @@ import {
   equipmentSaveInputSchema,
   equipmentSchema,
   sessionSchema,
+  userReferenceValueSaveInputSchema,
+  userReferenceValueSchema,
 } from '../domain/model';
 import { loadConsistent } from './snapshot';
 import type { Backend, Repository } from './contracts';
@@ -85,6 +87,17 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
           .json()
           .parse(equipmentAssignmentPreviewSchema.parse(input)),
       });
+    },
+    saveUserReferenceValue: async (input) =>
+      userReferenceValueSchema.parse(
+        await rpc('save_reference_value', {
+          p_value: z
+            .json()
+            .parse(userReferenceValueSaveInputSchema.parse(input)),
+        }),
+      ),
+    deleteUserReferenceValue: async (id) => {
+      await rpc('delete_reference_value', { p_id: id });
     },
     restore: async (dataset) => {
       await rpc('restore_backup', {
