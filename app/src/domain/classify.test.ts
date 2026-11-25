@@ -423,4 +423,36 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     const shuffled = assessShots([probe, ...[...many].reverse()], [session]);
     expect(shuffled.get(probe.id)).toEqual(forward.get(probe.id));
   });
+
+  it('resolves thousands of shots across many clubs and visits', () => {
+    const clubs = ['D', '3w', '5i', '7i', '9i', 'PW', 'SW'];
+    const sessions = Array.from({ length: 100 }, (_, v) =>
+      makeSession({
+        id: `s-${v}`,
+        date: `2026-${String(1 + (v % 12)).padStart(2, '0')}-${String(1 + (v % 27)).padStart(2, '0')}`,
+      }),
+    );
+    const shots: Shot[] = [];
+    for (const s of sessions)
+      for (let i = 0; i < 30; i++) {
+        const club = clubs[(i + s.id.length) % clubs.length]!;
+        shots.push(
+          makeShot({
+            sessionId: s.id,
+            recordedClub: club,
+            rowIndex: i + 1,
+            measurements: {
+              flatCarryPremium: 80 + ((i * 13 + s.id.length) % 90),
+              speedPremium: 120 + (i % 40),
+            },
+          }),
+        );
+      }
+    const out = assessShots(shots, sessions);
+    expect(out.size).toBe(3000);
+    // Baseline is capped and every late shot in a club sees a full baseline.
+    const last = shots.at(-1)!;
+    expect(out.get(last.id)!.baselineCount).toBeLessThanOrEqual(50);
+    expect(out.get(last.id)!.baselineCount).toBeGreaterThanOrEqual(10);
+  });
 });

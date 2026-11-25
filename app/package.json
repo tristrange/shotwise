@@ -17,7 +17,8 @@
     "test:db": "node scripts/test-db.mjs",
     "verify:csv": "tsx scripts/verify-csv.ts",
     "verify:unusual": "tsx scripts/verify-unusual-shots.ts",
-    "verify:classifier": "tsx scripts/verify-classifier.ts"
+    "verify:classifier": "tsx scripts/verify-classifier.ts",
+    "verify:performance": "tsx scripts/verify-performance.ts"
   },
   "keywords": [],
   "author": "",

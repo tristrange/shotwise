@@ -105,55 +105,100 @@ function assessmentClubOf(
   return inferred?.get(shot.id) ?? shot.recordedClub;
 }
 
+/** Total chronological order over shots: visit start, then row index. */
+function compareShotsChrono(
+  a: Shot,
+  b: Shot,
+  sessionMap: Map<string, Session>,
+): number {
+  const sa = sessionMap.get(a.sessionId);
+  const sb = sessionMap.get(b.sessionId);
+  if (!sa || !sb) return 0;
+  // Total order makes the BASELINE_CAP cutoff independent of input order.
+  return compareSessionStarts(sa, sb) || a.rowIndex - b.rowIndex;
+}
+
+/** Baseline-eligible: included, not a reviewed mishit/partial, measured. */
+function baselineEligible(s: Shot, sessionMap: Map<string, Session>): boolean {
+  const session = sessionMap.get(s.sessionId);
+  if (!session || session.archived) return false;
+  if (s.review.exclusion.kind !== 'included') return false;
+  if (s.review.contact === 'mishit' || s.review.intent === 'partial') return false;
+  const carry = assessmentMeasurement(s, 'carry');
+  const speed = assessmentMeasurement(s, 'speed');
+  return carry !== null && speed !== null && carry > 0 && speed > 0;
+}
+
 /**
- * Causal baseline for one shot: earlier included shots of the same resolved
- * club with positive carry and speed, excluding reviewed mishits
+ * Per-club chronological index of baseline-eligible shots, built once per
+ * assessShots run so each shot's causal baseline is a bucket lookup plus a
+ * bounded backward scan instead of a full history scan per shot.
+ */
+function buildBaselineIndex(
+  shots: Shot[],
+  sessionMap: Map<string, Session>,
+  inferred: Map<string, string> | undefined,
+): Map<string, Shot[]> {
+  const buckets = new Map<string, Shot[]>();
+  for (const s of shots) {
+    if (!baselineEligible(s, sessionMap)) continue;
+    const club = assessmentClubOf(s, inferred);
+    const list = buckets.get(club) ?? [];
+    list.push(s);
+    buckets.set(club, list);
+  }
+  for (const list of buckets.values())
+    list.sort((a, b) => compareShotsChrono(a, b, sessionMap));
+  return buckets;
+}
+
+/**
+ * Causal baseline for one shot: the most recent earlier included shots of the
+ * same resolved club with positive carry and speed, excluding reviewed mishits
  * and partials so incorrect labels cannot reinforce themselves. Same-day other
  * visits count only when their recorded start time is unambiguously earlier.
  */
 function baselineBefore(
   shot: Shot,
-  shots: Shot[],
   sessionMap: Map<string, Session>,
-  inferred: Map<string, string> | undefined,
+  index: Map<string, Shot[]>,
   club: string,
 ): Baseline | null {
   const shotSession = sessionMap.get(shot.sessionId);
   const shotDate = shotSession?.date;
   if (!shotDate) return null;
   const cutoff = shiftDate(shotDate, -RECENT_DAYS);
-  const candidates = shots
-    .filter((s) => {
-      if (s.id === shot.id) return false;
-      const session = sessionMap.get(s.sessionId);
-      if (!session || session.archived) return false;
-      if (session.date < cutoff || session.date > shotDate) return false;
-      if (session.date === shotDate && session.id !== shot.sessionId) {
-        if (
-          !(
-            session.time !== null &&
-            shotSession.time !== null &&
-            session.time < shotSession.time
-          )
+  const bucket = index.get(club);
+  if (!bucket) return null;
+  // Position of the shot in its club's chronological bucket; entries before it
+  // are positional predecessors, refined by the same-day/session rules below.
+  let lo = 0;
+  let hi = bucket.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (compareShotsChrono(bucket[mid]!, shot, sessionMap) < 0) lo = mid + 1;
+    else hi = mid;
+  }
+  // Walk backwards collecting the BASELINE_CAP most recent eligible shots —
+  // identical to the previous sort-descending + slice(0, BASELINE_CAP).
+  const candidates: Shot[] = [];
+  for (let i = lo - 1; i >= 0 && candidates.length < BASELINE_CAP; i--) {
+    const s = bucket[i]!;
+    const session = sessionMap.get(s.sessionId)!;
+    if (session.date < cutoff) break; // bucket is date-ascending
+    if (session.date === shotDate && session.id !== shot.sessionId) {
+      if (
+        !(
+          session.time !== null &&
+          shotSession.time !== null &&
+          session.time < shotSession.time
         )
-          return false;
-      }
-      if (s.sessionId === shot.sessionId && s.rowIndex >= shot.rowIndex) return false;
-      if (assessmentClubOf(s, inferred) !== club) return false;
-      if (s.review.exclusion.kind !== 'included') return false;
-      if (s.review.contact === 'mishit' || s.review.intent === 'partial') return false;
-      const carry = assessmentMeasurement(s, 'carry');
-      const speed = assessmentMeasurement(s, 'speed');
-      return carry !== null && speed !== null && carry > 0 && speed > 0;
-    })
-    .sort((a, b) => {
-      const sa = sessionMap.get(a.sessionId);
-      const sb = sessionMap.get(b.sessionId);
-      if (!sa || !sb) return 0;
-      // Total order makes the BASELINE_CAP cutoff independent of input order.
-      return compareSessionStarts(sb, sa) || b.rowIndex - a.rowIndex;
-    })
-    .slice(0, BASELINE_CAP);
+      )
+        continue;
+    }
+    if (s.sessionId === shot.sessionId && s.rowIndex >= shot.rowIndex) continue;
+    candidates.push(s);
+  }
   const carries = candidates.flatMap((s) => assessmentMeasurement(s, 'carry') ?? []);
   const speeds = candidates.flatMap((s) => assessmentMeasurement(s, 'speed') ?? []);
   const launches = candidates.flatMap((s) => assessmentMeasurement(s, 'launch') ?? []);
@@ -299,6 +344,7 @@ export function assessShots(
   // when the display basis changes.
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const out = new Map<string, ShotAssessment>();
+  const baselineIndex = buildBaselineIndex(shots, sessionMap, inferredClubs);
 
   for (const shot of shots) {
     const session = sessionMap.get(shot.sessionId);
@@ -321,7 +367,7 @@ export function assessShots(
       out.set(shot.id, base);
       continue;
     }
-    const baseline = baselineBefore(shot, shots, sessionMap, inferredClubs, club);
+    const baseline = baselineBefore(shot, sessionMap, baselineIndex, club);
     if (
       !baseline ||
       baseline.n < MIN_BASELINE ||
