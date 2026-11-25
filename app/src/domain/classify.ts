@@ -182,10 +182,15 @@ function lowFlight(s: Signals, base: Baseline): boolean {
     s.launch !== null &&
     base.launchMedian !== null &&
     s.launch < base.launchMedian - LOW_LAUNCH_DROP_DEG;
-  const lowApex =
-    s.apex !== null &&
-    base.apexMedian !== null &&
-    s.apex < LOW_APEX_FACTOR * base.apexMedian;
+  // A deliberate partial naturally flies lower: scale the apex floor by the
+  // carry ratio so a clean short wedge is not read as a low-flight mishit.
+  const carryRatio =
+    s.carry !== null && base.carryMedian !== null && base.carryMedian > 0
+      ? Math.min(1, s.carry / base.carryMedian)
+      : 1;
+  const apexFloor =
+    base.apexMedian !== null ? LOW_APEX_FACTOR * base.apexMedian * carryRatio : null;
+  const lowApex = s.apex !== null && apexFloor !== null && s.apex < apexFloor;
   return lowLaunch || lowApex;
 }
 

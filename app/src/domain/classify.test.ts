@@ -67,6 +67,51 @@ describe('automatic shot assessment (classifier ' + CLASSIFIER_VERSION + ')', ()
     expect(partial.contact.value).toBe('typical');
   });
 
+  it('does not read a clean partial’s naturally lower apex as low flight', () => {
+    const baseline = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        recordedClub: 'SW',
+        rowIndex: i + 1,
+        measurements: {
+          flatCarryPremium: 100,
+          speedPremium: 130,
+          launchPremium: 35,
+          apexPremium: 30,
+        },
+      }),
+    );
+    // Clean 60% partial: same launch, proportionally lower apex.
+    const partial = makeShot({
+      sessionId: session.id,
+      recordedClub: 'SW',
+      rowIndex: 20,
+      measurements: {
+        flatCarryPremium: 60,
+        speedPremium: 110,
+        launchPremium: 35,
+        apexPremium: 16,
+      },
+    });
+    const out = assessShots([...baseline, partial], [session]);
+    expect(out.get(partial.id)!.intent.value).toBe('partial');
+    expect(out.get(partial.id)!.contact.value).toBe('typical');
+    // A genuine dud at the same distance stays a mishit (very low launch/apex).
+    const dud = makeShot({
+      sessionId: session.id,
+      recordedClub: 'SW',
+      rowIndex: 21,
+      measurements: {
+        flatCarryPremium: 45,
+        speedPremium: 140,
+        launchPremium: 2,
+        apexPremium: 1,
+      },
+    });
+    const out2 = assessShots([...baseline, partial, dud], [session]);
+    expect(out2.get(dud.id)!.contact.value).toBe('mishit');
+  });
+
   it('keeps a chunked partial representable as partial and mishit', () => {
     const shots = [
       ...fullShots('SW', 100, 90, 12),
