@@ -121,6 +121,18 @@ describe('benchmarkReferencesForClub', () => {
     expect(benchmarkReferencesForClub('unknown')).toEqual([]);
   });
 
+  it('never returns references for range-ball bases', () => {
+    // No external source measures limited-flight range balls.
+    expect(benchmarkReferencesForClub('driver', 'range')).toEqual([]);
+    expect(benchmarkReferencesForClub('7i', 'range-flat')).toEqual([]);
+    expect(
+      benchmarkReferencesForClub('driver', 'premium').length,
+    ).toBeGreaterThan(0);
+    expect(
+      benchmarkReferencesForClub('driver', 'premium-flat').length,
+    ).toBeGreaterThan(0);
+  });
+
   it('returns references for iron labels covered by the registry', () => {
     const refs = benchmarkReferencesForClub('7i');
     expect(refs.some((r) => r.sourceId === 'trackman-tour-averages')).toBe(true);

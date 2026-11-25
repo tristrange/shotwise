@@ -7,7 +7,7 @@ import {
 } from '../domain/benchmarks';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
-import { localToday, type Dataset } from '../domain/model';
+import { localToday, type Basis, type Dataset } from '../domain/model';
 import {
   BasisButton,
   MishitToggle,
@@ -50,8 +50,10 @@ function gapNote(gap: ClubProfile['gap']) {
  * professional-audience sources get a badge so they are not read as amateur
  * targets. Comparability (carry↔carry, total↔total) is stated per row.
  */
-function BenchmarkReferences({ club }: { club: string }) {
-  const references = benchmarkReferencesForClub(club);
+function BenchmarkReferences({ club, basis }: { club: string; basis: Basis }) {
+  // Range-ball bases measure the limited-flight range ball; no external
+  // source covers range balls, so the disclosure is suppressed entirely.
+  const references = benchmarkReferencesForClub(club, basis);
   if (references.length === 0) return null;
   return (
     <details className="benchmark-refs">
@@ -90,10 +92,12 @@ function ProfileCard({
   profile,
   focus,
   bagCount,
+  basis,
 }: {
   profile: ClubProfile;
   focus: boolean;
   bagCount: number;
+  basis: Basis;
 }) {
   const {
     club,
@@ -236,7 +240,7 @@ function ProfileCard({
         <p>No measured carry on this basis for {club} yet.</p>
       )}
       {gapText && <p>{gapText}.</p>}
-      <BenchmarkReferences club={club} />
+      <BenchmarkReferences club={club} basis={basis} />
       <div className="table-wrap">
         <table aria-label={`${club} history across sessions`}>
           <caption>
@@ -355,6 +359,7 @@ export function ClubProfiles({
             profile={profile}
             focus={focusClub === profile.club}
             bagCount={data.equipment.length}
+            basis={basis}
           />
         ))}
       </section>

@@ -2972,6 +2972,16 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(card).toContainText('Range · flat');
   await expect(card).toContainText('Typical carry 132 m');
 
+  // Range-ball bases never get an external benchmark overlay (no external
+  // source measures limited-flight range balls); premium bases do.
+  await expect(card.locator('details.benchmark-refs')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Range · flat', exact: true }).click();
+  await expect(card).toContainText('Premium (estimate)');
+  await expect(card.locator('details.benchmark-refs')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Premium (estimate)', exact: true }).click();
+  // 'range' is a range-ball basis too: still no overlay.
+  await expect(card.locator('details.benchmark-refs')).toHaveCount(0);
+
   // All-time window includes the older session; history stays all-time.
   await page.getByRole('button', { name: 'All-time', exact: true }).click();
   await expect(card).toContainText('3 sessions · 38 shots');
