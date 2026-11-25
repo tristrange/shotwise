@@ -106,12 +106,15 @@ export function resolvedClub(resolved: ResolvedShot): string {
 /**
  * Resolved version of `fullSwingCandidate()` (model.ts): explicit full intent
  * wins; otherwise an unresolved intent falls back to the club heuristic, now
- * evaluated on the resolved club so provisional inferences count.
+ * evaluated on the resolved club so provisional inferences count. An
+ * unresolved unknown club is never assumed to be a full swing — several
+ * benchmark consumers add the same known-club check, this makes it uniform.
  */
 export function isFullSwingResolved(resolved: ResolvedShot): boolean {
   if (resolved.intent === 'full') return true;
   if (resolved.intent !== 'unknown') return false;
   const club = resolvedClub(resolved);
+  if (isUnknownClub(club)) return false;
   return !isWedge(club) || isPitchingWedge(club);
 }
 
@@ -125,7 +128,7 @@ const resolveCache = new WeakMap<Shot[], CacheEntry>();
 
 /**
  * Resolve every shot's intent, contact and club through the precedence chain,
- * combining the per-shot classifier (`intent-contact-2`) with sequence-aware
+ * combining the per-shot classifier (`intent-contact-3`) with sequence-aware
  * club inference (`sequence-2`). Results are cached per shots/sessions/basis
  * identity — callers may invoke this freely. Assessments stay derived: the
  * shot and its review are never modified.
@@ -143,8 +146,15 @@ export function resolveShots(
     cached.length === shots.length
   )
     return cached.resolved;
-  const automatic = assessShots(shots, sessions, basis);
+  // Sequence inference runs first so provisional club identities can feed the
+  // per-shot intent/contact assessment (intent-contact-3). Manual decisions
+  // still win inside both layers.
   const sequences = assessSequences(shots, sessions, basis);
+  const inferredClubs = new Map<string, string>();
+  for (const [id, assessment] of sequences) {
+    if (assessment.kind === 'inferred-club') inferredClubs.set(id, assessment.club);
+  }
+  const automatic = assessShots(shots, sessions, basis, inferredClubs);
   const resolved = new Map<string, ResolvedShot>();
   for (const shot of shots) {
     const auto = automatic.get(shot.id);
@@ -164,10 +174,7 @@ export function resolveShots(
       shot,
       intent: resolveIntent(shot.review.intent, auto?.intent.value),
       contact: resolveContact(shot.review.contact, auto?.contact.value),
-      club: resolveClub(
-        shot,
-        sequence?.kind === 'inferred-club' ? sequence.club : undefined,
-      ),
+      club: resolveClub(shot, inferredClubs.get(shot.id)),
       suspectedWrongClub: suspicion !== null && !manualClubDecision,
       suspicion,
       automatic: auto,

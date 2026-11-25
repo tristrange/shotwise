@@ -8,12 +8,9 @@ import {
   type CorrectionPreview,
 } from '../domain/clubCorrection';
 import { assessUnusualShots } from '../domain/unusualShots';
-import {
-  assessShots,
-  CLASSIFIER_VERSION,
-  type ShotAssessment,
-} from '../domain/classify';
-import { assessSequences, SEQUENCE_RULE_VERSION } from '../domain/sequence';
+import { resolveShots } from '../domain/assessment';
+import { CLASSIFIER_VERSION, type ShotAssessment } from '../domain/classify';
+import { SEQUENCE_RULE_VERSION } from '../domain/sequence';
 import {
   effectiveClub,
   FIELD_HEADERS,
@@ -66,12 +63,10 @@ export function ShotReview({
     () => assessUnusualShots(data.shots, data.sessions),
     [data.shots, data.sessions],
   );
-  const autoAssessments = useMemo(
-    () => assessShots(data.shots, data.sessions, 'premium-flat'),
-    [data.shots, data.sessions],
-  );
-  const sequenceAssessments = useMemo(
-    () => assessSequences(data.shots, data.sessions, 'premium-flat'),
+  // One resolved pass feeds both the automatic badges and the suspicion badge,
+  // instead of running both classifiers separately.
+  const resolvedAssessments = useMemo(
+    () => resolveShots(data.shots, data.sessions, 'premium-flat'),
     [data.shots, data.sessions],
   );
   const flags = clubFlags(data.shots, data.sessions);
@@ -143,10 +138,10 @@ export function ShotReview({
       : shots;
   const flagCount = scoped.filter((shot) => flagged.has(shot.id)).length;
   const autoMishits = scoped.filter(
-    (shot) => autoBadges(shot, autoAssessments.get(shot.id)).some((b) => b.label.includes('mishit')),
+    (shot) => autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) => b.label.includes('mishit')),
   ).length;
   const autoPartials = scoped.filter(
-    (shot) => autoBadges(shot, autoAssessments.get(shot.id)).some((b) => b.label.includes('partial')),
+    (shot) => autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) => b.label.includes('partial')),
   ).length;
   const chosen = shown.filter((shot) => selected.includes(shot.id));
   const previewRows = useMemo(
@@ -844,7 +839,7 @@ export function ShotReview({
                     {s.review.exclusion.kind === 'excluded' &&
                       `: ${s.review.exclusion.reason}`}
                   </span>
-                  {autoBadges(s, autoAssessments.get(s.id)).map((badge) => (
+                  {autoBadges(s, resolvedAssessments.get(s.id)?.automatic).map((badge) => (
                     <span
                       key={badge.label}
                       className="pill"
@@ -854,8 +849,8 @@ export function ShotReview({
                     </span>
                   ))}
                   {(() => {
-                    const seq = sequenceAssessments.get(s.id);
-                    if (seq?.kind === 'suspected-wrong-club') {
+                    const seq = resolvedAssessments.get(s.id)?.suspicion;
+                    if (seq) {
                       // The badge stays visible on reviewed rows too: a manual
                       // confirm/correct clears the exclusion, but the golfer
                       // should still see the automatic observation.
