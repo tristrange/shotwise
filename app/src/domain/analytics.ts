@@ -205,6 +205,7 @@ export function selectCohort(
       !r.suspectedWrongClub &&
       !isUnknownClub(club) &&
       carry !== null &&
+      carry > 0 &&
       threshold <= carry;
     return (
       (!hideMishits ||
@@ -270,10 +271,10 @@ function strongStrikeThresholds(
       r.contact === 'mishit' ||
       r.suspectedWrongClub ||
       isUnknownClub(club) ||
-      carry === null
+      (carry ?? 0) <= 0
     )
       continue;
-    byClub.set(club, [...(byClub.get(club) ?? []), carry]);
+    byClub.set(club, [...(byClub.get(club) ?? []), carry!]);
   }
   const thresholds = new Map<string, number>();
   for (const [club, values] of byClub) {
@@ -283,10 +284,16 @@ function strongStrikeThresholds(
   return thresholds;
 }
 /**
- * Manual review coverage of a shot set, plus how much of the rest the
- * automatic layer assessed when a resolved map is supplied. Manual review
- * stays the authoritative measure; `assessed`/`automatic` show that analytics
- * no longer depend on review being complete.
+ * Review coverage of a shot set, plus how much of the rest the automatic
+ * layer assessed when a resolved map is supplied. Manual review stays the
+ * authoritative measure; `assessed`/`automatic` show that analytics no longer
+ * depend on review being complete.
+ *
+ * `unassessed` is manual-review-only (full swings the golfer has not reviewed);
+ * `unassessedResolved` is the resolved-cohort counterpart used by the
+ * reliability score (full swings whose resolved contact is still uncertain,
+ * manual or automatic). The two denominators answer different questions and
+ * must not be mixed.
  */
 export function reviewCoverage(
   shots: Shot[],
@@ -320,6 +327,12 @@ export function reviewCoverage(
     unassessed: eligible.filter(
       (s) => s.review.intent === 'full' && s.review.contact === 'uncertain',
     ).length,
+    unassessedResolved: resolved
+      ? eligible.filter((s) => {
+          const r = resolved.get(s.id);
+          return r !== undefined && r.intent === 'full' && r.contact === 'uncertain';
+        }).length
+      : null,
     assessed: assessed.length,
     automatic: automatic.length,
   };
@@ -558,7 +571,7 @@ function eligibleShots(
         isFullSwingResolved(r) &&
         r.contact !== 'mishit' &&
         !r.suspectedWrongClub &&
-        shot.measurements[key] !== null &&
+        (shot.measurements[key] ?? 0) > 0 &&
         !isUnknownClub(resolvedClub(r))
       );
     },
@@ -611,9 +624,9 @@ export function clubGaps(
     const r = resolved.get(shot.id);
     if (!r) continue;
     const carry = shot.measurements[key];
-    if (carry === null) continue;
+    if ((carry ?? 0) <= 0) continue; // zero/negative carries are missing, not distances
     const club = resolvedClub(r);
-    potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry]);
+    potentialCarries.set(club, [...(potentialCarries.get(club) ?? []), carry!]);
     bandGroups.set(club, [...(bandGroups.get(club) ?? []), shot]);
   }
 
@@ -754,7 +767,7 @@ export function practiceInsights(
     group.push(shot);
     groups.set(club, group);
     visits.set(shot.sessionId, groups);
-    if (shot.measurements[key] !== null) carryClubs.add(club);
+    if ((shot.measurements[key] ?? 0) > 0) carryClubs.add(club);
   }
 
   const order = [...carryClubs].sort(
@@ -798,7 +811,7 @@ export function practiceInsights(
         carry.iqr !== null
       ) {
         const shotIds = shots
-          .filter((shot) => shot.measurements[key] !== null)
+          .filter((shot) => (shot.measurements[key] ?? 0) > 0)
           .map(({ id }) => id);
         const measured = {
           club,

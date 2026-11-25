@@ -449,12 +449,20 @@ describe('statistics and reproducible cohorts', () => {
     const resolved = resolveShots(shots, [early, late], 'premium-flat');
     // Assessed = manual (0) plus automatic: the two late shots and the two
     // history shots that already had >= 10 earlier shots as their baseline.
-    expect(reviewCoverage(shots, resolved)).toMatchObject({
+    const coverage = reviewCoverage(shots, resolved);
+    expect(coverage).toMatchObject({
       total: 14,
       reviewed: 0,
       assessed: 4,
       automatic: 4,
     });
+    // The two unassessed denominators answer different questions: manual-only
+    // vs resolved (manual + automatic). They must not be mixed.
+    expect(coverage.unassessed).not.toBeNull();
+    expect(coverage.unassessedResolved).not.toBeNull();
+    expect(coverage.unassessedResolved!).toBeLessThanOrEqual(coverage.unassessed!);
+    // Without a resolved map the resolved denominator is unavailable, not zero.
+    expect(reviewCoverage(shots).unassessedResolved).toBeNull();
   });
 
   it('groups inferred clubs and excludes suspected wrong-club shots from club views', () => {
