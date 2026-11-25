@@ -1219,3 +1219,32 @@ Approved after reviewing the consolidated plan and the independent Codex review.
 **Visuals.** Mobile-first; compact club cards; expandable metrics; minimal permanently visible text; show the result first, explain on request; no unnecessary dashboards or configuration steps. Reevaluate whether Review needs a permanent primary tab once automatic classification is reliable enough.
 
 **Approval scope.** A9, A10 and A1–A4 are approved to start in dependency order, then A5–A8 and A11 in small PRs. C3 requires the owner to review proposed normalization functions, tolerance anchors, missing-data policy and illustrative scores for several clubs first. Classification and scoring methodology keep separate versioning. Guiding direction: useful and intuitive, appropriately qualified analytics for a normal golfer — not maximum statistical conservatism.
+
+---
+
+## 13.7 Remediation progress — updated 2026-11-25 (PRs #76–#88)
+
+Status of the §13.5 consolidated plan after the first implementation wave. PR numbers are the reviewable units; "open" PRs are stacked and unmerged — nothing below is claimed merged until its PR lands on main.
+
+| Item | Status | PR | Notes |
+| --- | --- | --- | --- |
+| A9 reference persistence fixes | merged | #76 | Revision-checked delete, aligned 1000-row write/restore limit, DB rejects `?`/`unknown`/`--` labels, Settings emptiness check. |
+| A10 rollout compatibility | open | #77 | Tolerant snapshot load for pre-migration RPC; `docs/database.md` compatibility matrix + database-first rule. |
+| A1 manual precedence over suspicion | open | #78 | Manual confirm/correct clears `suspectedWrongClub`; Review badge explains reviewed-but-flagged rows. |
+| A2 append-stable sequence (`sequence-2`) | open | #79 | Per-visit anchored windows; total chronological order; append-future and permutation invariance tests. |
+| A3 independent intent/contact (`intent-contact-3`) | open | #80 | Flight signals (launch/apex/carry-share), wedge partial rule incl. PW, recorded-target evidence, inferred-club assessment, unknown clubs never full swings. |
+| A4 sequence evidence quality | open | #81 | Min sample on the actual profile source, tie abstention, self-block exclusion, poor-strike inference, advisory tier. |
+| A5 one benchmark eligibility rule | open | #82 | Shared `clubBenchmarkEligible` + per-visit cap over eligible shots only. |
+| A6 one mode-invariant P80 | open | #82 | P80 from the eligible cohort, invariant under performance mode; wedge practice / progress / Analysis aligned. |
+| A7 canonical assessment basis | open | #83 | Classification reads range-preferred canonical values per shot; display-basis switches never reclassify; strong mode no longer silently applies the mishit filter; targeted-partial target evidence. |
+| A8 denominators and provenance | open | #84 | `unassessedResolved` vs manual-only `unassessed` documented; `missing` computed over the pre-filter population; zero carries are missing, never best/P80; best-shot mishit labelled confirmed vs auto-flagged; suspected outliers cannot be the personal best. |
+| A11 performance | open | #85 | Per-club chronological baseline index (12k shots ≈ 0.4 s cold, was ≈ 2.3 s at 3k); basis-independent resolve cache; `npm run verify:performance`. |
+| B1 evaluation contract | open | #86 | Abstentions by truth class, end-to-end recall (abstained positives count as misses), per-task reporting (missing-label / wrong-label / intent-contact), reversal invariance. |
+| B2 real-world pilot harness | open | #86 | `npm run verify:realworld` — opt-in, local-only, labelled-subset scoring of real exports; no data committed. |
+| C1 reference metadata | open | #87 | `basis` (range/premium/unknown) + `source` on reference values; legacy rows default to unknown/manual and stay valid; validator-only migration. |
+| C2 reference comparisons | open | #88 | Typical and strong-strike (P80) vs reference with delta, % and compact bars; basis-compatible gating only; total references never compared with carry. |
+| C3 normalized ratings (ADR-0005) | **blocked on owner review** | — | Weights 20/25/30/25 approved as provisional versioned constants, but implementation waits for the owner to review the proposed normalization functions, tolerance anchors, missing-data policy and illustrative scores (see `docs/ADR-0005-ratings-proposal.md` when drafted). Raw-metric standings remain until the replacement lands (decision 2). |
+| D1 external numerical benchmarks | deferred | — | No researched source permits embedding its dataset; link-only registry retained and documented as a reference resource, not the completed feature. Personal references are the functional alternative. Re-verify licensing independently before any future embedding. |
+| D2 visual simplification | partially started | — | Methodology already behind `<details>` disclosures on club profiles. Remaining: early cleanup pass over existing pages, then rating/comparison visuals integrated as C2/C3 land. Mobile-first, show-first. |
+
+§13.4 items 1–12 and 17–19 are addressed by the PRs above (item → PR: 1→#78, 2→#79, 3→#81, 4→#81, 5→#80, 6→#80, 7→#79, 8→#82, 9→#82, 10→#83, 11→#84, 12→#84, 13→#76, 14→#76, 15→#77, 16→#86, 17→#85, 18→C3 pending, 19→#87/#88). Item 20 (real-world accuracy) is partially addressed by the B2 harness but remains **unevaluated** — no real-export accuracy claims are made anywhere.
