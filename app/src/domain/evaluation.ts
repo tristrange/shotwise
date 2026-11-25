@@ -19,9 +19,17 @@ export type GroundTruth = {
   club?: string;
 };
 
+/**
+ * The evaluation task a scenario exercises. Missing-label, wrong-label and
+ * alternative-club inference are scored as separate tasks so a strong overall
+ * number cannot hide a weak one.
+ */
+export type EvaluationTask = 'intent-contact' | 'missing-label' | 'wrong-label';
+
 export type ClassifierScenario = {
   name: string;
   description: string;
+  task?: EvaluationTask;
   sessions: Session[];
   shots: Shot[];
   truth: Map<string, GroundTruth>;
@@ -46,6 +54,13 @@ export type DimensionReport = {
   coverage: number | null;
   /** Correct classifications over assessed shots; null when nothing was assessed. */
   accuracyOnAssessed: number | null;
+  /**
+   * End-to-end recall over all eligible shots: abstained shots with a truth
+   * label count as misses, so this can never exceed accuracyOnAssessed.
+   */
+  recallEndToEnd: number | null;
+  /** Abstentions broken down by the shot's truth label. */
+  abstainedByTruth: { label: string; count: number }[];
   falsePositives: number;
   falseNegatives: number;
   labels: LabelMetrics[];
@@ -53,6 +68,7 @@ export type DimensionReport = {
 
 export type EvaluationReport = {
   scenario: string;
+  task: EvaluationTask;
   basis: Basis;
   classifierVersion: typeof CLASSIFIER_VERSION;
   ruleVersion: typeof SEQUENCE_RULE_VERSION;
@@ -84,6 +100,7 @@ function dimensionReport(
   truth: (string | undefined)[],
 ): DimensionReport {
   const eligiblePairs: { predicted: string; truth: string }[] = [];
+  const abstainedCounts = new Map<string, number>();
   let eligible = 0;
   let assessed = 0;
   let abstained = 0;
@@ -92,8 +109,10 @@ function dimensionReport(
     if (expected === undefined) return;
     eligible++;
     if (prediction.abstained) {
-      // Abstentions are tracked separately from false negatives.
+      // Abstentions are tracked separately from false negatives, and by truth
+      // class so a dimension cannot hide misses behind its abstentions.
       abstained++;
+      abstainedCounts.set(expected, (abstainedCounts.get(expected) ?? 0) + 1);
       return;
     }
     assessed++;
@@ -110,6 +129,10 @@ function dimensionReport(
     abstained,
     coverage: eligible ? assessed / eligible : null,
     accuracyOnAssessed: assessed ? truePositives / assessed : null,
+    recallEndToEnd: eligible ? truePositives / eligible : null,
+    abstainedByTruth: [...abstainedCounts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
     falsePositives,
     falseNegatives,
     labels,
@@ -194,6 +217,7 @@ export function evaluateScenario(scenario: ClassifierScenario): EvaluationReport
 
   return {
     scenario: scenario.name,
+    task: scenario.task ?? 'intent-contact',
     basis,
     classifierVersion: CLASSIFIER_VERSION,
     ruleVersion: SEQUENCE_RULE_VERSION,
