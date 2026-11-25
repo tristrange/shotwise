@@ -303,4 +303,70 @@ describe('resolveShots (PR 10 analytics wiring)', () => {
     // Unknown intent on a higher wedge is not treated as a full swing.
     expect(isFullSwingResolved(resolved.get('s1')!)).toBe(false);
   });
+
+  it('classifies on the canonical basis: display basis never changes resolution', () => {
+    const session: Session = makeSession({ id: 'canon', date: '2026-11-16' });
+    // Range and premium measurements disagree deliberately; classification must
+    // follow the canonical range values in both display bases.
+    const shots: Shot[] = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeShot({
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: {
+            flatCarryRange: 150,
+            speedRange: 200,
+            flatCarryPremium: 130,
+            speedPremium: 180,
+          },
+        }),
+      ),
+      makeShot({
+        id: 'probe',
+        sessionId: session.id,
+        rowIndex: 13,
+        measurements: {
+          flatCarryRange: 60,
+          speedRange: 90,
+          flatCarryPremium: 128,
+          speedPremium: 178,
+        },
+      }),
+    ];
+    const rangeBasis = resolveShots(shots, [session], 'range-flat');
+    const premiumBasis = resolveShots(shots, [session], 'premium-flat');
+    expect([...premiumBasis.entries()]).toEqual([...rangeBasis.entries()]);
+    // The probe reads as a mishit on the canonical range values even though its
+    // premium numbers look normal.
+    expect(rangeBasis.get('probe')?.contact).toBe('mishit');
+  });
+
+  it('normalizes the mishit filter off in strong-strike mode', () => {
+    const session: Session = makeSession({ id: 'strong', date: '2026-11-16' });
+    const shots: Shot[] = [
+      ...history('7i', 150, 200, session),
+      ...Array.from({ length: 4 }, (_, i) =>
+        makeShot({
+          id: 'hot-' + i,
+          sessionId: session.id,
+          rowIndex: 20 + i,
+          recordedClub: '7i',
+          measurements: { flatCarryPremium: 165, speedPremium: 215 },
+        }),
+      ),
+    ];
+    const base = {
+      mode: 'all' as const,
+      today: '2026-11-16',
+      intent: 'all' as const,
+      contact: 'strong' as const,
+    };
+    const withFlag = selectCohort(shots, [session], { ...base, hideLikelyMishits: true }, 'premium-flat');
+    const withoutFlag = selectCohort(shots, [session], base, 'premium-flat');
+    // Strong-strike mode is about strike strength only; the mishit filter must
+    // not silently narrow it.
+    expect(withFlag.map((s) => s.id)).toEqual(withoutFlag.map((s) => s.id));
+    expect(withFlag.map((s) => s.id).sort()).toEqual(['hot-0', 'hot-1', 'hot-2', 'hot-3']);
+  });
 });

@@ -1,6 +1,6 @@
 import { quantile } from './statistics';
 import {
-  BASES,
+  assessmentMeasurement,
   isUnknownClub,
   isWedge,
   shiftDate,
@@ -107,7 +107,7 @@ function assessmentClubOf(
 
 /**
  * Causal baseline for one shot: earlier included shots of the same resolved
- * club with positive carry and speed on this basis, excluding reviewed mishits
+ * club with positive carry and speed, excluding reviewed mishits
  * and partials so incorrect labels cannot reinforce themselves. Same-day other
  * visits count only when their recorded start time is unambiguously earlier.
  */
@@ -115,11 +115,9 @@ function baselineBefore(
   shot: Shot,
   shots: Shot[],
   sessionMap: Map<string, Session>,
-  basis: Basis,
   inferred: Map<string, string> | undefined,
   club: string,
 ): Baseline | null {
-  const fields = BASES[basis];
   const shotSession = sessionMap.get(shot.sessionId);
   const shotDate = shotSession?.date;
   if (!shotDate) return null;
@@ -144,8 +142,8 @@ function baselineBefore(
       if (assessmentClubOf(s, inferred) !== club) return false;
       if (s.review.exclusion.kind !== 'included') return false;
       if (s.review.contact === 'mishit' || s.review.intent === 'partial') return false;
-      const carry = s.measurements[fields.carry];
-      const speed = s.measurements[fields.speed];
+      const carry = assessmentMeasurement(s, 'carry');
+      const speed = assessmentMeasurement(s, 'speed');
       return carry !== null && speed !== null && carry > 0 && speed > 0;
     })
     .sort((a, b) => {
@@ -156,13 +154,13 @@ function baselineBefore(
       return compareSessionStarts(sb, sa) || b.rowIndex - a.rowIndex;
     })
     .slice(0, BASELINE_CAP);
-  const carries = candidates.flatMap((s) => s.measurements[fields.carry] ?? []);
-  const speeds = candidates.flatMap((s) => s.measurements[fields.speed] ?? []);
-  const launches = candidates.flatMap((s) => s.measurements[fields.launch] ?? []);
-  const apexes = candidates.flatMap((s) => s.measurements[fields.apex] ?? []);
+  const carries = candidates.flatMap((s) => assessmentMeasurement(s, 'carry') ?? []);
+  const speeds = candidates.flatMap((s) => assessmentMeasurement(s, 'speed') ?? []);
+  const launches = candidates.flatMap((s) => assessmentMeasurement(s, 'launch') ?? []);
+  const apexes = candidates.flatMap((s) => assessmentMeasurement(s, 'apex') ?? []);
   const carryShares = candidates.flatMap((s) => {
-    const carry = s.measurements[fields.carry];
-    const total = s.measurements[fields.total];
+    const carry = assessmentMeasurement(s, 'carry');
+    const total = assessmentMeasurement(s, 'total');
     return carry !== null && total !== null && total > 0 ? [carry / total] : [];
   });
   return {
@@ -206,7 +204,7 @@ function contactFor(
   club: string,
 ): { value: ContactValue; reason: string } {
   if (s.carry === null || s.speed === null || s.carry <= 0 || s.speed <= 0)
-    return { value: 'uncertain', reason: 'Needs positive carry and ball speed on this basis.' };
+    return { value: 'uncertain', reason: 'Needs positive carry and ball speed.' };
   const carryLow =
     base.carryP75 !== null && s.carry < MISHIT_CARRY_FACTOR * base.carryP75;
   const speedLow =
@@ -271,10 +269,12 @@ function intentFor(
 export function assessShots(
   shots: Shot[],
   sessions: Session[],
-  basis: Basis = 'premium-flat',
+  _basis: Basis = 'premium-flat',
   inferredClubs?: Map<string, string>,
 ): Map<string, ShotAssessment> {
-  const fields = BASES[basis];
+  // _basis is the caller's display basis; classification itself uses the
+  // canonical per-shot policy (assessmentMeasurement), so it never changes
+  // when the display basis changes.
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const out = new Map<string, ShotAssessment>();
 
@@ -299,7 +299,7 @@ export function assessShots(
       out.set(shot.id, base);
       continue;
     }
-    const baseline = baselineBefore(shot, shots, sessionMap, basis, inferredClubs, club);
+    const baseline = baselineBefore(shot, shots, sessionMap, inferredClubs, club);
     if (
       !baseline ||
       baseline.n < MIN_BASELINE ||
@@ -315,12 +315,34 @@ export function assessShots(
     }
     base.baselineCount = baseline.n;
     const signals: Signals = {
-      carry: shot.measurements[fields.carry],
-      speed: shot.measurements[fields.speed],
-      launch: shot.measurements[fields.launch],
-      apex: shot.measurements[fields.apex],
-      total: shot.measurements[fields.total],
+      carry: assessmentMeasurement(shot, 'carry'),
+      speed: assessmentMeasurement(shot, 'speed'),
+      launch: assessmentMeasurement(shot, 'launch'),
+      apex: assessmentMeasurement(shot, 'apex'),
+      total: assessmentMeasurement(shot, 'total'),
     };
+    // Recorded-target evidence: when the measured carry matches the recorded
+    // target, the golfer almost certainly selected that distance — a targeted
+    // wedge partial is intentional distance control, not a mishit.
+    const target = shot.measurements.target;
+    const targeted =
+      isWedge(club) &&
+      signals.carry !== null &&
+      target !== null &&
+      target > 0 &&
+      Math.abs(signals.carry - target) <= Math.max(5, 0.1 * target);
+    if (targeted) {
+      base.intent = {
+        value: 'partial',
+        reason: `Carry ${signals.carry!.toFixed(0)} m matches the recorded target ${target.toFixed(0)} m — intentional distance control.`,
+      };
+      base.contact =
+        signals.speed !== null && signals.speed > 0
+          ? { value: 'typical', reason: 'Targeted partial with positive ball speed.' }
+          : { value: 'uncertain', reason: 'Needs positive ball speed.' };
+      out.set(shot.id, base);
+      continue;
+    }
     base.contact = contactFor(signals, baseline, club);
     base.intent = intentFor(club, signals, baseline);
     out.set(shot.id, base);

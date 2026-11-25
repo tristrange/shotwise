@@ -178,9 +178,11 @@ export function selectCohort(
   }
   if (query.scopeSessionId)
     selected = selected.filter((s) => s.sessionId === query.scopeSessionId);
-  const assessments = query.hideLikelyMishits
-    ? assessUnusualShots(shots, sessions)
-    : null;
+  // Strong-strike mode already excludes mishits via its own contact check, so
+  // the mishit filter is normalized off to keep that view purely about strike
+  // strength rather than silently dropping auto-flagged unusual shots too.
+  const hideMishits = query.contact === 'strong' ? false : query.hideLikelyMishits;
+  const assessments = hideMishits ? assessUnusualShots(shots, sessions) : null;
   // Strong-strike mode: per-club P80 thresholds over the typical full-swing
   // population of the current selection (after any visit scope, so thresholds
   // come from the scoped visit); clubs below the minimum sample have no
@@ -205,7 +207,7 @@ export function selectCohort(
       carry !== null &&
       threshold <= carry;
     return (
-      (!query.hideLikelyMishits ||
+      (!hideMishits ||
         (r.contact !== 'mishit' &&
           !(assessment?.kind === 'assessed' && assessment.unusual))) &&
       (!query.club ||

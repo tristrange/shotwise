@@ -209,8 +209,11 @@ describe('club profiles', () => {
       query({ hideLikelyMishits: true }),
     );
 
-    expect(unfiltered.recent.typical.n).toBe(28);
-    expect(filtered.recent.typical.n).toBe(20);
+    // Canonical basis reads the range measurements, so shots 11-20 are
+    // auto-assessed as typical contact and the reviewed cohort (n=10) wins;
+    // the reliability spread below still spans all 36 shots with the filter on.
+    expect(unfiltered.recent.typical).toMatchObject({ cohort: 'reviewed', median: 120, n: 10 });
+    expect(filtered.recent.typical.n).toBe(10);
     expect(filtered.recent.spread).toEqual({ iqr: 100, n: 36, missing: 0 });
     expect(filtered.recent.lowerTail).toEqual({ p10: 20, n: 36 });
     expect(filtered.recent.contact).toMatchObject({ fullReviewed: 8, mishits: 8 });
