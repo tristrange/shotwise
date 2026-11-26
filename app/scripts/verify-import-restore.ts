@@ -1,7 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { csvFixture } from '../src/domain/fixtures';
 import { parseCsv } from '../src/domain/csv';
@@ -22,23 +19,13 @@ import { localStack } from '../tests/local';
  *   3. export the backup through the normal snapshot path,
  *   4. restore it into a fresh account and verify counts, original bytes,
  *      hashes, reviews and version.
- * Synthetic data only; both accounts are deleted at the end. Requires a local
- * Supabase stack (env SHOTWISE_API_URL / SHOTWISE_PUBLISHABLE_KEY /
- * SHOTWISE_SERVICE_ROLE_KEY override `npx supabase status`).
+ * Synthetic data only. Requires a disposable local Supabase stack, selected
+ * with SUPABASE_WORKDIR when it is separate from the application checkout.
  *
  * Usage: npm run verify:import-restore
  */
 
-const stack =
-  process.env.SHOTWISE_API_URL &&
-  process.env.SHOTWISE_PUBLISHABLE_KEY &&
-  process.env.SHOTWISE_SERVICE_ROLE_KEY
-    ? {
-        API_URL: process.env.SHOTWISE_API_URL,
-        PUBLISHABLE_KEY: process.env.SHOTWISE_PUBLISHABLE_KEY,
-        SERVICE_ROLE_KEY: process.env.SHOTWISE_SERVICE_ROLE_KEY,
-      }
-    : localStack();
+const stack = localStack();
 
 const admin = createClient(stack.API_URL, stack.SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -119,7 +106,6 @@ const importCsv = async (
 
 const source = await makeAccount('source');
 const bigDate = shiftDate(today, -7);
-let backupText = '';
 try {
   // 1. The 3,000-shot deterministic Inrange CSV from the release review.
   const big = await importCsv(
@@ -167,16 +153,13 @@ try {
   // 3. Export the backup through the normal snapshot path.
   const exportStart = performance.now();
   const dataset = await source.repository.load();
-  backupText = serializeBackup(dataset);
-  const backupFile = join(tmpdir(), `shotwise-a1-verify-${randomUUID()}.json`);
-  await writeFile(backupFile, backupText);
+  const backupText = serializeBackup(dataset);
   log('backup-export', {
     bytes: Buffer.byteLength(backupText),
     shots: dataset.shots.length,
     sessions: dataset.sessions.length,
     imports: dataset.imports.length,
     exportMs: Math.round(performance.now() - exportStart),
-    file: backupFile,
   });
   assert(dataset.shots.length === 3000 + 105 * 120, 'unexpected shot count');
   assert(dataset.sessions.length === 106, 'unexpected session count');

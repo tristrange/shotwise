@@ -32,10 +32,13 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
       if (
         error.code === '57014' ||
         error.message.includes('statement timeout')
-      )
-        throw new Error(
-          'The server took too long and cancelled this operation. Nothing was saved or changed — split a very large import into smaller files, or retry.',
-        );
+      ) {
+        if (name === 'commit_import')
+          throw new Error('Import timed out before saving. Retry or choose a smaller export.');
+        if (name === 'restore_backup')
+          throw new Error('Restore timed out before saving. Keep your backup file and retry.');
+        throw new Error('Shotwise timed out waiting for the server. Try again.');
+      }
       if (
         error.message.includes('Failed to fetch') ||
         error.message.includes('fetch failed')

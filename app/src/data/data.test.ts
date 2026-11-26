@@ -335,7 +335,7 @@ describe('repository error mapping', () => {
     preview: await parseCsv(new TextEncoder().encode(csvFixture([{}]))),
   });
 
-  it('turns a statement timeout into an actionable nothing-was-saved message', async () => {
+  it('reports timeouts with recovery guidance for the operation', async () => {
     const repo = createRepository(
       stubClient({
         code: '57014',
@@ -345,7 +345,7 @@ describe('repository error mapping', () => {
       }),
     );
     await expect(repo.importCsv(await input())).rejects.toThrow(
-      'took too long and cancelled this operation. Nothing was saved or changed',
+      'Import timed out before saving. Retry or choose a smaller export.',
     );
     await expect(
       repo.restore({
@@ -358,7 +358,10 @@ describe('repository error mapping', () => {
         equipmentAssignments: [],
         userReferenceValues: [],
       }),
-    ).rejects.toThrow('Nothing was saved or changed');
+    ).rejects.toThrow('Restore timed out before saving. Keep your backup file and retry.');
+    await expect(repo.load()).rejects.toThrow(
+      'Shotwise timed out waiting for the server. Try again.',
+    );
   });
 
   it('passes other database errors through unchanged', async () => {

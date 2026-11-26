@@ -82,11 +82,12 @@ npm run test:db
 npx playwright install chromium webkit
 npm run test:e2e
 npm run verify:performance
+npm run verify:import-restore
 npm run verify:classifier
 npm run verify:csv -- /absolute/path/to/session.csv
 ```
 
-Database tests use local PostgreSQL only. SQL tests roll back; concurrent tests clean up their synthetic owners. Browser tests create synthetic local Auth users and use the real local API. Personal exports are never CI fixtures. A local sample-specific check is available with `--sample-acceptance` after the CSV path.
+Database tests use local PostgreSQL only. SQL tests roll back; concurrent tests clean up their synthetic owners. Browser tests create synthetic local Auth users and use the real local API. Personal exports are never CI fixtures. A local sample-specific check is available with `--sample-acceptance` after the CSV path. Run the large import and restore verification against a disposable local stack. See [the database guide](docs/database.md).
 
 ## Back up and deploy
 

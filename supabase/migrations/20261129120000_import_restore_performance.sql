@@ -24,7 +24,7 @@
 -- One-pass canonical hash: header sort keys are computed once and every shot's
 -- cell text is aggregated in a single grouped query instead of per-row loops.
 create or replace function private.canonical_hash(p jsonb) returns text language plpgsql stable set search_path='' as $$ declare
- headers text[]; headtext text; rows text; bad boolean;
+ headers text[]; headtext text; rows text; valid_raw boolean;
 begin
  if jsonb_typeof(p->'headers') is distinct from 'array' then raise exception 'Invalid headers'; end if;
  if exists(select 1 from jsonb_array_elements(p->'headers') h where jsonb_typeof(h)<>'string' or private.js_trim(h#>>'{}')<>h#>>'{}' or h#>>'{}'='') then raise exception 'Invalid headers'; end if;
@@ -34,12 +34,12 @@ begin
    jsonb_typeof(s.raw)='object'
    and (select count(*) from jsonb_object_keys(case when jsonb_typeof(s.raw)='object' then s.raw else '{}'::jsonb end))=cardinality(headers)
    and not exists(select 1 from unnest(headers) h where jsonb_typeof(s.raw->h) is distinct from 'string')
- ),true) into bad from (select value->'raw' as raw from jsonb_array_elements(p->'shots') value) s;
- if not bad then raise exception 'Invalid raw cells'; end if;
- with s as (select row_number() over () as rn, value->'raw' as raw from jsonb_array_elements(p->'shots') value),
-      h as (select h, private.js_sort_key(h) as sk from unnest(headers) h)
+ ),true) into valid_raw from (select value->'raw' as raw from jsonb_array_elements(p->'shots') value) s;
+ if not valid_raw then raise exception 'Invalid raw cells'; end if;
+ with s as (select rn, value->'raw' as raw from jsonb_array_elements(p->'shots') with ordinality as t(value,rn)),
+      h as materialized (select h, private.js_sort_key(h) as sk from unnest(headers) h)
  select coalesce(string_agg('['||cells||']',',' order by rn),'') into rows from (
-   select s.rn, string_agg(to_json(s.raw->>h.h)::text,',' order by h.sk) as cells
+   select s.rn, string_agg(to_json(s.raw->>h.h)::text,',' order by h.sk collate "C") as cells
    from s cross join h group by s.rn
  ) x;
  return encode(extensions.digest(convert_to('[['||headtext||'],['||rows||']]','UTF8'),'sha256'),'hex'); end $$;
@@ -58,7 +58,8 @@ begin
 create or replace function private.validate_source(original bytea, preview jsonb, parser_version text) returns void language plpgsql stable set search_path='' as $$
 declare
  source text; sample text; cr_parts text[]; newline text; n_first integer; cr_first integer; crlf_count integer;
- normalized text; mark text; mark_len integer; pattern text; skeleton text; spans text[]; ph text; ph_len integer;
+ normalized text; mark text; pattern text; skeleton text; spans text[]; ph text; sentinel_body text:=chr(2);
+ preview_headers jsonb:=preview->'headers'; preview_shots jsonb:=preview->'shots'; expected_rows integer;
  lines text[]; line text; raw_fields text[]; fields text[]; f text; rest text; span text;
  span_idx integer:=0; li integer; fi integer; row_no integer:=0; headers text[]; actual jsonb; shot jsonb;
  k text; h text; expected double precision; got double precision; value jsonb; nonempty text;
@@ -71,8 +72,15 @@ begin
   select count(*) into crlf_count from unnest(cr_parts) x where left(x,1)=E'\n';
   if crlf_count>=cardinality(cr_parts)/2.0 then newline:=E'\r\n'; else newline:=E'\r'; end if;
  end if;
- ph_len:=1; while strpos(source,repeat(chr(1),ph_len))>0 loop ph_len:=ph_len+1; end loop; ph:=repeat(chr(1),ph_len);
- mark_len:=1; while strpos(source,repeat(chr(2),mark_len))>0 loop mark_len:=mark_len+1; end loop; mark:=repeat(chr(2),mark_len);
+ -- Distinct delimiter ends prevent a sentinel from crossing a real cell
+ -- boundary. Choose a fresh body if the short sentinel occurs in the file.
+ loop
+  ph:=chr(1)||sentinel_body||chr(3);
+  mark:=chr(4)||sentinel_body||chr(5);
+  exit when strpos(source,ph)=0 and strpos(source,mark)=0;
+  sentinel_body:=extensions.gen_random_uuid()::text;
+ end loop;
+ expected_rows:=jsonb_array_length(preview_shots);
  normalized:=replace(source,newline,mark);
  pattern:='(^|,|'||mark||')("(?:[^"]|"")*")';
  select coalesce(array_agg(m[2] order by ord),array[]::text[]) into spans from regexp_matches(normalized,pattern,'g') with ordinality as t(m,ord);
@@ -84,8 +92,8 @@ begin
   fields:=array[]::text[];
   for fi in 1..coalesce(cardinality(raw_fields),0) loop
    f:=raw_fields[fi];
-   if left(f,ph_len)=ph then
-    rest:=substr(f,ph_len+1);
+   if left(f,length(ph))=ph then
+    rest:=substr(f,length(ph)+1);
     if private.js_trim(rest)<>'' then raise exception 'Invalid text after CSV quote'; end if;
     span_idx:=span_idx+1; span:=spans[span_idx];
     fields:=array_append(fields,replace(replace(substr(span,2,length(span)-2),'""','"'),mark,newline));
@@ -101,11 +109,11 @@ begin
   if nonempty<>'' then
    if headers is null then
     select array_agg(private.js_trim(x) order by ord) into headers from unnest(fields) with ordinality as t(x,ord);
-    if cardinality(headers)<>jsonb_array_length(preview->'headers') or exists(select 1 from unnest(headers) hdr where not (preview->'headers' ? hdr)) then raise exception 'CSV headers do not match'; end if;
+    if cardinality(headers)<>jsonb_array_length(preview_headers) or exists(select 1 from unnest(headers) hdr where not (preview_headers ? hdr)) then raise exception 'CSV headers do not match'; end if;
    else
-    row_no:=row_no+1; if row_no>jsonb_array_length(preview->'shots') or cardinality(fields)<>cardinality(headers) then raise exception 'CSV rows do not match'; end if;
+    row_no:=row_no+1; if row_no>expected_rows or cardinality(fields)<>cardinality(headers) then raise exception 'CSV rows do not match'; end if;
     select jsonb_object_agg(headers[n],fields[n]) into actual from generate_subscripts(headers,1) n;
-    shot:=preview->'shots'->(row_no-1);
+    shot:=preview_shots->(row_no-1);
     if not private.valid_shot(shot) or (shot->>'rowIndex')::integer<>row_no or shot->'raw' is distinct from actual then raise exception 'CSV cells do not match'; end if;
     for k,h in select e.key,e.value from jsonb_each_text(mapping) e loop
      expected:=private.measurement(coalesce(actual->>h,''),k); value:=shot->'measurements'->k;
@@ -115,7 +123,7 @@ begin
    end if;
   end if;
  end loop;
- if headers is null or row_no=0 or row_no<>jsonb_array_length(preview->'shots') then raise exception 'CSV row count does not match'; end if;
+ if headers is null or row_no=0 or row_no<>expected_rows then raise exception 'CSV row count does not match'; end if;
 end $$;
 
 -- Bulk shot/review insert. Validation order matches the previous per-row loop:
@@ -137,9 +145,7 @@ create or replace function private.commit_import(p_input jsonb) returns jsonb la
  insert into public.reviews select s.id,u,jsonb_build_object('intent',case when (p_input->>'confirmedFull')::boolean and trim(s.payload->>'recordedClub') !~* '^(PW|SW|GW|LW|AW|UW|W|[0-9]{2}°?)$' and lower(trim(s.payload->>'recordedClub')) not in ('','?','unknown','--') then 'full' else 'unknown' end,'contact','uncertain','club',jsonb_build_object('kind','unreviewed'),'exclusion',jsonb_build_object('kind','included')),0 from public.shots s where s.owner_id=u and s.session_id=sid;
  perform private.bump(u); return jsonb_build_object('sessionId',sid,'duplicate',false); end $$;
 
--- Bulk inserts for every restored collection; per-row validation, error
--- messages and stage order are unchanged (first failing array position wins,
--- so single-defect payloads report exactly what they reported before).
+-- Bulk inserts for each restored collection preserve owner checks, validation stages and transaction atomicity.
 create or replace function private.restore_backup(p_dataset jsonb) returns void language plpgsql security definer set search_path='' as $$ declare u uuid:=private.lock_owner(); imp public.imports%rowtype; canonical jsonb; shot_count integer; bad integer; begin
  if exists(select 1 from public.sessions where owner_id=u) or exists(select 1 from public.shots where owner_id=u) or exists(select 1 from public.equipment where owner_id=u) or exists(select 1 from public.equipment_assignments where owner_id=u) or exists(select 1 from public.user_reference_values where owner_id=u) then raise exception 'Restore requires empty dataset'; end if;
  if not coalesce(jsonb_typeof(p_dataset)='object' and (p_dataset->>'version') ~ '^[0-9]+$' and jsonb_typeof(p_dataset->'sessions')='array' and jsonb_typeof(p_dataset->'shots')='array' and jsonb_typeof(p_dataset->'imports')='array' and jsonb_typeof(p_dataset->'events')='array' and jsonb_array_length(p_dataset->'sessions')<=20000 and jsonb_array_length(p_dataset->'shots')<=100000 and jsonb_array_length(p_dataset->'imports')<=20000 and jsonb_array_length(p_dataset->'events')<=200000 and (p_dataset ? 'equipment') = (p_dataset ? 'equipmentAssignments') and (not (p_dataset ? 'equipment') or (jsonb_typeof(p_dataset->'equipment')='array' and jsonb_array_length(p_dataset->'equipment')<=10000)) and (not (p_dataset ? 'equipmentAssignments') or (jsonb_typeof(p_dataset->'equipmentAssignments')='array' and jsonb_array_length(p_dataset->'equipmentAssignments')<=200000)) and (not (p_dataset ? 'userReferenceValues') or (jsonb_typeof(p_dataset->'userReferenceValues')='array' and jsonb_array_length(p_dataset->'userReferenceValues')<=1000)),false) then raise exception 'Invalid backup'; end if;
@@ -163,10 +169,9 @@ create or replace function private.restore_backup(p_dataset jsonb) returns void 
  end if;
  if p_dataset ? 'equipmentAssignments' then
   if (select count(*) from jsonb_array_elements(p_dataset->'equipmentAssignments'))<>(select count(distinct value->>'shotId') from jsonb_array_elements(p_dataset->'equipmentAssignments')) then raise exception 'Invalid backup assignment'; end if;
-  select min(t.ord) into bad from (select row_number() over () as ord, value as x from jsonb_array_elements(p_dataset->'equipmentAssignments')) t where
-   not coalesce(jsonb_typeof(t.x)='object' and jsonb_typeof(t.x->'shotId')='string' and (t.x->>'shotId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' and jsonb_typeof(t.x->'equipmentId')='string' and (t.x->>'equipmentId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' and jsonb_typeof(t.x->'clubLabel')='string' and length(private.js_trim(t.x->>'clubLabel')) between 1 and 30,false)
-   or not exists(select 1 from public.shots s where s.owner_id=u and s.id=(t.x->>'shotId')::uuid)
-   or not exists(select 1 from public.equipment e where e.owner_id=u and e.id=(t.x->>'equipmentId')::uuid);
+  select min(t.ord) into bad from (select row_number() over () as ord, value as x from jsonb_array_elements(p_dataset->'equipmentAssignments')) t where case when not coalesce(jsonb_typeof(t.x)='object' and jsonb_typeof(t.x->'shotId')='string' and (t.x->>'shotId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' and jsonb_typeof(t.x->'equipmentId')='string' and (t.x->>'equipmentId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' and jsonb_typeof(t.x->'clubLabel')='string' and length(private.js_trim(t.x->>'clubLabel')) between 1 and 30,false) then true else
+   not exists(select 1 from public.shots s where s.owner_id=u and s.id=(t.x->>'shotId')::uuid)
+   or not exists(select 1 from public.equipment e where e.owner_id=u and e.id=(t.x->>'equipmentId')::uuid) end;
   if bad is not null then raise exception 'Invalid backup assignment'; end if;
   insert into public.equipment_assignments select (t.x->>'shotId')::uuid,u,(t.x->>'equipmentId')::uuid,t.x->>'clubLabel' from (select value as x from jsonb_array_elements(p_dataset->'equipmentAssignments')) t;
  end if;

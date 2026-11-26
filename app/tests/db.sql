@@ -400,6 +400,26 @@ do $$ declare b jsonb; v0 bigint; begin
  perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',b),'Restore requires empty dataset');
 end $$;
 
+-- Raw cells may contain control characters and quoted newlines. The CSV
+-- tokenizer must preserve both, including data adjacent to row delimiters.
+set local role postgres;
+do $$
+declare
+ preview jsonb:=pg_temp.input()->'preview';
+ note1 text:='cell ends here '||chr(2);
+ note2 text:=E'quoted, with "quotes"
+next line '||chr(1)||chr(2)||chr(3);
+ source text:=E'Shot #,Club,Carry Dist. Range (m),Note
+1,7i,0,'||note1||
+  E'
+2,PW,,"'||replace(note2,'"','""')||'"';
+begin
+ preview:=jsonb_set(preview,'{headers}',(preview->'headers')||'["Note"]'::jsonb);
+ preview:=jsonb_set(preview,'{shots,0,raw,Note}',to_jsonb(note1));
+ preview:=jsonb_set(preview,'{shots,1,raw,Note}',to_jsonb(note2));
+ perform private.validate_source(convert_to(source,'UTF8'),preview,'inrange-1');
+end $$;
+
 -- A1 regression: a realistic large import and its restore must complete under
 -- the authenticated role's default 8 s statement timeout (SQLSTATE 57014 used
 -- to cancel both). The fixtures are built as postgres because they call the
