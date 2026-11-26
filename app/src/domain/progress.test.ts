@@ -422,13 +422,15 @@ describe('firstLatestDelta', () => {
     const early = s('e', '2026-11-10', '09:00');
     const untimed = s('u', '2026-11-12', null);
     const afternoon = s('a', '2026-11-12', '14:00');
-    const { delta, deltaReason } = firstLatestDelta([
+    const { delta, deltaReason, firstAmbiguous, latestAmbiguous } = firstLatestDelta([
       { session: early, value: 100 },
       { session: untimed, value: 120 },
       { session: afternoon, value: 130 },
     ]);
     expect(delta).toBeNull();
     expect(deltaReason).toBe('ambiguous');
+    expect(firstAmbiguous).toBe(false);
+    expect(latestAmbiguous).toBe(true);
   });
   it('keeps same-day visits with distinct times ordered and reports their delta', () => {
     const morning = s('m', '2026-11-10', '08:00');

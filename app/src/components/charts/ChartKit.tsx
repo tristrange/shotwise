@@ -44,8 +44,6 @@ type TooltipEntry = {
   payload?: Record<string, unknown> & {
     detail?: string;
     compareDetail?: string;
-    /** Set on the masked copies TrendChart draws per run; hidden from tooltips. */
-    masked?: boolean;
   };
 };
 
@@ -71,17 +69,15 @@ export function ChartTooltipContent({
   label?: string | number;
   unit?: string;
 }) {
-  // TrendChart splits the series into runs and draws one masked copy per run;
-  // those masked rows must not appear as extra "not measured" entries.
-  const entries = payload?.filter((entry) => entry.payload?.masked !== true);
-  if (!active || !entries?.length) return null;
-  const detail = entries.find((entry) => entry.payload?.detail)?.payload?.detail;
+  if (!active || !payload?.length) return null;
+  const detail = payload.find((entry) => entry.payload?.detail)?.payload
+    ?.detail;
   return (
     <div className="ds-chart-tooltip">
       {label !== undefined && (
         <div className="ds-chart-tooltip-label">{String(label)}</div>
       )}
-      {entries.map((entry, index) => {
+      {payload.map((entry, index) => {
         const value = formatValue(entry.value);
         const rowDetail =
           entry.dataKey === 'compare'

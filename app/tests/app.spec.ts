@@ -1338,6 +1338,7 @@ test('explores progress through one interactive chart with sparse and missing da
 test('withholds an ambiguous same-day progress delta and selects chart points exactly', async ({
   page,
   account,
+  hasTouch,
 }) => {
   // Review A2: the first date carries a 7i visit with median 100 m and no
   // recorded time plus an 08:00 visit with median 130 m; the next day is
@@ -1393,16 +1394,18 @@ test('withholds an ambiguous same-day progress delta and selects chart points ex
   await expect(details).toContainText('100.0 m');
   await expect(details).toContainText('130.0 m');
   await expect(details).toContainText('150.0 m');
-  // No connecting line between the unordered same-day visits: the series
-  // splits into two runs (S1 alone, S2–S3) instead of one implied trajectory.
-  await expect(chart.locator('path.recharts-area-curve')).toHaveCount(2);
+  // One curve with two subpaths leaves a gap between the unordered visits.
+  const curve = await chart.locator('path.recharts-area-curve').getAttribute('d');
+  expect(curve?.match(/M/g)).toHaveLength(2);
   // Review B3: a direct tap on a point selects exactly that visit — each dot
   // is an accessible control (role=button, focusable, aria-label) keyed by
   // the session UUID, which also works on phone WebKit.
   const dots = chart.locator('circle.trend-dot[role="button"]');
   await expect(dots).toHaveCount(3);
+  await expect(chart.locator('circle.trend-dot[tabindex="0"]')).toHaveCount(1);
   await expect(dots.nth(0)).toHaveAttribute('aria-label', /Select S1 ·/);
-  await dots.nth(2).click();
+  if (hasTouch) await dots.nth(2).tap();
+  else await dots.nth(2).click();
   const inspect = page.getByLabel('Inspect session', { exact: true });
   await expect(inspect).toHaveValue(sessionIds[2]);
   await expect(trend).toContainText(/Selected S3 ·/);
@@ -1415,11 +1418,19 @@ test('withholds an ambiguous same-day progress delta and selects chart points ex
   await expect(
     trend.getByRole('link', { name: 'open session recap' }),
   ).toHaveAttribute('href', `#sessions/${sessionIds[0]}`);
-  // Keyboard route: focusing a dot and pressing Enter selects the exact point.
-  await dots.nth(1).focus();
+  await inspect.selectOption(sessionIds[1]);
+  const selectedDot = chart.locator('circle.trend-dot[tabindex="0"]');
+  await expect(selectedDot).toHaveAttribute('aria-label', /Select S2 ·/);
+  await selectedDot.focus();
   await page.keyboard.press('Enter');
   await expect(inspect).toHaveValue(sessionIds[1]);
   await expect(trend).toContainText(/Selected S2 ·/);
+  // A latest day with unknown ordering cannot name a latest measured visit.
+  await importVisit('a2-next-morning.csv', nextDay, '08:00', '140');
+  await page.reload();
+  await expect(trend.locator('.ds-metric').first()).toContainText('Change not shown');
+  await expect(trend.getByText(/Latest session ·/)).toHaveCount(0);
+  await expect(trend.getByText(/First session ·/)).toHaveCount(0);
 });
 
 test('shows readable carry bands without recommending practice from overlap alone', async ({
@@ -2874,6 +2885,8 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
   await expect(target).toContainText(
     'Median carry 31 m · 4 of 5 measured · Middle half spans 3 m',
   );
+  await expect(target.locator('.band-iqr')).toHaveCount(1);
+  await expect(target.locator('.band-p')).toHaveCount(0);
   await expect(target).toContainText(
     'Median ball speed 70 kph · 1 of 5 measured',
   );

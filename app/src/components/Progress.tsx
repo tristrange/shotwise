@@ -171,7 +171,7 @@ export function Progress({
             ) : (
               <p className="context">
                 {withheldAmbiguous > 0
-                  ? 'No change is compared: the earliest or latest day of every club has same-day visits in no recorded order.'
+                  ? 'No club has a comparable first and latest measured visit in this window.'
                   : 'No club has two measured sessions in this window yet.'}
               </p>
             )}

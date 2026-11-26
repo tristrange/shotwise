@@ -186,8 +186,8 @@ export function PerformanceTrendCard({
     [clubGroup, metric],
   );
   const measured = points.filter((p) => p.value !== null);
-  const headline = summary?.latest ?? null;
-  const first = summary?.first ?? null;
+  const headline = summary?.latestAmbiguous ? null : (summary?.latest ?? null);
+  const first = summary?.firstAmbiguous ? null : (summary?.first ?? null);
   const delta = summary?.delta ?? null;
   const lowerIsBetter = LOWER_IS_BETTER[metric];
   const directional = DELTA_IS_DIRECTIONAL[metric];
@@ -325,7 +325,7 @@ export function PerformanceTrendCard({
           deltaTone={deltaTone}
         />
       ) : (
-        <Metric label={headlineLabel} value="—" unit={unit} />
+        <Metric label={headlineLabel} value="—" unit={unit} delta={withheldDeltaText} />
       )}
       <p className="muted" style={{ margin: '4px 0 12px' }}>
         Over {measured.length} of {points.length} sessions · {BASES[basis].label}
@@ -333,11 +333,12 @@ export function PerformanceTrendCard({
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
           ? summary?.deltaReason === 'ambiguous'
-            ? `${seriesName}: latest ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions; change vs the earliest measured session is not shown because same-day visits have no recorded order.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
+            ? `${seriesName} across ${measured.length} of ${points.length} sessions. Same-day visits at one end of this window have no recorded order.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
             : `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
           : 'No measured values in this window.'}
       </ChartSummary>
       <TrendChart
+        selectedId={inspectedId}
         data={points}
         unit={unit}
         label={chartLabel}
@@ -382,22 +383,22 @@ export function PerformanceTrendCard({
       </p>
       {summary && summary.measured > 0 && (
         <MetricGrid>
-          {summary.first && (
+          {first && (
             <Metric
               small
-              label={`First session · ${shortDate(summary.first.session.date)}`}
-              value={fmt(summary.first.value, metric)}
+              label={`First session · ${shortDate(first.session.date)}`}
+              value={fmt(first.value, metric)}
               unit={unit}
-              delta={`${summary.first.n} measured`}
+              delta={`${first.n} measured`}
             />
           )}
-          {summary.latest && (
+          {headline && (
             <Metric
               small
-              label={`Latest session · ${shortDate(summary.latest.session.date)}`}
-              value={fmt(summary.latest.value, metric)}
+              label={`Latest session · ${shortDate(headline.session.date)}`}
+              value={fmt(headline.value, metric)}
               unit={unit}
-              delta={`${summary.latest.n} measured`}
+              delta={`${headline.n} measured`}
             />
           )}
           {summary.best && (

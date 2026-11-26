@@ -24,12 +24,15 @@ export function ClubSuggestions({
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const sequence = useMemo(
-    () => active ? assessSequences(data.shots, data.sessions, 'premium-flat') : undefined,
+  const activeSequence = useMemo(
+    () => active
+      ? assessSequences(data.shots, data.sessions, 'premium-flat')
+      : undefined,
     [active, data.shots, data.sessions],
   );
 
-  if (!sequence) return null;
+  if (!activeSequence) return null;
+  const sequence = activeSequence;
 
   const sessions = new Map(
     data.sessions

@@ -62,7 +62,8 @@ export function ClubHistoryChart({
   // endpoint's own date).
   const {
     first,
-    latest: headline,
+    latest,
+    latestAmbiguous,
     delta,
     deltaReason,
   } = firstLatestDelta(
@@ -71,6 +72,7 @@ export function ClubHistoryChart({
       value: metric === 'median' ? p.median : p.iqr,
     })),
   );
+  const headline = latestAmbiguous ? null : latest;
   const lowerIsBetter = metric === 'iqr';
   const deltaText =
     delta === null ? undefined : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1)} m`;
@@ -117,6 +119,7 @@ export function ClubHistoryChart({
           label={metric === 'median' ? 'Median carry' : 'Carry spread (IQR)'}
           value="—"
           unit="m"
+          delta={withheldDeltaText}
         />
       )}
       <p className="muted" style={{ margin: '4px 0 12px' }}>
@@ -125,11 +128,12 @@ export function ClubHistoryChart({
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
           ? deltaReason === 'ambiguous'
-            ? `${metric === 'median' ? 'Median carry' : 'Carry spread'}: latest ${headline?.value?.toFixed(1)} m across ${measured.length} sessions; change vs the earliest measured session is not shown because same-day visits have no recorded order.`
+            ? `${metric === 'median' ? 'Median carry' : 'Carry spread'} across ${measured.length} sessions. Same-day visits at one end of this window have no recorded order.`
             : `${metric === 'median' ? 'Median carry' : 'Carry spread'} from ${first?.value?.toFixed(1)} m to ${headline?.value?.toFixed(1)} m across ${measured.length} sessions.`
           : 'No measured values in this history.'}
       </ChartSummary>
       <TrendChart
+        selectedId={selectedId}
         data={chartPoints}
         unit="m"
         label={chartLabel}
