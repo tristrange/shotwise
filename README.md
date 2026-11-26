@@ -46,7 +46,7 @@ Duplicate complete exports return the existing session, including renamed files 
 ## Read the analytics
 
 - **Recent** targets 50 shots per effective club within 60 calendar days ending today. It keeps the full cutoff date, so actual counts can exceed 50. It does not fill sparse clubs with older history.
-- **Progress** lets you choose a club and a metric, including median carry, strong-strike potential and carry spread (IQR). Each measured point represents a visit. The picker and tables give access to the exact session and sample counts. Fewer than ten measurements are marked sample limited. IQR requires four measured carries. A session difference alone cannot establish improvement.
+- **Progress** lets you choose a club and a metric, including median carry, strong-strike potential and carry spread (IQR). Each measured point represents a visit. The picker and tables give access to the exact session and sample counts. Fewer than ten measurements are marked sample limited. IQR requires four measured carries. Progress withholds a change when the first or latest measured visit cannot be determined from the recorded dates and times. A session difference alone cannot establish improvement.
 - **All-time** includes all non-archived sessions.
 
 Overview, Gapping, Progress and Shot shape share the selected analysis settings while you navigate. The “Hide likely mishits” toggle starts off and optionally hides automatic flags and reviewed mishits from the current view; unassessed shots remain included. Saved shots and reviews are unchanged. Recent is the default. Select All-time to see your full progression; changing a filter never changes saved shots. Filters reset when you reload or change accounts.

@@ -943,6 +943,7 @@ test('keeps all four Clubs sub-nav entries visible at 320 and 390 px, including 
         expect(box, `${label} box at ${width}px`).not.toBeNull();
         expect(box!.x).toBeGreaterThanOrEqual(-1);
         expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
       }
       await expect
         .poll(() =>
