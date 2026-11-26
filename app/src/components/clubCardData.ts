@@ -93,6 +93,14 @@ export function clubCardRows(
   };
   const broader = selectCohort(data.shots, data.sessions, broaderQuery, basis);
   const broaderGroups = benchmarkClubGroups(broader, resolved);
+  // The reference comparison's "typical" is always the typical-contact median,
+  // independent of the selected contact filter — a strong-strike median must
+  // never be presented as typical carry.
+  const typicalQuery = { ...query, contact: 'typical' as const };
+  const typicalGroups = benchmarkClubGroups(
+    selectCohort(data.shots, data.sessions, typicalQuery, basis),
+    resolved,
+  );
   const potentialByClub = new Map(
     clubStrongStrike(data, basis, broaderQuery).map((row) => [row.club, row]),
   );
@@ -114,7 +122,13 @@ export function clubCardRows(
       const comparison = ref
         ? compareWithReference(
             ref,
-            { typical: stats.median, strong: potential?.potential ?? null },
+            {
+              typical: metricStats(
+                typicalGroups.get(club) ?? [],
+                fields.carry,
+              ).median,
+              strong: potential?.potential ?? null,
+            },
             basis,
           )
         : null;

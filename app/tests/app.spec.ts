@@ -307,7 +307,10 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   ).toContainText('20 / 0');
   await nav(page, 'Shot shape');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.context')).toContainText('60 shots');
+  await expect(
+    page.getByRole('heading', { name: 'Shot shape', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('p.context')).toContainText('60 shots');
   await nav(page, 'Overview');
   await toggle.click();
   await expect(driver.locator('.club-shots')).toHaveText('25');

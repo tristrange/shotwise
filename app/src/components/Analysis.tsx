@@ -1,10 +1,5 @@
 import { useMemo } from 'react';
-import {
-  BASES,
-  clubOrder,
-  localToday,
-  type Dataset,
-} from '../domain/model';
+import { BASES, clubOrder, localToday, type Dataset } from '../domain/model';
 import {
   selectCohort,
   summarize,
@@ -145,7 +140,10 @@ export function Analysis({
                   onChange={onSettingsChange}
                 />
                 {settings.contact !== 'strong' && (
-                  <MishitToggle settings={settings} onChange={onSettingsChange} />
+                  <MishitToggle
+                    settings={settings}
+                    onChange={onSettingsChange}
+                  />
                 )}
                 <ViewToggle
                   mode={settings.mode}
@@ -153,12 +151,18 @@ export function Analysis({
                 />
                 <BasisButton
                   basis={basis}
-                  onChange={(next) => onSettingsChange({ ...settings, basis: next })}
+                  onChange={(next) =>
+                    onSettingsChange({ ...settings, basis: next })
+                  }
                 />
               </div>
             </div>
             {cardRows.length > 0 ? (
-              <div className="club-card-list" role="list" aria-label="Your clubs">
+              <div
+                className="club-card-list"
+                role="list"
+                aria-label="Your clubs"
+              >
                 {cardRows.map((row) => (
                   <div role="listitem" key={row.club}>
                     <ClubCard
@@ -185,89 +189,90 @@ export function Analysis({
               />
             </section>
           )}
-          <section className="panel">
-            <div className="ds-section-header">
-              <div>
-                <h2>Session distribution</h2>
-                <div className="ds-section-sub context">{cohort}</div>
-              </div>
-            </div>
-            <Disclosure summary="Distribution details (mean, median, IQR, P10–P90, SD)">
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Metric</th>
-                      <th>n</th>
-                      <th>Mean</th>
-                      <th>Median</th>
-                      <th>IQR</th>
-                      <th>P10–P90</th>
-                      <th>SD</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        ['Carry (m)', summary.carry],
-                        ['Ball speed (kph)', summary.speed],
-                        ['Apex (m)', summary.apex],
-                        ['Launch (°)', summary.launch],
-                      ] satisfies [string, typeof summary.carry][]
-                    ).map(([name, s]) => (
-                      <tr key={name}>
-                        <td>{name}</td>
-                        <td>{s.n}</td>
-                        <td>{fmt(s.mean)}</td>
-                        <td>{fmt(s.median)}</td>
-                        <td>{fmt(s.iqr)}</td>
-                        <td>
-                          {fmt(s.p10)}–{fmt(s.p90)}
-                        </td>
-                        <td>{fmt(s.sd)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Metric</th>
-                      <th>Left</th>
-                      <th>Straight</th>
-                      <th>Right</th>
-                      <th>Measured / missing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        ['Launch direction', summary.launchDirection],
-                        ['Curve', summary.curve],
-                        ['Lateral from centre', summary.lateral],
-                      ] satisfies [string, typeof summary.lateral][]
-                    ).map(([name, d]) => (
-                      <tr key={name}>
-                        <td>{name}</td>
-                        {/* Counts are shares of MEASURED shots; with no measurements
-                            the row shows missing, never a misleading 0/0/0. */}
-                        <td>{d.n === 0 ? '—' : d.left}</td>
-                        <td>{d.n === 0 ? '—' : d.straight}</td>
-                        <td>{d.n === 0 ? '—' : d.right}</td>
-                        <td>
-                          {d.n} / {d.missing}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Disclosure>
-          </section>
         </>
       )}
+      {/* Aggregate distribution renders on both Overview and Progress, as before. */}
+      <section className="panel">
+        <div className="ds-section-header">
+          <div>
+            <h2>Session distribution</h2>
+            <div className="ds-section-sub context">{cohort}</div>
+          </div>
+        </div>
+        <Disclosure summary="Distribution details (mean, median, IQR, P10–P90, SD)">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>n</th>
+                  <th>Mean</th>
+                  <th>Median</th>
+                  <th>IQR</th>
+                  <th>P10–P90</th>
+                  <th>SD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(
+                  [
+                    ['Carry (m)', summary.carry],
+                    ['Ball speed (kph)', summary.speed],
+                    ['Apex (m)', summary.apex],
+                    ['Launch (°)', summary.launch],
+                  ] satisfies [string, typeof summary.carry][]
+                ).map(([name, s]) => (
+                  <tr key={name}>
+                    <td>{name}</td>
+                    <td>{s.n}</td>
+                    <td>{fmt(s.mean)}</td>
+                    <td>{fmt(s.median)}</td>
+                    <td>{fmt(s.iqr)}</td>
+                    <td>
+                      {fmt(s.p10)}–{fmt(s.p90)}
+                    </td>
+                    <td>{fmt(s.sd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Left</th>
+                  <th>Straight</th>
+                  <th>Right</th>
+                  <th>Measured / missing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(
+                  [
+                    ['Launch direction', summary.launchDirection],
+                    ['Curve', summary.curve],
+                    ['Lateral from centre', summary.lateral],
+                  ] satisfies [string, typeof summary.lateral][]
+                ).map(([name, d]) => (
+                  <tr key={name}>
+                    <td>{name}</td>
+                    {/* Counts are shares of MEASURED shots; with no measurements
+                            the row shows missing, never a misleading 0/0/0. */}
+                    <td>{d.n === 0 ? '—' : d.left}</td>
+                    <td>{d.n === 0 ? '—' : d.straight}</td>
+                    <td>{d.n === 0 ? '—' : d.right}</td>
+                    <td>
+                      {d.n} / {d.missing}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Disclosure>
+      </section>
     </>
   );
 }
