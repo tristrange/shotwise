@@ -30,11 +30,14 @@ export function ClubCard({
   data,
   href,
   basisLabel,
+  carryLabel = 'carry',
   defaultOpen = false,
 }: {
   data: ClubCardData;
   href: string;
   basisLabel: string;
+  /** Word after the median: 'carry', 'typical carry', 'strong-strike median'. */
+  carryLabel?: string;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -75,7 +78,8 @@ export function ClubCard({
           <span className="club-id">
             <strong>{data.club}</strong>
             <small>
-              {fmtM(data.median)} carry · {fmtM(data.potential)} potential
+              <span className="club-shots">{data.total}</span> shots ·{' '}
+              {fmtM(data.median)} {carryLabel} · {fmtM(data.potential)} potential
               {!data.reliable && <span className="club-few"> · few shots</span>}
             </small>
           </span>

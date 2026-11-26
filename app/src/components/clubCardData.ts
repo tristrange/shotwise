@@ -12,6 +12,7 @@ import {
   directionStats,
   metricStats,
   selectCohort,
+  type AnalysisSettings,
 } from '../domain/analytics';
 import { resolveShots } from '../domain/assessment';
 import { clubStrongStrike } from '../domain/potential';
@@ -77,24 +78,23 @@ export type ClubCardData = {
 export function clubCardRows(
   data: Dataset,
   basis: Basis,
-  mode: 'recent' | 'all',
+  settings: Pick<AnalysisSettings, 'mode' | 'intent' | 'contact' | 'hideLikelyMishits'>,
 ): ClubCardData[] {
-  const query = {
-    mode,
-    intent: 'all',
-    contact: 'all',
-    hideLikelyMishits: false,
-    today: localToday(),
-  } as const;
+  const query = { ...settings, today: localToday() } as const;
   const resolved = resolveShots(data.shots, data.sessions, basis);
   const selected = selectCohort(data.shots, data.sessions, query, basis);
   const groups = benchmarkClubGroups(selected, resolved);
   // Reliability/spread/potential always come from the broader population so
   // they stay visible when a performance filter narrows the median.
-  const broader = selectCohort(data.shots, data.sessions, query, basis);
+  const broaderQuery = {
+    ...query,
+    contact: 'all' as const,
+    hideLikelyMishits: false,
+  };
+  const broader = selectCohort(data.shots, data.sessions, broaderQuery, basis);
   const broaderGroups = benchmarkClubGroups(broader, resolved);
   const potentialByClub = new Map(
-    clubStrongStrike(data, basis, query).map((row) => [row.club, row]),
+    clubStrongStrike(data, basis, broaderQuery).map((row) => [row.club, row]),
   );
   const ratingsByClub = new Map(
     clubRatings(data, query, data.userReferenceValues).map((r) => [r.club, r]),

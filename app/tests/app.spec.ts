@@ -269,17 +269,14 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   });
   const original = await account.repository.load();
   await login(page, account);
-  const driver = page
-    .getByRole('table')
-    .first()
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'D', exact: true }) });
-  const pitchingWedge = page
-    .getByRole('table')
-    .first()
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'PW', exact: true }) });
-  await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
+  const clubs = page.getByRole('list', { name: 'Your clubs' });
+  const driver = clubs
+    .getByRole('listitem')
+    .filter({ has: page.locator('.club-badge', { hasText: /^D$/ }) });
+  const pitchingWedge = clubs
+    .getByRole('listitem')
+    .filter({ has: page.locator('.club-badge', { hasText: /^PW$/ }) });
+  await expect(driver.locator('.club-shots')).toHaveText('25');
   const toggle = page.getByRole('button', {
     name: 'Hide likely mishits',
     exact: true,
@@ -287,10 +284,10 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(driver.getByRole('cell').nth(2)).toHaveText('20');
+  await expect(driver.locator('.club-shots')).toHaveText('20');
   // The three short+slow PW shots are partial intent AND likely mishits on the
   // canonical basis, so hiding likely mishits removes them too.
-  await expect(pitchingWedge.getByRole('cell').nth(2)).toHaveText('20');
+  await expect(pitchingWedge.locator('.club-shots')).toHaveText('20');
   await page.screenshot({
     path: testInfo.outputPath('filtered-stats.png'),
     fullPage: true,
@@ -313,7 +310,7 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   await expect(page.locator('.context')).toContainText('60 shots');
   await nav(page, 'Overview');
   await toggle.click();
-  await expect(driver.getByRole('cell').nth(2)).toHaveText('25');
+  await expect(driver.locator('.club-shots')).toHaveText('25');
   expect(await account.repository.load()).toEqual(original);
 });
 
@@ -338,9 +335,9 @@ test('switches overview club rows between All, Typical and Strong-strike', async
   });
   await login(page, account);
   await nav(page, 'Overview');
-  const list = page.getByRole('list', { name: 'Median carry by club' });
+  const list = page.getByRole('list', { name: 'Your clubs' });
   const row = list.getByRole('listitem').filter({ hasText: '7i' });
-  const shots = row.locator('.gap-n');
+  const shots = row.locator('.club-shots');
   await expect(shots).toContainText('20');
   // P80 of carries 100..119 is 115.2, so Strong-strike keeps 116..119.
   await page.getByRole('button', { name: 'Strong-strike', exact: true }).click();
@@ -665,43 +662,57 @@ test('includes unreviewed pitching-wedge shots in iron-style gapping but not hig
   ).toHaveCount(0);
 });
 
-test('expands overview club summaries inline with per-club measurements', async ({
+test('expands overview club cards inline with per-club measurements', async ({
   page,
   account,
 }) => {
   await seed(account);
   await login(page, account);
-  // Accessible name toggles between Show/Hide, so match loosely.
-  const toggle7i = page.getByRole('button', { name: /details for 7i/i });
-  const toggleSW = page.getByRole('button', { name: /details for SW/i });
+  const clubs = page.getByRole('list', { name: 'Your clubs' });
+  const cardOf = (code: string) =>
+    clubs
+      .getByRole('listitem')
+      .filter({ has: page.locator('.club-badge', { hasText: new RegExp(`^${code}$`, 'i') }) });
+  const card7i = cardOf('7i');
+  const cardSW = cardOf('SW');
+  // The whole card header is the expansion control.
+  const toggle7i = card7i.getByRole('button').first();
+  const toggleSW = cardSW.getByRole('button').first();
+  const detail7i = card7i.locator('.club-card-detail');
+  const detailSW = cardSW.locator('.club-card-detail');
   await expect(toggle7i).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.locator('#club-detail-7i')).toHaveCount(0);
+  // Collapsed content is hidden AND inert (out of the tab order / a11y tree).
+  await expect(detail7i).toBeHidden();
+  await expect(await detail7i.evaluate((el) => (el as HTMLElement).inert)).toBe(true);
 
   // Keyboard: focus + Enter expands.
   await toggle7i.focus();
   await page.keyboard.press('Enter');
   await expect(toggle7i).toHaveAttribute('aria-expanded', 'true');
-  const detail7i = page.locator('#club-detail-7i');
   await expect(detail7i).toBeVisible();
   await expect(detail7i).toContainText('Ball speed');
   await expect(detail7i).toContainText('kph');
   await expect(detail7i).toContainText('Launch');
-  await expect(detail7i).toContainText('21.0°');
+  await expect(detail7i).toContainText('21.0');
   await expect(detail7i).toContainText('Apex');
-  await expect(detail7i).toContainText('Strong-strike carry (P80)');
-  await expect(detail7i).toContainText('Carry spread (IQR)');
-  await expect(detail7i.getByRole('link', { name: 'Full club profile' })).toHaveAttribute(
+  await expect(detail7i).toContainText('Strong-strike P80');
+  await expect(detail7i).toContainText('IQR');
+  await expect(detail7i.getByRole('link', { name: /Full club profile/ })).toHaveAttribute(
     'href',
     '#clubs/7i',
   );
+  // The profile action is a separate control, not nested in the expand button.
+  await expect(
+    card7i.getByRole('link', { name: 'Open the full 7i profile' }),
+  ).toHaveAttribute('href', '#clubs/7i');
 
   // Clubs expand independently.
   await toggleSW.click();
-  await expect(page.locator('#club-detail-SW')).toBeVisible();
+  await expect(detailSW).toBeVisible();
   await expect(detail7i).toBeVisible();
   await toggle7i.click();
-  await expect(page.locator('#club-detail-7i')).toHaveCount(0);
-  await expect(page.locator('#club-detail-SW')).toBeVisible();
+  await expect(detail7i).toBeHidden();
+  await expect(detailSW).toBeVisible();
 
   // No horizontal overflow with details open on a phone.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -870,22 +881,23 @@ test('uses theme colours for carry bands and labels', async ({
         return getComputedStyle(probe).color;
       };
       const result = {
-        bar: color('--accent'),
-        grid: color('--surface-subtle'),
-        label: color('--text-muted'),
+        ring: color('--ring-track'),
+        band: color('--data'),
+        label: color('--text-3'),
       };
       probe.remove();
       return result;
     });
-    await expect(page.locator('.gap-dot').first()).toHaveCSS(
-      'background-color',
-      colors.bar,
+    // Overview club cards + trend chart follow the theme tokens: the score
+    // ring track, the chart series stroke and the metric labels.
+    await expect(page.locator('.ds-score-ring .ring-track').first()).toHaveCSS(
+      'stroke',
+      colors.ring,
     );
-    await expect(page.locator('.gap-track').first()).toHaveCSS(
-      'background-color',
-      colors.grid,
-    );
-    await expect(page.locator('.gap-n').first()).toHaveCSS(
+    await expect(
+      page.locator('.ds-chart .recharts-area-curve').first(),
+    ).toHaveCSS('stroke', colors.band);
+    await expect(page.locator('.ds-metric-label').first()).toHaveCSS(
       'color',
       colors.label,
     );
@@ -927,9 +939,13 @@ test('shares the analysis window and measurement basis across pages', async ({
   const basis = page.getByTitle('Change measurement basis');
 
   await login(page, account);
-  await expect(
-    page.getByRole('table').first().getByRole('row').nth(1),
-  ).toContainText('120.0 m');
+  // The Overview club list is the per-club readout; the collapsed card line
+  // names the cohort statistic (median carry) explicitly.
+  const overviewClubs = page.getByRole('list', { name: 'Your clubs' });
+  const overview7i = overviewClubs
+    .getByRole('listitem')
+    .filter({ hasText: '7i' });
+  await expect(overview7i).toContainText('120 m carry');
   await nav(page, 'Gapping');
   const gapping = page.getByRole('list', { name: 'Club carry distances' });
   await expect(gapping).toContainText('Median 120 m');
@@ -947,9 +963,7 @@ test('shares the analysis window and measurement basis across pages', async ({
     'aria-pressed',
     'true',
   );
-  await expect(
-    page.getByRole('table').first().getByRole('row').nth(1),
-  ).toContainText('70.0 m');
+  await expect(overview7i).toContainText('70 m carry');
   await basis.click();
   await expect(basis).toHaveText('Range · flat');
 
@@ -973,9 +987,7 @@ test('shares the analysis window and measurement basis across pages', async ({
     'aria-pressed',
     'true',
   );
-  await expect(
-    page.getByRole('table').first().getByRole('row').nth(1),
-  ).toContainText('130.0 m');
+  await expect(overview7i).toContainText('130 m carry');
   await nav(page, 'Gapping');
   await expect(gapping).toContainText('Median 130 m');
 });
@@ -1543,9 +1555,8 @@ test('imports, reviews, corrects, undoes and syncs without losing originals', as
     .toBe(1);
   await expect(
     other
-      .getByRole('table')
-      .first()
-      .getByRole('row')
+      .getByRole('list', { name: 'Your clubs' })
+      .getByRole('listitem')
       .filter({ hasText: '9i' }),
   ).toBeVisible();
   await second.close();
@@ -1683,17 +1694,22 @@ test('retries duplicate imports, restores private backup and renders accessible 
   });
   expect(again.duplicate).toBe(true);
   await login(page, account);
-  await expect(page.getByText('3 shots', { exact: false })).toBeVisible();
+  const clubPanel = page.getByRole('region', { name: 'Club performance' });
+  await expect(clubPanel.getByText('3 shots', { exact: false })).toBeVisible();
+  const clubList = page.getByRole('list', { name: 'Your clubs' });
   await expect(
-    page.getByRole('table').first().getByRole('row').filter({ hasText: '7i' }),
+    clubList.getByRole('listitem').filter({ hasText: '7i' }),
   ).toBeVisible();
+  await expect(clubList.getByRole('listitem')).toHaveCount(2);
   await page.screenshot({
     path: testInfo.outputPath('overview.png'),
     fullPage: true,
   });
+  // Per-metric distribution tables sit behind the details disclosure.
+  await page.locator('summary', { hasText: 'Distribution details' }).click();
   const tables = page.getByRole('table');
   await expect(tables.first()).toBeVisible();
-  await expect(tables.first().getByRole('row')).toHaveCount(3);
+  await expect(tables.first().getByRole('row')).toHaveCount(5);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -2892,8 +2908,8 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
 
   await login(page, account);
 
-  // Discoverable entry point: the Overview club rows link to the profile.
-  await page.getByRole('link', { name: '7i', exact: true }).first().click();
+  // Discoverable entry point: the Overview club cards link to the profile.
+  await page.getByRole('link', { name: 'Open the full 7i profile' }).click();
   await expect(page).toHaveURL(/#clubs\/7i$/);
   const heading = page.getByRole('heading', { name: '7i', exact: true });
   await expect(heading).toBeFocused();

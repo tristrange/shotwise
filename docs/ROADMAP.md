@@ -1340,3 +1340,32 @@ Verification on the branch: `npm test` 355 passed, typecheck/lint clean, `npm ru
 and `--base=/shotwise/` build clean, `npm run test:e2e` 88 passed (local Supabase +
 Playwright). **Stopping at the D5 visual approval gate** — D6 (Overview) and the remaining
 screens wait for the owner's inspection of the showcase.
+
+## 13.11 Showcase approved with refinements; D6 Overview landed, holding for owner feedback (2026-11-26)
+
+The owner inspected the interactive localhost showcase and **approved the overall visual
+direction**, requesting shared-component refinements first: Instrument Sans 12px/500/16px
+compact pill badges (a legacy `.brand` wordmark class was leaking serif into badges — fixed
+via `tone-*` classes), fully rounded ends on DistributionPlot percentile/IQR bands (thinner
+tracks, 4px SVG padding so caps are never clipped), and fully rounded 7px ScoreBar tracks
+with label+score above the bar (legacy `.rating-track::after` / `.rating-fill` rules
+removed). All fixed at the reusable component level in `styles/ds.css`, verified in light
+and dark modes at mobile and desktop widths, screenshots re-captured.
+
+**D6 (Overview redesign)** is then implemented on `feat/overview-redesign` (stacked on the
+foundation branch): compact `Hero` (mobile clamp ≈230–330px, dek hidden), an
+`.overview-metrics` ds Metric strip (shots/sessions/clubs/date range), `PracticeInsights`
+kept, analysis controls rebuilt on ds primitives with unchanged accessible names, the
+"Your clubs" section as a `role="list"` of `ClubCard`s (whole-header expansion button,
+separate "Open the full … profile" link, cohort sub-line naming the statistic — median vs
+typical carry vs strong-strike median — plus P80 potential), a `PerformanceTrendCard`
+section, and the per-metric distribution tables moved behind a `Disclosure`. Progress view
+and all routes/deep links unchanged. E2e selectors updated deliberately to the new Overview
+structure (club list instead of the old first table; distribution tables asserted after
+opening the disclosure). No analytics, classification, rating formulas, database or
+eligibility rules touched.
+
+Verification on `feat/overview-redesign`: `npm test` 355 passed, typecheck/lint clean,
+`npm run build` and `--base=/shotwise/` clean, production `dist/` verified free of showcase
+code, `npm run test:e2e` **88 passed**. **Stopping after Overview (D6) for owner feedback**
+before redesigning the remaining pages (D7+).

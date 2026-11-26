@@ -116,6 +116,11 @@ input[type='checkbox'] { width: 16px; min-height: 16px; accent-color: var(--bran
 
 /* ---------- hero (A) + numbers (C) ---------- */
 .hero { position: relative; background: var(--night); color: #f8f6ef; min-height: 440px; overflow: hidden; display: flex; align-items: flex-end; margin: 0 calc(-1 * clamp(22px, 4.5vw, 64px)); }
+/* Compact hero for the authenticated Overview: keep the animated identity but
+   put analytics in the first phone viewport. */
+.hero.compact { min-height: 340px; }
+.hero.compact .hero-copy { padding-bottom: 40px; }
+.hero.compact h2 { font-size: clamp(1.7rem, 4vw, 2.6rem); margin: 12px 0 10px; }
 .hero-dots {
   position: absolute; inset: 0; pointer-events: none;
   background-image:
@@ -456,6 +461,12 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
     min-height: 440px;
     min-height: clamp(340px, 60svh, 470px);
   }
+  .hero.compact {
+    min-height: 250px;
+    min-height: clamp(230px, 38svh, 330px);
+  }
+  .hero.compact .hero-copy { padding-bottom: 26px; }
+  .hero.compact .hero-meta { margin-top: 14px; }
   .hero-copy { width: 100%; padding: 0 20px 34px; }
   .hero h1, .hero h2 { font-size: clamp(1.9rem, 8.5vw, 2.5rem); margin: 12px 0 14px; }
   .hero-dek { font-size: 1rem; }
@@ -512,3 +523,14 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 }
 .club-profile-head { display: flex; align-items: center; gap: 8px; }
 .club-profile-head h3 { margin: 0; }
+
+/* ---------- overview (D6) ---------- */
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-6);
+}
+.overview-metrics .ds-metric-value { font-size: 24px; }

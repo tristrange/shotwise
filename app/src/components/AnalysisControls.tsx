@@ -1,5 +1,13 @@
 import { BASES, type Basis } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
+import { Button, SegmentedControl, type SegmentedOption } from './ds';
+
+/**
+ * Shared analysis controls, rebuilt on the ds primitives. Accessible names
+ * and titles are unchanged ('All' / 'Typical' / 'Strong-strike', 'Recent' /
+ * 'All-time', 'Hide likely mishits', 'Change measurement basis') so existing
+ * e2e flows keep working.
+ */
 
 export function MishitToggle({
   settings,
@@ -10,7 +18,8 @@ export function MishitToggle({
 }) {
   return (
     <button
-      className="pill pill-button"
+      type="button"
+      className="ds-toggle"
       aria-label="Hide likely mishits"
       aria-pressed={settings.hideLikelyMishits ?? false}
       title="Filter reviewed mishits and unusually short, slow shots. Unassessed shots stay included. Saved shots and reviews do not change."
@@ -36,23 +45,20 @@ export function BasisButton({
   onChange: (basis: Basis) => void;
 }) {
   return (
-    <button
-      className="pill pill-button"
+    <Button
+      variant="secondary"
+      small
       onClick={() =>
         onChange(bases[(bases.indexOf(basis) + 1) % bases.length]!)
       }
       title="Change measurement basis"
     >
       {BASES[basis].label}
-    </button>
+    </Button>
   );
 }
 
-const PERFORMANCE_OPTIONS: {
-  value: AnalysisSettings['contact'];
-  label: string;
-  title: string;
-}[] = [
+const PERFORMANCE_OPTIONS: readonly SegmentedOption<AnalysisSettings['contact']>[] = [
   {
     value: 'all',
     label: 'All',
@@ -79,30 +85,32 @@ export function PerformanceToggle({
   onChange: (settings: AnalysisSettings) => void;
 }) {
   return (
-    <div className="segmented" role="group" aria-label="Performance mode">
-      {PERFORMANCE_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          className={settings.contact === option.value ? 'active' : ''}
-          aria-pressed={settings.contact === option.value}
-          title={option.title}
-          onClick={() =>
-            onChange({
-              ...settings,
-              contact: option.value,
-              // Strong-strike view is about strike strength only; the mishit
-              // filter is normalized off so auto-flagged unusual shots are not
-              // silently dropped from it (mirrors selectCohort).
-              ...(option.value === 'strong' ? { hideLikelyMishits: false } : {}),
-            })
-          }
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label="Performance mode"
+      options={PERFORMANCE_OPTIONS}
+      value={settings.contact}
+      onChange={(contact) =>
+        onChange({
+          ...settings,
+          contact,
+          // Strong-strike view is about strike strength only; the mishit
+          // filter is normalized off so auto-flagged unusual shots are not
+          // silently dropped from it (mirrors selectCohort).
+          ...(contact === 'strong' ? { hideLikelyMishits: false } : {}),
+        })
+      }
+    />
   );
 }
+
+const WINDOW_OPTIONS: readonly SegmentedOption<'recent' | 'all'>[] = [
+  {
+    value: 'recent',
+    label: 'Recent',
+    title: 'Latest 50 shots per club from the last 60 days',
+  },
+  { value: 'all', label: 'All-time', title: 'Every non-archived session' },
+];
 
 export function ViewToggle({
   mode,
@@ -112,23 +120,11 @@ export function ViewToggle({
   onChange: (mode: 'recent' | 'all') => void;
 }) {
   return (
-    <div className="segmented" role="group" aria-label="Analysis window">
-      <button
-        className={mode === 'recent' ? 'active' : ''}
-        aria-pressed={mode === 'recent'}
-        title="Latest 50 shots per club from the last 60 days"
-        onClick={() => onChange('recent')}
-      >
-        Recent
-      </button>
-      <button
-        className={mode === 'all' ? 'active' : ''}
-        aria-pressed={mode === 'all'}
-        title="Every non-archived session"
-        onClick={() => onChange('all')}
-      >
-        All-time
-      </button>
-    </div>
+    <SegmentedControl
+      label="Analysis window"
+      options={WINDOW_OPTIONS}
+      value={mode}
+      onChange={onChange}
+    />
   );
 }
