@@ -27,6 +27,8 @@ export function ScatterPlot({
   points,
   selectedId,
   onSelect,
+  zeroLines = false,
+  pointClass,
 }: {
   label: string;
   /** Extra chart text such as the selected measurement basis. */
@@ -40,6 +42,10 @@ export function ScatterPlot({
   points: ScatterDatum[];
   selectedId: string;
   onSelect: (id: string) => void;
+  /** Draw reference lines through x=0 / y=0 when zero is inside the domain. */
+  zeroLines?: boolean;
+  /** Extra class per point id, e.g. a semantic mishit marker. */
+  pointClass?: (id: string) => string | undefined;
 }) {
   const [xMin, xMax] = xDomain;
   const [yMin, yMax] = yDomain;
@@ -63,6 +69,26 @@ export function ScatterPlot({
         fill="none"
         stroke="var(--border)"
       />
+      {zeroLines && xMin <= 0 && xMax >= 0 && (
+        <line
+          className="zero-line"
+          x1={px(0)}
+          x2={px(0)}
+          y1="30"
+          y2="250"
+          stroke="var(--border)"
+        />
+      )}
+      {zeroLines && yMin <= 0 && yMax >= 0 && (
+        <line
+          className="zero-line"
+          x1="60"
+          x2="360"
+          y1={py(0)}
+          y2={py(0)}
+          stroke="var(--border)"
+        />
+      )}
       {caption && (
         <text x="60" y="20">
           {caption}
@@ -96,7 +122,7 @@ export function ScatterPlot({
       </text>
       {points.map((point, index) => (
         <circle
-          className="shape-point"
+          className={`shape-point${pointClass?.(point.id) ? ` ${pointClass(point.id)}` : ''}`}
           key={point.id}
           cx={px(point.x)}
           cy={py(point.y)}
@@ -110,7 +136,10 @@ export function ScatterPlot({
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
               onSelect(point.id);
-            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            } else if (
+              event.key === 'ArrowLeft' ||
+              event.key === 'ArrowRight'
+            ) {
               event.preventDefault();
               const back = event.key === 'ArrowLeft';
               const next = points[index + (back ? -1 : 1)];

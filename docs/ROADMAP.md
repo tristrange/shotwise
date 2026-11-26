@@ -1483,3 +1483,51 @@ via `npm run shots:sessions` (`docs/design-system/shots/sessions-*.png`), which 
 the seeded data states (3 cards, 1 archived badge, only-in-reference/comparison clubs,
 open accordion row) and no horizontal overflow. **Stopping after D10 for owner review
 before D11 (Shot shape + Explorer + Review/Settings).**
+
+## 13.14 D11 implemented on `feat/d11-explorer-review-settings`, holding for owner review before D12 (2026-11-26)
+
+PR #104 (D10) is merged; the Sessions/comparisons redesign and the review reconciliation are the
+approved basis. D11 (Shot shape + Ball-flight explorer + Review + Settings/secondary screens) is
+implemented from `DESIGN_SYSTEM.md` on `feat/d11-explorer-review-settings`:
+
+- **Shot shape:** the stacked per-club plots are replaced by one ds card — compact club `Select`,
+  the existing window / mishit / basis controls, and a single launch-direction × curve
+  `PerformanceScatterPlot` (symmetric domains around zero, dashed zero lines, directional
+  `° L / 0° / ° R` and `m L / 0 / m R` axis labels), paired-measurement coverage text, selected-shot
+  metric tiles (launch, curve, from-centre, basis-labelled carry) in an `aria-live` region, and the
+  full per-club shot table behind a ds `Disclosure`. The methodology text moved into a contextual
+  HelpPopover. Recorded launch direction, curve and lateral finishing position stay distinct; no
+  trajectories are reconstructed and curve is never presented as landing dispersion.
+- **Ball-flight explorer:** the scatter is the central focus of the ds card. Club, X-axis and
+  Y-axis are ds `Select`s (all existing axes preserved); the time scope is a compact segmented
+  control with the session picker beside it; intent/contact filters sit behind a secondary
+  `Disclosure`. Paired / omitted / missing-X / missing-Y counts stay visible, point inspection
+  keeps the single-tab-stop keyboard pattern, and the supporting shot rows with paging and the
+  `Review shot` deep link remain. Likely mishits are distinguished with semantic dashed-warn point
+  styling driven by the existing assessment provenance (automatic `intent-contact-3` label on
+  still-unreviewed contact only; manual review always wins) — unassessed shots are not marked, so
+  nothing implies they are confirmed good strikes. A legend and HelpPopover state this explicitly.
+- **Review:** rebuilt as ds cards — summary (flag count, auto counts, guidance, methodology
+  `Disclosure`, filter segmented control), focused shot with prev/next and nearby rows, batch
+  controls (range select, intent/contact/club/exclusion drafts, save/undo, club-correction
+  preview with apply/undo), and shot cards. Automatic badges are dashed `provisional`, saved
+  manual decisions get a solid `manual review` badge, and the copy frames review as optional
+  maintenance. Assessment algorithms, manual precedence, eligibility, undo and exclusion rules
+  are untouched.
+- **Settings and secondary screens:** Manage bag, club suggestions and Backups are ds cards with
+  grouped fields (`ds` `Select`/`TextField`), subtle separators and contextual explanations;
+  equipment assignment in session details uses the same fields. No new settings, features or
+  database functionality; all safeguards (empty-only restore, conflict handling) are unchanged.
+- **Shared:** `ScatterPlot` (exported as `PerformanceScatterPlot`) gained optional zero lines and
+  per-point classes; ds gained `TextField` and `disabled` on `Select`/`SegmentedControl`; the
+  migrated legacy styles moved from `styles.css` into a D11 section of `styles/ds.css`.
+
+Verification on `feat/d11-explorer-review-settings`: `npm test` **377 passed**, typecheck and
+`oxlint --deny-warnings` clean, `npm run build` and `--base=/shotwise/` clean with `dist/` free of
+showcase code, `npm run test:e2e` **88/88** (desktop Chromium + iPhone-13 WebKit; the shot-shape
+test now drives the single-club selector with equal-or-stronger assertions — one club plotted at
+a time, per-club coverage/plot/table still verified for both clubs). Representative screenshots
+captured at 390 and 1280 px, light and dark — shape (point selected, disclosure open), explorer
+(likely-mishit marker asserted present), review queue and settings — via `npm run shots:d11`
+(`docs/design-system/shots/d11-*.png`), which also asserts no horizontal overflow.
+**Stopping after D11 for owner review before D12 (navigation, final consistency and polish).**

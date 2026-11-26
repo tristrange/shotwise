@@ -13,11 +13,13 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string;
   options: readonly SegmentedOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="ds-segmented" role="group" aria-label={label}>
@@ -28,6 +30,7 @@ export function SegmentedControl<T extends string>({
           className={value === option.value ? 'active' : ''}
           aria-pressed={value === option.value}
           title={option.title}
+          disabled={disabled}
           onClick={() => onChange(option.value)}
         >
           {option.label}
@@ -37,17 +40,62 @@ export function SegmentedControl<T extends string>({
   );
 }
 
+/** Labelled native text input (also number/date) with the ds field chrome. */
+export function TextField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+  required = false,
+  type = 'text',
+  min,
+  maxLength,
+  inputMode,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  type?: 'text' | 'number' | 'date' | 'time' | 'email' | 'password';
+  min?: string;
+  maxLength?: number;
+  inputMode?: 'numeric' | 'text';
+}) {
+  const id = useId();
+  return (
+    <span className="ds-field ds-text">
+      <label className="ds-field-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        min={min}
+        maxLength={maxLength}
+        inputMode={inputMode}
+        required={required}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </span>
+  );
+}
+
 /** Labelled native select — the accessible default for few options. */
 export function Select<T extends string>({
   label,
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   label: string;
   value: T;
   onChange: (value: T) => void;
   options: readonly { value: T; label: string }[];
+  disabled?: boolean;
 }) {
   const id = useId();
   return (
@@ -55,7 +103,12 @@ export function Select<T extends string>({
       <label className="ds-field-label" htmlFor={id}>
         {label}
       </label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value as T)}>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as T)}
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -153,7 +206,11 @@ export function RangeSlider({
       <span className="ds-field-label" id={`${label}-label`}>
         {label}
       </span>
-      <span className="ds-range" role="group" aria-labelledby={`${label}-label`}>
+      <span
+        className="ds-range"
+        role="group"
+        aria-labelledby={`${label}-label`}
+      >
         <span className="ds-range-track" aria-hidden="true">
           <span
             className="ds-range-fill"

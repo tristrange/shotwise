@@ -53,6 +53,21 @@ space, session-ID-keyed trend selection with a keyboard/touch picker, withheld d
 when chronology is unknown, per-series tooltip names/counts, P80-only clubs kept in the
 Potential view, distinct P10–P90 vs IQR sample labels, and Progress computed once and
 passed down with on-demand disclosure bodies. Screenshots: `docs/design-system/shots/sessions-*.png`.
+D11 (Shot shape + Explorer + Review/Settings) is implemented on `feat/d11-explorer-review-settings`:
+the shot-shape screen is one ds card with a compact club `Select`, the shared window/mishit/basis
+controls, a single launch-direction × curve `PerformanceScatterPlot` (symmetric domains, dashed zero
+lines, directional `° L / 0° / ° R` and `m L / 0 / m R` tick labels), selected-shot metric tiles,
+paired-measurement coverage text and the full shot table behind a `Disclosure`, with the methodology
+in a HelpPopover; the explorer makes the scatter central with ds `Select`s for club and both axes, a
+compact `Time scope` segmented control plus session picker, intent/contact filters behind a secondary
+`Disclosure`, paired/missing/omitted counts, the paged shot table and the `Review shot` link, and
+semantic dashed-warn point styling for automatic likely mishits (provisional — unassessed shots are
+never marked as good strikes); Review renders ds cards for the summary (flag/auto counts, guidance,
+methodology disclosure, filter segmented control), the focused shot, the batch controls and the
+correction preview, with solid `manual review` badges versus dashed `provisional` automatic badges;
+Settings groups Manage bag, club suggestions and Backups into ds cards, and equipment assignment in
+session details uses ds fields — no settings, analytics, classification or database changes.
+Screenshots: `docs/design-system/shots/d11-*.png`.
 
 ## 0. Approval record — 2026-11-26
 
@@ -369,7 +384,7 @@ working regardless. Desktop sidebar mirrors the same grouping.
 | D8 | Progress redesign on the ds — **implemented on `feat/progress-redesign`** (see status above) | owner review before D9 |
 | D9 | Gapping redesign on the ds — **implemented on `feat/gapping-redesign`** (see status above) | owner review before D10 |
 | D10 | Sessions (+recap/compare) redesign on the ds — **implemented on `feat/d10-sessions-comparisons`** (see status above) | owner review before D11 |
-| D11 | Shot shape + Explorer + Review/Settings redesign on the ds | per-screen review |
+| D11 | Shot shape + Explorer + Review/Settings redesign on the ds — **implemented on `feat/d11-explorer-review-settings`** (see status above) | owner review before D12 |
 | D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) | final sign-off |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.
@@ -398,15 +413,19 @@ Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4,
 - Hash routes and deep links; PWA manifest; auth flow.
 - Existing e2e/unit test intent.
 
-## 13. Open questions for the owner
+## 13. Owner questions — all resolved 2026-11-26 (see §0 approval record)
 
-1. Approve the overall direction and token palette (hexes are starting points)?
-2. Navigation: adopt Home / Clubs / Progress / Sessions / More as in §9, or keep the current
-   Home / Analyse / Sessions / Review / More?
-3. Typography: fully drop the serif (Newsreader/Lora) including the wordmark, or keep the
-   expressive wordmark in the header only?
-4. Hero: keep a compact animated hero on Overview, or replace it with the metric strip only?
-5. Motion: is CSS-transition-only acceptable, or do you want Motion for ring/bar/expand
-   animations?
-6. Showcase: is a dev-only `#showcase` route (no auth) acceptable, or should it be gated behind
-   a query flag / build flag instead?
+The six questions originally listed here were answered by the owner on 2026-11-26; they are kept
+as the consolidated decision record, not as open items:
+
+1. **Direction + palette:** approved as provisional starting points; colours refined through the
+   showcase and the automated WCAG-AA contrast test (`app/src/tokens.test.ts`).
+2. **Navigation:** keep the current Home / Analyse / Sessions / Review / More shell for now; the
+   proposed Home / Clubs / Progress / Sessions / More regrouping stays **scheduled for D12** (§9),
+   with all existing hash routes and deep links preserved until then.
+3. **Typography:** Instrument Sans throughout with tabular numerals; the expressive Newsreader
+   wordmark stays in the header only.
+4. **Hero:** keep the animated identity as a much more compact hero on Overview (done in D6).
+5. **Motion:** CSS transitions first; Motion only where it materially improves an interaction.
+6. **Showcase:** dev-only `#showcase` approved, gated by a build-time guard (`import.meta.env.DEV` +
+   lazy import), verified absent from production `dist/`.

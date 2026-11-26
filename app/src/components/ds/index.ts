@@ -5,6 +5,7 @@ export {
   SegmentedControl,
   Select,
   Slider,
+  TextField,
 } from './controls';
 export type { SegmentedOption } from './controls';
 export { clamp, normalizeRange, percent } from './rangeMath';

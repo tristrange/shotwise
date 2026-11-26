@@ -60,7 +60,18 @@ async function login(page: Page, account: Account) {
 }
 // Phone layout uses five bottom tabs (Home/Analyse/Sessions/Review/More) with
 // analysis pages in the Analyse sub-nav; desktop keeps the full sidebar.
-const tabLabels: Record<string, string> = { Overview: 'Home', Settings: 'More' };
+const tabLabels: Record<string, string> = {
+  Overview: 'Home',
+  Settings: 'More',
+};
+
+/** Opens a <details> by its summary text unless it is already open. */
+async function openDisclosure(page: Page, summary: string) {
+  const details = page.locator('details', { hasText: summary }).first();
+  if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
+    await details.locator('summary').click();
+  }
+}
 const analysePages = new Set(['Clubs', 'Gapping', 'Progress', 'Shot shape']);
 async function nav(page: Page, name: string) {
   let target = page
@@ -346,7 +357,9 @@ test('switches overview club rows between All, Typical and Strong-strike', async
   const shots = row.locator('.club-shots');
   await expect(shots).toContainText('20');
   // P80 of carries 100..119 is 115.2, so Strong-strike keeps 116..119.
-  await page.getByRole('button', { name: 'Strong-strike', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Strong-strike', exact: true })
+    .click();
   await expect(shots).toContainText('4');
   // The mishit toggle is redundant in strong mode and stays hidden.
   await expect(
@@ -508,9 +521,7 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
   page: projectPage,
   browser,
   account,
-},
-testInfo,
-) => {
+}, testInfo) => {
   // WebKit cannot resize the layout viewport of a mobile-emulated page:
   // setViewportSize only changes the visual viewport, which leaves the fixed
   // bottom nav outside the hit-test area on pages shorter than the visual
@@ -557,7 +568,9 @@ testInfo,
     .toBeLessThanOrEqual(1);
 
   // Every tab reaches its destination.
-  await bottomNav.getByRole('button', { name: 'Sessions', exact: true }).click();
+  await bottomNav
+    .getByRole('button', { name: 'Sessions', exact: true })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'Sessions & import', exact: true }),
   ).toBeVisible();
@@ -569,9 +582,7 @@ testInfo,
   await expect(
     page.getByRole('heading', { name: 'Settings', exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Manage bag' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Manage bag' })).toBeVisible();
   await bottomNav.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Overview', exact: true }),
@@ -640,7 +651,10 @@ test('fits the overview hero on phone viewports without pinch zoom', async ({
     const clipped = await page.evaluate(() => {
       const hero = document.querySelector('.hero') as HTMLElement;
       const copy = hero.querySelector('.hero-copy') as HTMLElement;
-      return copy.getBoundingClientRect().bottom - hero.getBoundingClientRect().bottom;
+      return (
+        copy.getBoundingClientRect().bottom -
+        hero.getBoundingClientRect().bottom
+      );
     });
     expect(clipped).toBeLessThanOrEqual(1);
   }
@@ -677,11 +691,15 @@ test('includes unreviewed pitching-wedge shots in iron-style gapping but not hig
   await login(page, account);
   await nav(page, 'Gapping');
   const list = page.getByRole('list', { name: 'Club carry distances' });
-  await expect(list.getByRole('link', { name: '7i', exact: true })).toBeVisible();
-  await expect(list.getByRole('link', { name: 'PW', exact: true })).toBeVisible();
   await expect(
-    list.getByRole('link', { name: 'SW', exact: true }),
-  ).toHaveCount(0);
+    list.getByRole('link', { name: '7i', exact: true }),
+  ).toBeVisible();
+  await expect(
+    list.getByRole('link', { name: 'PW', exact: true }),
+  ).toBeVisible();
+  await expect(list.getByRole('link', { name: 'SW', exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test('expands overview club cards inline with per-club measurements', async ({
@@ -694,7 +712,11 @@ test('expands overview club cards inline with per-club measurements', async ({
   const cardOf = (code: string) =>
     clubs
       .getByRole('listitem')
-      .filter({ has: page.locator('.club-badge', { hasText: new RegExp(`^${code}$`, 'i') }) });
+      .filter({
+        has: page.locator('.club-badge', {
+          hasText: new RegExp(`^${code}$`, 'i'),
+        }),
+      });
   const card7i = cardOf('7i');
   const cardSW = cardOf('SW');
   // The whole card header is the expansion control.
@@ -705,7 +727,9 @@ test('expands overview club cards inline with per-club measurements', async ({
   await expect(toggle7i).toHaveAttribute('aria-expanded', 'false');
   // Collapsed content is hidden AND inert (out of the tab order / a11y tree).
   await expect(detail7i).toBeHidden();
-  await expect(await detail7i.evaluate((el) => (el as HTMLElement).inert)).toBe(true);
+  await expect(await detail7i.evaluate((el) => (el as HTMLElement).inert)).toBe(
+    true,
+  );
 
   // Keyboard: focus + Enter expands.
   await toggle7i.focus();
@@ -719,10 +743,9 @@ test('expands overview club cards inline with per-club measurements', async ({
   await expect(detail7i).toContainText('Apex');
   await expect(detail7i).toContainText('Strong-strike P80');
   await expect(detail7i).toContainText('IQR');
-  await expect(detail7i.getByRole('link', { name: /Full club profile/ })).toHaveAttribute(
-    'href',
-    '#clubs/7i',
-  );
+  await expect(
+    detail7i.getByRole('link', { name: /Full club profile/ }),
+  ).toHaveAttribute('href', '#clubs/7i');
   // The profile action is a separate control, not nested in the expand button.
   await expect(
     card7i.getByRole('link', { name: 'Open the full 7i profile' }),
@@ -787,7 +810,9 @@ test('shows non-authoritative automatic assessment badges in review', async ({
   await nav(page, 'Review');
   // Summary pill: the short+slow 7i is a likely mishit, and the short+slow SW is
   // both a likely partial and a likely mishit (intent and contact are independent).
-  await expect(page.getByText(/auto: 2 likely mishits · 1 likely partials/)).toBeVisible();
+  await expect(
+    page.getByText(/auto: 2 likely mishits · 1 likely partials/),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'All shots', exact: true }).click();
   await expect(page.getByText('auto: likely mishit').first()).toBeVisible();
   await expect(page.getByText('auto: likely partial').first()).toBeVisible();
@@ -799,7 +824,9 @@ test('shows non-authoritative automatic assessment badges in review', async ({
     .getByRole('combobox', { name: /^Set contact/ })
     .selectOption('typical');
   await page.getByRole('button', { name: 'Save review', exact: true }).click();
-  await expect(page.getByText(/auto: 1 likely mishits · 1 likely partials/)).toBeVisible();
+  await expect(
+    page.getByText(/auto: 1 likely mishits · 1 likely partials/),
+  ).toBeVisible();
   await expect(mishitShot.getByText('auto: likely mishit')).toHaveCount(0);
 });
 
@@ -981,10 +1008,9 @@ test('shares the analysis window and measurement basis across pages', async ({
   ).toBeVisible();
 
   await nav(page, 'Overview');
-  await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(
+    window.getByRole('button', { name: 'All-time' }),
+  ).toHaveAttribute('aria-pressed', 'true');
   await expect(overview7i).toContainText('70 m carry');
   await basis.click();
   await expect(basis).toHaveText('Range · flat');
@@ -997,10 +1023,9 @@ test('shares the analysis window and measurement basis across pages', async ({
   await expect(
     page.getByRole('heading', { name: 'Performance trend' }),
   ).toBeVisible();
-  await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(
+    window.getByRole('button', { name: 'All-time' }),
+  ).toHaveAttribute('aria-pressed', 'true');
   // One interactive trend chart drives the page; the per-club session table
   // opens from its disclosure.
   await expect(
@@ -1065,7 +1090,9 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(
     metricGroup.getByRole('button', { name: 'Carry' }),
   ).toHaveAttribute('aria-pressed', 'true');
-  const chart = page.getByRole('group', { name: /7i median carry per session/ });
+  const chart = page.getByRole('group', {
+    name: /7i median carry per session/,
+  });
   await expect(chart).toBeVisible();
   // Prominent headline: latest measured session, with the change vs the
   // clearly identified first session.
@@ -1081,7 +1108,9 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(summaryMetric('First session')).toContainText('105');
   await expect(summaryMetric('Latest session')).toContainText('117.5');
   await expect(summaryMetric('Best session')).toContainText('117.5');
-  await expect(trend).toContainText('Tap a point (or pick a session above) to inspect it');
+  await expect(trend).toContainText(
+    'Tap a point (or pick a session above) to inspect it',
+  );
   // Hovering the chart shows the concise tooltip with date, value and sample.
   await chart.hover();
   const tooltip = page.locator('.ds-chart-tooltip');
@@ -1197,7 +1226,10 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(rows.nth(2)).toContainText('P10–P90 needs 10 shots');
   // Tapping a club's band selects it and surfaces carry, spread, potential
   // and the adjacent gap in the detail panel below the shared-scale chart.
-  await rows.nth(1).getByRole('button', { name: /Median 123 m/ }).click();
+  await rows
+    .nth(1)
+    .getByRole('button', { name: /Median 123 m/ })
+    .click();
   const detail = page.getByRole('region', { name: 'Gapping details for 7i' });
   await expect(detail).toContainText(/123\s*m/);
   await expect(detail).toContainText(/110–136\s*m/);
@@ -1279,7 +1311,9 @@ test('explains unusual iron shots and keeps review decisions explicit and revers
     .getByRole('combobox', { name: /^Set contact/ })
     .selectOption('typical');
   await page.getByRole('button', { name: 'Save review', exact: true }).click();
-  await expect(focused.locator('.focused-label')).toContainText('Row 21 · Shot #21');
+  await expect(focused.locator('.focused-label')).toContainText(
+    'Row 21 · Shot #21',
+  );
   await expect(target).toContainText('unknown · typical · included');
   await expect(target).not.toContainText('Likely mishit · experimental');
   await page.getByRole('button', { name: 'All shots', exact: true }).click();
@@ -1807,13 +1841,11 @@ test('retries duplicate imports, restores private backup and renders accessible 
     page,
     testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import',
   );
-  await page
-    .getByLabel('Choose CSV files')
-    .setInputFiles({
-      name: 'renamed.csv',
-      mimeType: 'text/csv',
-      buffer: Buffer.from(fixture()),
-    });
+  await page.getByLabel('Choose CSV files').setInputFiles({
+    name: 'renamed.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(fixture()),
+  });
   await page.getByLabel('Session date', { exact: true }).fill(localToday());
   await page.getByRole('button', { name: 'Import valid files' }).click();
   await expect(
@@ -1910,12 +1942,9 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   });
   await login(page, account);
   await nav(page, 'Shot shape');
+  const clubSelect = page.getByRole('combobox', { name: 'Club', exact: true });
   const plot = page.getByRole('group', {
     name: '7i recorded shot shapes',
-    exact: true,
-  });
-  const swPlot = page.getByRole('group', {
-    name: 'SW recorded shot shapes',
     exact: true,
   });
   const detail7i = page.getByRole('region', {
@@ -1927,22 +1956,33 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
     exact: true,
   });
   const prompt = 'Select a shot to see its recorded measurements.';
+  // One club is plotted at a time; the first club in club order is default.
+  await expect(clubSelect).toHaveValue('7i');
   await expect(detail7i).toContainText(prompt);
-  await expect(detailSw).toContainText(prompt);
   await expect(plot.getByRole('button')).toHaveCount(2);
-  await expect(swPlot.getByRole('button')).toHaveCount(1);
+  await expect(
+    page.getByRole('group', { name: 'SW recorded shot shapes' }),
+  ).toHaveCount(0);
   await expect(
     page.getByText(
       '2 of 4 shots have both measurements; 2 are absent from the plot.',
       { exact: true },
     ),
   ).toBeVisible();
+  await clubSelect.selectOption('SW');
+  const swPlot = page.getByRole('group', {
+    name: 'SW recorded shot shapes',
+    exact: true,
+  });
+  await expect(swPlot.getByRole('button')).toHaveCount(1);
   await expect(
     page.getByText(
       '1 of 2 shots have both measurements; 1 are absent from the plot.',
       { exact: true },
     ),
   ).toBeVisible();
+  await expect(detailSw).toContainText(prompt);
+  await clubSelect.selectOption('7i');
   const point7i = plot.getByRole('button', { name: /Plot 7i row 1/ });
   await point7i.click();
   await expect(point7i).toHaveAttribute('aria-pressed', 'true');
@@ -1950,18 +1990,16 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   await expect(detail7i).toContainText('3.0 m right');
   await expect(detail7i).toContainText('12.0 m right');
   await expect(detail7i).toContainText('105.0 m');
-  await expect(detailSw).toContainText(prompt);
+  await clubSelect.selectOption('SW');
   const pointSw = swPlot.getByRole('button', { name: /Plot SW row 5/ });
   await pointSw.click();
   await expect(pointSw).toHaveAttribute('aria-pressed', 'true');
-  await expect(point7i).toHaveAttribute('aria-pressed', 'false');
   await expect(detailSw).toContainText('SW · Row 5');
   await expect(detailSw).toContainText('4.0° right');
   await expect(detailSw).toContainText('6.0 m left');
   await expect(detailSw).toContainText('9.0 m left');
   await expect(detailSw).toContainText('88.0 m');
-  await expect(detail7i).toContainText(prompt);
-  await page.getByText('Shot measurements (2)', { exact: true }).click();
+  await openDisclosure(page, 'Shot measurements (2)');
   const swTable = page.getByRole('table', {
     name: 'SW shot measurements',
     exact: true,
@@ -1971,8 +2009,10 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
     .click();
   await expect(detailSw).toContainText('SW · Row 6');
   await expect(detailSw).toContainText('Launch: Missing');
+  await clubSelect.selectOption('7i');
+  // The SW selection is not part of the 7i club, so 7i shows the prompt again.
   await expect(detail7i).toContainText(prompt);
-  await page.getByText('Shot measurements (4)', { exact: true }).click();
+  await openDisclosure(page, 'Shot measurements (4)');
   const table = page.getByRole('table', {
     name: '7i shot measurements',
     exact: true,
@@ -1985,7 +2025,6 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   await page.keyboard.press('Enter');
   await expect(detail7i).toContainText('0.0° straight');
   await expect(detail7i).toContainText('0.0 m straight');
-  await expect(detailSw).toContainText(prompt);
   await expect(
     table
       .getByRole('row')
@@ -2010,9 +2049,13 @@ test('shows measured shot shapes with explicit missingness and keyboard-accessib
   await expect(detail7i).toContainText('Carry: Missing');
   await expect(plot.getByRole('button')).toHaveCount(2);
   await nav(page, 'Overview');
-  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Range · flat', exact: true }),
+  ).toBeVisible();
   await nav(page, 'Shot shape');
-  await expect(page.getByRole('button', { name: 'Range · flat', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Range · flat', exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(
     page.getByRole('heading', { name: 'Shot shape', exact: true }),
@@ -2053,11 +2096,9 @@ test('imports filename dates without confirmation and requires manual dates only
     mimeType: 'text/csv',
     buffer: Buffer.from(csvFixture([{ 'Carry Dist. Range (m)': '103' }])),
   });
-  const manual = page
-    .locator('.preview')
-    .filter({
-      has: page.getByRole('heading', { name: 'export.csv', exact: true }),
-    });
+  const manual = page.locator('.preview').filter({
+    has: page.getByRole('heading', { name: 'export.csv', exact: true }),
+  });
   await expect(manual.getByLabel('Session date', { exact: true })).toHaveValue(
     '',
   );
@@ -2087,10 +2128,22 @@ test('imports filename dates without confirmation and requires manual dates only
     page.getByText('Same-day import requires acknowledgement', { exact: true }),
   ).toBeVisible();
   expect((await account.repository.load()).sessions).toHaveLength(2);
-  await page.getByLabel('Session date', { exact: true }).last().fill(shiftDate(localToday(), -1));
-  await expect(page.getByRole('button', { name: 'Import as a separate session', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Import valid files', exact: true }).click();
-  await expect(page.getByText('Same-day import requires acknowledgement', { exact: true })).toBeVisible();
+  await page
+    .getByLabel('Session date', { exact: true })
+    .last()
+    .fill(shiftDate(localToday(), -1));
+  await expect(
+    page.getByRole('button', {
+      name: 'Import as a separate session',
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Import valid files', exact: true })
+    .click();
+  await expect(
+    page.getByText('Same-day import requires acknowledgement', { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole('button', { name: 'Import as a separate session', exact: true })
     .click();
@@ -2960,17 +3013,23 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
       notes: '',
       confirmedFull: true,
       allowSameDay: false,
-      preview: await parseCsv(
-        new TextEncoder().encode(csvFixture(rows)),
-      ),
+      preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
     });
 
   await importSession('old.csv', old, irons(100));
   await importSession('mid.csv', mid, irons(110));
   const todayResult = await importSession('today.csv', today, [
     ...irons(120),
-    { Club: '7i', 'Flat Carry Dist. Premium (m)': '--', 'Flat Carry Dist. Range (m)': '--' },
-    { Club: '9i', 'Flat Carry Dist. Premium (m)': '150', 'Flat Carry Dist. Range (m)': '160' },
+    {
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': '--',
+      'Flat Carry Dist. Range (m)': '--',
+    },
+    {
+      Club: '9i',
+      'Flat Carry Dist. Premium (m)': '150',
+      'Flat Carry Dist. Range (m)': '160',
+    },
     ...Array.from({ length: 3 }, () => ({
       Club: '5i',
       'Flat Carry Dist. Premium (m)': '140',
@@ -3010,7 +3069,10 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     (s) => s.id === archivedResult.sessionId,
   );
   if (!archivedSession) throw new Error('Missing seeded archived session');
-  await account.repository.updateSession({ ...archivedSession, archived: true });
+  await account.repository.updateSession({
+    ...archivedSession,
+    archived: true,
+  });
 
   // One physical club, so the reference form's equipment metadata can be set.
   const fitted = await account.repository.saveEquipment({
@@ -3045,7 +3107,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(card).toContainText('Premium · flat (estimate)');
   await expect(card).toContainText('2 sessions · 26 shots');
   // Compact club selection: the picker deep-links to every profile.
-  const picker = page.getByRole('navigation', { name: 'Select a club profile' });
+  const picker = page.getByRole('navigation', {
+    name: 'Select a club profile',
+  });
   await expect(picker.getByRole('link', { name: '7 iron' })).toHaveAttribute(
     'href',
     '#clubs/7i',
@@ -3073,8 +3137,12 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(coveragePopover).toContainText(
     'reviewed full swings with typical contact · 13 measured, 1 missing',
   );
-  await expect(coveragePopover).toContainText('distance potential when struck well');
-  await expect(coveragePopover).toContainText('middle half of 25 measured carries');
+  await expect(coveragePopover).toContainText(
+    'distance potential when struck well',
+  );
+  await expect(coveragePopover).toContainText(
+    'middle half of 25 measured carries',
+  );
   await coverage.click();
   // Distribution plot + spread line stay visible.
   await expect(card.locator('.ds-distribution svg')).toBeVisible();
@@ -3088,7 +3156,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     card.getByRole('group', { name: /7i median carry per session/ }),
   ).toBeVisible();
   await expect(
-    card.getByRole('group', { name: 'History metric' }).getByRole('button', { name: 'Spread' }),
+    card
+      .getByRole('group', { name: 'History metric' })
+      .getByRole('button', { name: 'Spread' }),
   ).toBeVisible();
   // Facts render as compact metric rows (label + value + context with links).
   const longest = metricTile(card, 'Longest carry');
@@ -3128,7 +3198,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   // directional control must say not enough data rather than invent a number.
   const scores = card.locator('.category-scores');
   const methodology = scores.locator('details');
-  await expect(methodology.locator('summary')).toHaveText('How these are scored');
+  await expect(methodology.locator('summary')).toHaveText(
+    'How these are scored',
+  );
   await methodology.locator('summary').click();
   await expect(methodology).toContainText('Distance potential');
   await expect(methodology).toContainText('Consistency');
@@ -3158,7 +3230,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   // Personal reference (user-entered): add with validation, persist, edit.
   const personal = card.locator('.personal-reference');
   await expect(personal).toContainText('No personal reference for 7i yet');
-  await personal.getByRole('button', { name: 'Add personal reference' }).click();
+  await personal
+    .getByRole('button', { name: 'Add personal reference' })
+    .click();
   await personal.getByLabel(/Value \(m\)/).fill('0');
   await personal.getByRole('button', { name: 'Save' }).click();
   await expect(personal.locator('.error')).toContainText(
@@ -3194,9 +3268,13 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   // The latest-session metric row links to the same numbers as the session recap.
   const latestLine = metricTile(card, 'Latest session');
   await expect(latestLine).toContainText('122');
-  await expect(latestLine).toContainText('typical carry from 13 measured shots');
+  await expect(latestLine).toContainText(
+    'typical carry from 13 measured shots',
+  );
   await latestLine.getByRole('link', { name: 'session recap' }).click();
-  await expect(page).toHaveURL(new RegExp(`#sessions/${todayResult.sessionId}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`#sessions/${todayResult.sessionId}$`),
+  );
   const recap = page.getByRole('region', { name: 'Session recap' });
   await expect(recap).toContainText(`${today} · Synthetic range`);
   const clubDetails = recap
@@ -3206,7 +3284,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   const broader = clubDetails
     .locator('.recap-metric')
     .filter({ hasText: 'Median carry · broader estimate' });
-  await expect(broader).toContainText('This session · 122 m · 13 measured, 1 missing');
+  await expect(broader).toContainText(
+    'This session · 122 m · 13 measured, 1 missing',
+  );
 
   await nav(page, 'Clubs');
   // The plain #clubs view lists every profile again after a deep link.
@@ -3220,7 +3300,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(five).toContainText('Sample limited');
   // The detailed history table sits behind a disclosure.
   await card.locator('summary', { hasText: 'Session table' }).click();
-  const history = card.getByRole('table', { name: '7i history across sessions' });
+  const history = card.getByRole('table', {
+    name: '7i history across sessions',
+  });
   await expect(history.getByRole('row')).toHaveCount(4);
   await expect(history).toContainText(old);
   await expect(history).toContainText(mid);
@@ -3257,7 +3339,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await page.getByRole('button', { name: 'Range · flat', exact: true }).click();
   await expect(card).toContainText('Premium (estimate)');
   await expect(card.locator('details.benchmark-refs')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Premium (estimate)', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Premium (estimate)', exact: true })
+    .click();
   // 'range' is a range-ball basis too: still no overlay.
   await expect(card.locator('details.benchmark-refs')).toHaveCount(0);
 
@@ -3433,7 +3517,9 @@ test('compares two same-day visits from both entry points with stable, swappable
       }
     });
   }, `#sessions/${morning.sessionId}`);
-  await page.getByRole('link', { name: 'Compare with another session' }).click();
+  await page
+    .getByRole('link', { name: 'Compare with another session' })
+    .click();
   await expect(page).toHaveURL(
     new RegExp(`#sessions/compare\\?reference=${morning.sessionId}`),
   );
@@ -3534,18 +3620,26 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
   const cells = (label: string, details = iron) =>
     details
       .getByRole('row')
-      .filter({ has: page.getByRole('rowheader', { name: label, exact: true }) })
+      .filter({
+        has: page.getByRole('rowheader', { name: label, exact: true }),
+      })
       .getByRole('cell');
 
   await expect(iron).toContainText('reviewed full swings with typical contact');
   await expect(cells('Typical carry · reviewed typical')).toHaveText([
-    '120 m', '132 m', '+12 m',
+    '120 m',
+    '132 m',
+    '+12 m',
   ]);
   await expect(cells('Typical carry · measured').first()).toHaveText(
     '12 measured, 0 missing',
   );
   await expect(cells('Relative carry change').last()).toHaveText('+10%');
-  await expect(cells('Ball speed')).toHaveText(['130 kph', '117 kph', '-13 kph']);
+  await expect(cells('Ball speed')).toHaveText([
+    '130 kph',
+    '117 kph',
+    '-13 kph',
+  ]);
   await expect(cells('Ball speed · relative').last()).toHaveText('-10%');
   await expect(cells('Launch angle').last()).toHaveText('+2°');
   await expect(cells('Apex').last()).toHaveText('-1 m');
@@ -3553,10 +3647,14 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
     '12 measured, 1 missing',
   );
   await expect(cells('Start direction · left')).toHaveText([
-    '50% (6/12)', '25% (3/12)', '-25 pp',
+    '50% (6/12)',
+    '25% (3/12)',
+    '-25 pp',
   ]);
   await expect(cells('Curve · left')).toHaveText([
-    '25% (3/12)', '50% (6/12)', '+25 pp',
+    '25% (3/12)',
+    '50% (6/12)',
+    '+25 pp',
   ]);
   await expect(cells('Lateral offset · straight').last()).toHaveText('-25 pp');
   await expect(cells('Confirmed mishits').first()).toContainText(
@@ -3570,7 +3668,9 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
   await expect(iron).toHaveAttribute('open', '');
   await expect(iron).toContainText('Range · flat');
   await expect(cells('Typical carry · reviewed typical')).toHaveText([
-    '110 m', '121 m', '+11 m',
+    '110 m',
+    '121 m',
+    '+11 m',
   ]);
   await expect(cells('Ball speed').last()).toHaveText('-12 kph');
   await expect(cells('Apex · measured').first()).toHaveText(
@@ -3583,7 +3683,9 @@ test('compares shared cohorts, flight and direction details with neutral deltas 
   await expect(five).toContainText('Review coverage is thin');
   await expect(five).toContainText('2 of 3 full swings');
   await expect(cells('Typical carry · broader cohort', five)).toHaveText([
-    '142 m', '152 m', '+10 m',
+    '142 m',
+    '152 m',
+    '+10 m',
   ]);
   await expect
     .poll(() =>
@@ -3790,8 +3892,7 @@ test('persists a seeded historical equipment assignment and exposes its visit', 
   if (!session) throw new Error('Missing seeded session');
   const shotIds = data.shots
     .filter(
-      (shot) =>
-        shot.sessionId === session.id && effectiveClub(shot) === '7i',
+      (shot) => shot.sessionId === session.id && effectiveClub(shot) === '7i',
     )
     .map((shot) => shot.id);
   expect(shotIds.length).toBeGreaterThan(0);
@@ -3822,10 +3923,9 @@ test('persists a seeded historical equipment assignment and exposes its visit', 
   const history = page.getByRole('table', {
     name: 'Assignment history for Historical 7i',
   });
-  await expect(history.getByRole('link', { name: session.date })).toHaveAttribute(
-    'href',
-    `#sessions/${session.id}`,
-  );
+  await expect(
+    history.getByRole('link', { name: session.date }),
+  ).toHaveAttribute('href', `#sessions/${session.id}`);
 });
 
 function sessionsNav(testInfo: TestInfo) {
@@ -4212,7 +4312,10 @@ async function openExplorer(page: Page) {
     page.getByRole('heading', { name: 'Shot shape', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Explorer', exact: true }).click();
-  return page.getByRole('region', { name: 'Ball-flight explorer', exact: true });
+  return page.getByRole('region', {
+    name: 'Ball-flight explorer',
+    exact: true,
+  });
 }
 
 test('Explorer keeps axis choices across clubs and honours scope, basis and paired counts', async ({
@@ -4229,8 +4332,14 @@ test('Explorer keeps axis choices across clubs and honours scope, basis and pair
   const xAxis = explorer.getByRole('combobox', { name: 'X axis', exact: true });
   const yAxis = explorer.getByRole('combobox', { name: 'Y axis', exact: true });
   const swap = explorer.getByRole('button', { name: 'Swap axes', exact: true });
-  const scope = explorer.getByRole('group', { name: 'Time scope', exact: true });
-  const session = explorer.getByRole('combobox', { name: 'Session', exact: true });
+  const scope = explorer.getByRole('group', {
+    name: 'Time scope',
+    exact: true,
+  });
+  const session = explorer.getByRole('combobox', {
+    name: 'Session',
+    exact: true,
+  });
   const points = explorer.getByRole('button', { name: /^Plot / });
 
   await expect(
@@ -4283,7 +4392,9 @@ test('Explorer keyboard table targets an exact overlapping shot and opens its re
 }, testInfo) => {
   const { recent } = await seedExplorer(account);
   const data = await account.repository.load();
-  const shots = data.shots.filter((shot) => shot.sessionId === recent.sessionId);
+  const shots = data.shots.filter(
+    (shot) => shot.sessionId === recent.sessionId,
+  );
   const first = shots.find((shot) => shot.rowIndex === 1);
   const overlapping = shots.find((shot) => shot.rowIndex === 2);
   if (!first || !overlapping) throw new Error('Missing overlapping shots');
@@ -4338,7 +4449,9 @@ test('Explorer keyboard table targets an exact overlapping shot and opens its re
   await expect(review).toHaveAttribute('href', new RegExp(overlapping.id));
   await review.click();
   await expect(page).toHaveURL(new RegExp(overlapping.id));
-  const supportingShots = page.getByRole('region', { name: 'Supporting shots' });
+  const supportingShots = page.getByRole('region', {
+    name: 'Supporting shots',
+  });
   await expect(supportingShots).toContainText(`Row ${overlapping.rowIndex}`);
   await expect(supportingShots.locator('.shot-list .shot')).toHaveCount(1);
 

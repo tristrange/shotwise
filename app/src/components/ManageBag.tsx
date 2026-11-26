@@ -17,6 +17,7 @@ import {
 } from '../domain/model';
 import { clubHref } from './ClubProfiles';
 import { sessionHref, visitLabel } from './SessionRecap';
+import { Button, Card, Select, TextField } from './ds';
 
 function BagItem({
   club,
@@ -55,14 +56,14 @@ function BagItem({
             {history.needsReview > 0 && ` · ${history.needsReview} need review`}
           </span>
         </div>
-        <button
-          className="secondary"
+        <Button
+          variant="secondary"
           aria-describedby={`bag-meta-${club.id}`}
           disabled={disabled}
           onClick={() => onEdit(club)}
         >
           Edit {club.name}
-        </button>
+        </Button>
       </div>
       {history.visits.length > 0 && (
         <div className="table-wrap bag-history">
@@ -189,22 +190,21 @@ export function ManageBag({
   }
 
   return (
-    <section className="panel" aria-labelledby="manage-bag">
-      <div className="panel-heading">
+    <Card className="bag-card" role="region" aria-labelledby="manage-bag">
+      <div className="ds-section-header">
         <div>
-          <span className="eyebrow">Your physical clubs</span>
           <h2 id="manage-bag" ref={headingRef} tabIndex={-1}>
             Manage bag
           </h2>
-          <p className="context">
+          <div className="ds-section-sub">
             {clubs.length} {clubs.length === 1 ? 'club' : 'clubs'} · assignments
             follow the physical club
-          </p>
+          </div>
         </div>
         <div className="card-controls">
-          <button onClick={startNew} disabled={formOpen || busy}>
+          <Button onClick={startNew} disabled={formOpen || busy}>
             Add club
-          </button>
+          </Button>
         </div>
       </div>
       <p>
@@ -220,89 +220,69 @@ export function ManageBag({
             void save();
           }}
         >
-          <div className="form-grid">
-            <label>
-              Inrange label
-              <input
-                required
-                maxLength={30}
-                value={draft.inrangeLabel}
-                disabled={busy}
-                onChange={(e) => patch({ inrangeLabel: e.target.value })}
-              />
-            </label>
-            <label>
-              Display name
-              <input
-                required
-                maxLength={200}
-                value={draft.name}
-                disabled={busy}
-                onChange={(e) => patch({ name: e.target.value })}
-              />
-            </label>
-            <label>
-              Manufacturer
-              <input
-                maxLength={200}
-                value={draft.manufacturer}
-                disabled={busy}
-                onChange={(e) => patch({ manufacturer: e.target.value })}
-              />
-            </label>
-            <label>
-              Loft
-              <input
-                maxLength={30}
-                value={draft.loft}
-                disabled={busy}
-                onChange={(e) => patch({ loft: e.target.value })}
-              />
-            </label>
-            <label>
-              Status
-              <select
-                value={draft.status}
-                disabled={busy}
-                onChange={(e) =>
-                  patch({ status: e.target.value as EquipmentStatus })
-                }
-              >
-                <option value="in-bag">In bag</option>
-                <option value="retired">Retired</option>
-              </select>
-            </label>
-            <label>
-              Acquired on
-              <input
-                type="date"
-                value={draft.acquiredOn}
-                disabled={busy}
-                onChange={(e) => patch({ acquiredOn: e.target.value })}
-              />
-            </label>
-            <label>
-              Retired on
-              <input
-                type="date"
-                value={draft.retiredOn}
-                disabled={busy}
-                onChange={(e) => patch({ retiredOn: e.target.value })}
-              />
-            </label>
+          <div className="bag-fields">
+            <TextField
+              label="Inrange label"
+              required
+              maxLength={30}
+              value={draft.inrangeLabel}
+              disabled={busy}
+              onChange={(value) => patch({ inrangeLabel: value })}
+            />
+            <TextField
+              label="Display name"
+              required
+              maxLength={200}
+              value={draft.name}
+              disabled={busy}
+              onChange={(value) => patch({ name: value })}
+            />
+            <TextField
+              label="Manufacturer"
+              maxLength={200}
+              value={draft.manufacturer}
+              disabled={busy}
+              onChange={(value) => patch({ manufacturer: value })}
+            />
+            <TextField
+              label="Loft"
+              maxLength={30}
+              value={draft.loft}
+              disabled={busy}
+              onChange={(value) => patch({ loft: value })}
+            />
+            <Select
+              label="Status"
+              value={draft.status}
+              disabled={busy}
+              onChange={(value) => patch({ status: value as EquipmentStatus })}
+              options={[
+                { value: 'in-bag', label: 'In bag' },
+                { value: 'retired', label: 'Retired' },
+              ]}
+            />
+            <TextField
+              label="Acquired on"
+              type="date"
+              value={draft.acquiredOn}
+              disabled={busy}
+              onChange={(value) => patch({ acquiredOn: value })}
+            />
+            <TextField
+              label="Retired on"
+              type="date"
+              value={draft.retiredOn}
+              disabled={busy}
+              onChange={(value) => patch({ retiredOn: value })}
+            />
           </div>
           <div className="actions">
-            <button type="submit" ref={saveButton} disabled={busy}>
+            <Button type="submit" ref={saveButton} disabled={busy}>
               {busy ? 'Saving…' : 'Save club'}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={closeForm}
-            >
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={closeForm}>
               Cancel
-            </button>
+            </Button>
           </div>
           {error && (
             <p role="alert" className="error">
@@ -317,8 +297,7 @@ export function ManageBag({
                 saved: {conflict.name} · {conflict.inrangeLabel} · revision{' '}
                 {conflict.revision}.
               </p>
-              <button
-                type="button"
+              <Button
                 disabled={busy}
                 onClick={() => {
                   setBaselineRevision(conflict.revision);
@@ -328,7 +307,7 @@ export function ManageBag({
                 }}
               >
                 Use latest revision
-              </button>
+              </Button>
             </div>
           )}
         </form>
@@ -350,6 +329,6 @@ export function ManageBag({
           />
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

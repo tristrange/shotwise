@@ -10,6 +10,7 @@ import {
   type AssignmentPreview,
 } from '../domain/equipment';
 import { type Dataset, type Equipment, type Session } from '../domain/model';
+import { Button, Select, TextField } from './ds';
 
 type Draft = {
   clubLabel: string;
@@ -219,62 +220,52 @@ export function AssignEquipment({
         {coverage.needsReview} shot{coverage.needsReview === 1 ? '' : 's'} need
         review
       </p>
-      <div className="form-grid">
-        <label>
-          Club label
-          <select
-            value={draft.clubLabel}
-            disabled={locked || groups.length === 0}
-            onChange={(e) => changeLabel(e.target.value)}
-          >
-            <option value="">Choose a club label</option>
-            {groups.map((g) => (
-              <option key={g.club} value={g.club}>
-                {g.club} · {g.total} shot{g.total === 1 ? '' : 's'} ·{' '}
-                {g.coverage}
-                {g.needsReview > 0 ? ` · ${g.needsReview} need review` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          First source row
-          <input
-            type="number"
-            min="1"
-            inputMode="numeric"
-            disabled={locked}
-            value={draft.firstRow}
-            onChange={(e) => patch({ firstRow: e.target.value })}
-          />
-        </label>
-        <label>
-          Last source row
-          <input
-            type="number"
-            min="1"
-            inputMode="numeric"
-            disabled={locked}
-            value={draft.lastRow}
-            onChange={(e) => patch({ lastRow: e.target.value })}
-          />
-        </label>
-        <label>
-          Physical club
-          <select
-            value={draft.equipmentId}
-            disabled={locked || !group}
-            onChange={(e) => patch({ equipmentId: e.target.value })}
-          >
-            <option value="">Choose equipment</option>
-            <option value="clear">Clear assignment</option>
-            {bagClubs.map((club: Equipment) => (
-              <option key={club.id} value={club.id}>
-                {club.name} ({club.status === 'retired' ? 'retired' : 'in bag'})
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="assign-fields">
+        <Select
+          label="Club label"
+          value={draft.clubLabel}
+          disabled={locked || groups.length === 0}
+          onChange={changeLabel}
+          options={[
+            { value: '', label: 'Choose a club label' },
+            ...groups.map((g) => ({
+              value: g.club,
+              label: `${g.club} · ${g.total} shot${g.total === 1 ? '' : 's'} · ${g.coverage}${g.needsReview > 0 ? ` · ${g.needsReview} need review` : ''}`,
+            })),
+          ]}
+        />
+        <TextField
+          label="First source row"
+          type="number"
+          min="1"
+          inputMode="numeric"
+          disabled={locked}
+          value={draft.firstRow}
+          onChange={(value) => patch({ firstRow: value })}
+        />
+        <TextField
+          label="Last source row"
+          type="number"
+          min="1"
+          inputMode="numeric"
+          disabled={locked}
+          value={draft.lastRow}
+          onChange={(value) => patch({ lastRow: value })}
+        />
+        <Select
+          label="Physical club"
+          value={draft.equipmentId}
+          disabled={locked || !group}
+          onChange={(value) => patch({ equipmentId: value })}
+          options={[
+            { value: '', label: 'Choose equipment' },
+            { value: 'clear', label: 'Clear assignment' },
+            ...bagClubs.map((club: Equipment) => ({
+              value: club.id,
+              label: `${club.name} (${club.status === 'retired' ? 'retired' : 'in bag'})`,
+            })),
+          ]}
+        />
       </div>
       {group && (
         <p className="muted">
@@ -293,8 +284,9 @@ export function AssignEquipment({
       {needsReviewRows.length > 0 && (
         <div className="needs-review">
           <p>
-            <span className="pill">Needs review</span> {needsReviewRows.length}{' '}
-            shot{needsReviewRows.length === 1 ? '' : 's'} where a later club
+            <span className="ds-badge tone-warn">Needs review</span>{' '}
+            {needsReviewRows.length} shot
+            {needsReviewRows.length === 1 ? '' : 's'} where a later club
             correction conflicts with the saved assignment. The previous
             association is retained until you confirm the new label's equipment;
             undoing the correction restores compatibility.
@@ -314,13 +306,13 @@ export function AssignEquipment({
         </div>
       )}
       <div className="actions">
-        <button
+        <Button
           ref={previewButton}
           disabled={locked || !canPreview}
           onClick={startPreview}
         >
           Preview assignment
-        </button>
+        </Button>
       </div>
       {pending && (
         <p role="status" className="notice">
@@ -400,37 +392,35 @@ export function AssignEquipment({
           )}
           {preview.total > PREVIEW_PAGE_SIZE && (
             <div className="actions">
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="secondary"
                 disabled={busy || previewPage === 0}
                 onClick={() => setPreviewPage(previewPage - 1)}
               >
                 Previous preview page
-              </button>
+              </Button>
               <span role="status">
                 Shots {pageStart + 1}–{pageEnd} of {preview.total}
               </span>
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="secondary"
                 disabled={busy || pageEnd >= preview.total}
                 onClick={() => setPreviewPage(previewPage + 1)}
               >
                 Next preview page
-              </button>
+              </Button>
             </div>
           )}
           <div className="actions">
-            <button
+            <Button
               disabled={busy || preview.rows.length === 0}
               onClick={() => void confirm()}
             >
               Confirm assignment
-            </button>
-            <button className="secondary" disabled={busy} onClick={revise}>
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={revise}>
               Revise
-            </button>
+            </Button>
           </div>
         </section>
       )}
