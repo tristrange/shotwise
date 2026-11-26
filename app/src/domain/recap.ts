@@ -408,6 +408,10 @@ function clubRecap(
     spread.finding = { kind: 'mixed' };
   }
   const contact = reviewCoverage(reliability.current.shots, resolved);
+  // `full` is the manual-review population; the reliability cohort passed in
+  // is already read through the resolved layer, so `contact.total` is the
+  // resolved full-swing population that `assessed` covers. Never mix the two
+  // denominators (see reviewCoverage).
   const full = contact.fullReviewed + contact.unassessed;
   const flight = (key: MetricKey) =>
     compareMetric(reliability, key, median, median, 1, resolved);
@@ -429,6 +433,7 @@ function clubRecap(
       p10,
       contact: {
         full,
+        fullResolved: contact.total,
         reviewed: contact.fullReviewed,
         mishits: contact.mishits,
         rate: contact.rate,

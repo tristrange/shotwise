@@ -2190,6 +2190,15 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
   await recapLink(older.name).click();
   await expect(heading).toBeFocused();
   await expect(recap).toContainText('Sparse comparable history');
+  const olderClub = recap
+    .locator('details')
+    .filter({ hasText: '7i metric details' });
+  await olderClub.locator('summary').click();
+  const withheldCarry = olderClub.locator('.ds-metric', {
+    hasText: 'Carry vs baseline',
+  });
+  await expect(withheldCarry).toContainText('Withheld');
+  await expect(withheldCarry).not.toContainText('m vs');
   await page.goBack();
   await expect(recapLink(older.name)).toBeFocused();
   await expect(details).toHaveCount(0);
@@ -2210,6 +2219,16 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
     .filter({ hasText: '7i metric details' });
   await expect(club).not.toHaveAttribute('open', '');
   await club.locator('summary').click();
+  // Unreviewed CSV shots are automatically assessed, so the assessed metric
+  // uses the resolved full-swing population as its denominator.
+  const assessed = club.locator('.ds-metric', {
+    hasText: 'Assessed (manual or automatic)',
+  });
+  await expect(assessed.locator('.ds-metric-value')).toContainText('of 13');
+  const carryVsBaseline = club.locator('.ds-metric', {
+    hasText: 'Carry vs baseline',
+  });
+  await expect(carryVsBaseline).toContainText('m vs');
   const broader = club
     .locator('.recap-metric')
     .filter({ hasText: 'Median carry · broader estimate' });

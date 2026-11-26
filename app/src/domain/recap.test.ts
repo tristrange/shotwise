@@ -464,6 +464,8 @@ describe('session recap', () => {
       value: 150,
     });
     expect(result.reliability.contact).toMatchObject({
+      full: 0,
+      fullResolved: 12,
       reviewed: 0,
       assessed: 12,
       automatic: 12,

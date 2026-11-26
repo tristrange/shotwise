@@ -392,8 +392,11 @@ export function SessionRecap({
         const { contact } = club.reliability;
         const unknown = club.potential.broader.current.unknownIntentShare;
         const preferred = club.potential[club.potential.preferred];
+        const finding = preferred.finding;
         const carryDelta =
-          preferred.current.value !== null && preferred.baseline.value !== null
+          finding.kind !== 'withheld' &&
+          preferred.current.value !== null &&
+          preferred.baseline.value !== null
             ? preferred.current.value - preferred.baseline.value
             : null;
         return (
@@ -424,9 +427,11 @@ export function SessionRecap({
                 label={`Carry vs baseline · ${club.potential.preferred}`}
                 value={valueText(preferred.current.value, 'm')}
                 delta={
-                  carryDelta === null
-                    ? `${preferred.baseline.sessions.length} baseline ${preferred.baseline.sessions.length === 1 ? 'session' : 'sessions'}`
-                    : `${carryDelta >= 0 ? '+' : '−'}${decimal.format(Math.abs(carryDelta))} m vs ${valueText(preferred.baseline.value, 'm')}`
+                  finding.kind === 'withheld'
+                    ? `Withheld — ${finding.reasons.map((reason) => reasons[reason]).join('. ')}`
+                    : carryDelta === null
+                      ? `${preferred.baseline.sessions.length} baseline ${preferred.baseline.sessions.length === 1 ? 'session' : 'sessions'}`
+                      : `${carryDelta >= 0 ? '+' : '−'}${decimal.format(Math.abs(carryDelta))} m vs ${valueText(preferred.baseline.value, 'm')}`
                 }
                 deltaTone="neutral"
               />
@@ -453,7 +458,7 @@ export function SessionRecap({
               <Metric
                 small
                 label="Assessed (manual or automatic)"
-                value={`${contact.assessed} of ${contact.full}`}
+                value={`${contact.assessed} of ${contact.fullResolved}`}
                 delta={
                   contact.automatic > 0
                     ? `${contact.automatic} automatic`
