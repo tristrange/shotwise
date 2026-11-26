@@ -1977,9 +1977,6 @@ th.ab-b,
 }
 
 /* shape / explorer cards */
-.view-tabs {
-  margin: -6px 0 var(--space-5);
-}
 .shape-controls {
   max-width: 260px;
   margin-bottom: var(--space-3);
