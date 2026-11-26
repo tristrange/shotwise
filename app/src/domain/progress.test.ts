@@ -191,6 +191,69 @@ it('keeps per-session potential on the broader population in strong-strike mode'
   expect(group?.sessions[0]?.p80).toEqual({ value: 108, n: 11, missing: 0 });
 });
 
+it('retains broader-population sessions that vanish from the strong-strike cohort', () => {
+  const early = makeSession({ date: '2026-11-01' });
+  const late = makeSession({ date: '2026-11-17' });
+  const shots = [
+    ...[100, 101, 102, 103, 104, 105, 106, 107, 108, 109].map((carry) =>
+      makeShot({
+        sessionId: early.id,
+        measurements: { flatCarryPremium: carry },
+        review: { intent: 'full', contact: 'typical' },
+      }),
+    ),
+    ...[120, 121, 122, 123, 124, 125, 126, 127, 128, 129].map((carry) =>
+      makeShot({
+        sessionId: late.id,
+        measurements: { flatCarryPremium: carry },
+        review: { intent: 'full', contact: 'typical' },
+      }),
+    ),
+  ];
+  const data = { ...emptyDataset, sessions: [early, late], shots };
+  const strongQuery = { ...query, contact: 'strong' as const };
+  const [group] = clubProgress(data, 'premium-flat', strongQuery);
+  // The club-wide threshold (P80 of all 20 carries = 125.2) leaves the late
+  // session in the selected cohort but drops every early shot — yet the early
+  // session still happened and keeps its own broader-population P80 (107.2).
+  expect(group?.sessions.map((point) => point.session.id)).toEqual([
+    early.id,
+    late.id,
+  ]);
+  const [earlyPoint, latePoint] = group?.sessions ?? [];
+  expect(earlyPoint?.n).toBe(0);
+  expect(earlyPoint?.median).toBeNull();
+  expect(earlyPoint?.p80.n).toBe(10);
+  expect(earlyPoint?.p80.value).toBeCloseTo(107.2);
+  expect(latePoint?.n).toBeGreaterThan(0);
+  expect(latePoint?.p80.n).toBe(10);
+  expect(latePoint?.p80.value).toBeCloseTo(127.2);
+  // The potential series therefore reports a real change, not zero.
+  const summaries = summarizeClubMetric([group!], 'p80');
+  expect(summaries[0]?.measured).toBe(2);
+  expect(summaries[0]?.delta).toBeCloseTo(20);
+});
+
+it('requires two measured sessions before reporting a cross-session delta', () => {
+  const session = makeSession({ date: '2026-11-16' });
+  const shots = [
+    makeShot({
+      sessionId: session.id,
+      recordedClub: '9i',
+      measurements: { flatCarryPremium: 120 },
+    }),
+  ];
+  const data = { ...emptyDataset, sessions: [session], shots };
+  const groups = clubProgress(data, 'premium-flat', query);
+  const [summary] = summarizeClubMetric(groups, 'median');
+  // One measured session: first and latest are the same point, so there is no
+  // delta to report (a "+0" would read as an unchanged trend).
+  expect(summary?.measured).toBe(1);
+  expect(summary?.first).toMatchObject({ value: 120 });
+  expect(summary?.latest).toMatchObject({ value: 120 });
+  expect(summary?.delta).toBeNull();
+});
+
 it('summarizes first, latest, best and delta per club for one metric', () => {
   const sessions = [
     makeSession({ date: '2026-11-01' }),

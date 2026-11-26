@@ -84,13 +84,31 @@ export function clubProgress(
       bySession.set(shot.sessionId, perClub);
     }
   }
+  // The session list is the union of the selected cohort and the broader
+  // strong-strike population: in Strong-strike mode a session whose shots all
+  // fall below the club-wide P80 threshold has no selected shots, but it still
+  // happened and carries a valid broader-population P80 reading — dropping it
+  // would erase that reading from the potential series and misreport the change.
+  const sessionIdsByClub = new Map<string, Set<string>>();
+  for (const [sessionId, perClub] of bySession) {
+    for (const club of perClub.keys()) {
+      const set = sessionIdsByClub.get(club) ?? new Set<string>();
+      set.add(sessionId);
+      sessionIdsByClub.set(club, set);
+    }
+  }
+  for (const [club, perSession] of potential) {
+    const set = sessionIdsByClub.get(club) ?? new Set<string>();
+    for (const sessionId of perSession.keys()) set.add(sessionId);
+    sessionIdsByClub.set(club, set);
+  }
   const clubs = [...groups.keys()].sort(
     (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
   );
   return clubs.map((club) => ({
     club,
     sessions: data.sessions
-      .filter((session) => bySession.get(session.id)?.has(club))
+      .filter((session) => sessionIdsByClub.get(club)?.has(session.id))
       .toSorted(
         (a, b) =>
           a.date.localeCompare(b.date) ||
@@ -138,7 +156,7 @@ export type ClubMetricSummary = {
   latest: ClubMetricPoint | null;
   /** Best session in the favourable direction (max, or min when lowerIsBetter). */
   best: ClubMetricPoint | null;
-  /** latest − first, null unless both exist. */
+  /** latest − first; null unless at least two sessions measured (first and latest must be distinct points). */
   delta: number | null;
 };
 
@@ -199,8 +217,12 @@ export function summarizeClubMetric(
       first,
       latest,
       best,
+      // A delta needs two distinct measured sessions; with only one, first and
+      // latest are the same point and a "+0" would be a meaningless comparison.
       delta:
-        first !== null && latest !== null ? latest.value - first.value : null,
+        measured.length >= 2 && first !== null && latest !== null
+          ? latest.value - first.value
+          : null,
     };
   });
 }
