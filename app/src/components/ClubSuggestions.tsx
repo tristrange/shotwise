@@ -8,6 +8,7 @@ import {
 import { suggestClub } from '../domain/analytics';
 import { assessSequences, SEQUENCE_RULE_VERSION } from '../domain/sequence';
 import type { Repository } from '../data/contracts';
+import { Badge, Button, Card } from './ds';
 
 export function ClubSuggestions({
   active,
@@ -94,19 +95,19 @@ export function ClubSuggestions({
   }
 
   return (
-    <section className="panel">
-      <div className="panel-heading">
+    <Card className="suggestions-card">
+      <div className="ds-section-header">
         <div>
-          <span className="eyebrow">Unassigned clubs</span>
           <h2>Guess the missing clubs</h2>
+          <div className="ds-section-sub">Unassigned club labels</div>
         </div>
-        <span className="pill">
+        <Badge tone="warn">
           {unknown.length} {unknown.length === 1 ? 'shot' : 'shots'}
-        </span>
+        </Badge>
       </div>
       <p>
-        These shots have no readable club label. When surrounding shots point
-        to one club, the sequence suggestion is shown first (provisional,{' '}
+        These shots have no readable club label. When surrounding shots point to
+        one club, the sequence suggestion is shown first (provisional,{' '}
         {SEQUENCE_RULE_VERSION}); otherwise we compare carry with clubs that
         have at least ten known shots, within 15 m. Confirm a suggestion or
         choose another — the recorded label is never changed automatically.
@@ -120,8 +121,7 @@ export function ClubSuggestions({
         {unknown.map((shot) => {
           const suggestion = suggestions.get(shot.id);
           const seq = sequence.get(shot.id);
-          const inferred =
-            seq?.kind === 'inferred-club' ? seq : undefined;
+          const inferred = seq?.kind === 'inferred-club' ? seq : undefined;
           const carry = shot.measurements.flatCarryPremium;
           const selected =
             choices[shot.id] ?? inferred?.club ?? suggestion?.club ?? '';
@@ -141,31 +141,33 @@ export function ClubSuggestions({
                     ? `Suggested ${suggestion.club} · ${suggestion.delta.toFixed(1)} m from ${suggestion.sampleSize} shots (${suggestion.source})`
                     : 'No clear suggestion — choose a club if you know it'}
               </span>
-              <select
-                aria-label={`Club for row ${shot.rowIndex}`}
-                disabled={!!busy}
-                value={selected}
-                onChange={(e) =>
-                  setChoices((old) => ({ ...old, [shot.id]: e.target.value }))
-                }
-              >
-                <option value="">Choose club</option>
-                {knownClubs.map((club) => (
-                  <option key={club} value={club}>
-                    {club}
-                  </option>
-                ))}
-              </select>
-              <button
+              <span className="ds-field ds-select suggestion-select">
+                <select
+                  aria-label={`Club for row ${shot.rowIndex}`}
+                  disabled={!!busy}
+                  value={selected}
+                  onChange={(e) =>
+                    setChoices((old) => ({ ...old, [shot.id]: e.target.value }))
+                  }
+                >
+                  <option value="">Choose club</option>
+                  {knownClubs.map((club) => (
+                    <option key={club} value={club}>
+                      {club}
+                    </option>
+                  ))}
+                </select>
+              </span>
+              <Button
                 disabled={!selected || !!busy}
                 onClick={() => void confirm(shot.id)}
               >
                 {busy === shot.id ? 'Saving…' : 'Save club'}
-              </button>
+              </Button>
             </div>
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }

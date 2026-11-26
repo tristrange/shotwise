@@ -1,4 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   BarChart3,
   ClipboardCheck,
@@ -20,6 +27,7 @@ import { Analysis } from './components/Analysis';
 import { Sessions } from './components/Sessions';
 import { ShotReview } from './components/ShotReview';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
+import { Button, Card, Divider, SectionHeader } from './components/ds';
 import { ClubSuggestions } from './components/ClubSuggestions';
 import { ClubGaps } from './components/ClubGaps';
 import { ClubProfiles } from './components/ClubProfiles';
@@ -427,26 +435,26 @@ export default function App() {
               refresh={refresh}
             />
             {page === 'review' && (
-              <section className="panel">
-                <ShotReview
-                  data={data}
-                  repository={repository}
-                  refresh={refresh}
-                />
-              </section>
+              <ShotReview
+                data={data}
+                repository={repository}
+                refresh={refresh}
+              />
             )}
             {page === 'settings' && (
               <>
                 <div className="section-heading">
                   <h1>Settings</h1>
                 </div>
-                <ManageBag
-                  data={data}
-                  repository={repository}
-                  refresh={refresh}
-                  headingRef={manageBagHeading}
-                />
-                <Backup data={data} refresh={refresh} />
+                <div className="settings-stack">
+                  <ManageBag
+                    data={data}
+                    repository={repository}
+                    refresh={refresh}
+                    headingRef={manageBagHeading}
+                  />
+                  <Backup data={data} refresh={refresh} />
+                </div>
               </>
             )}
           </div>
@@ -583,54 +591,52 @@ function Backup({
     data.equipmentAssignments.length === 0 &&
     data.userReferenceValues.length === 0;
   return (
-    <>
-      <section className="panel">
-        <h2>Backups</h2>
-        <p>
-          Download a private JSON backup containing your original imports,
-          sessions, reviews, and equipment. Keep this file somewhere safe; it
-          contains your personal data.
+    <Card className="backup-card">
+      <SectionHeader
+        title="Backups"
+        sub="Download a private JSON backup containing your original imports, sessions, reviews, and equipment. Keep this file somewhere safe; it contains your personal data."
+      />
+      <div className="actions">
+        <Button onClick={download}>Download backup</Button>
+      </div>
+      <p className="muted">
+        Refresh any other open Shotwise tabs before downloading so the backup
+        includes the latest equipment and assignments.
+      </p>
+      <Divider />
+      <h3>Restore a backup</h3>
+      <p>
+        Restore is available only when your dataset is empty. It will not
+        overwrite existing data.
+      </p>
+      <label className="file-button">
+        Choose backup
+        <input
+          type="file"
+          accept=".json,application/json"
+          disabled={busy || !empty}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void restore(file);
+            e.target.value = '';
+          }}
+        />
+      </label>
+      {!empty && (
+        <p className="notice">
+          Your dataset is not empty, so restore is unavailable.
         </p>
-        <button onClick={download}>Download backup</button>
-        <p className="muted">
-          Refresh any other open Shotwise tabs before downloading so the backup
-          includes the latest equipment and assignments.
+      )}
+      {status && <p role="status">{status}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
         </p>
-        <hr />
-        <h3>Restore a backup</h3>
-        <p>
-          Restore is available only when your dataset is empty. It will not
-          overwrite existing data.
-        </p>
-        <label className="file-button">
-          Choose backup
-          <input
-            type="file"
-            accept=".json,application/json"
-            disabled={busy || !empty}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void restore(file);
-              e.target.value = '';
-            }}
-          />
-        </label>
-        {!empty && (
-          <p className="notice">
-            Your dataset is not empty, so restore is unavailable.
-          </p>
-        )}
-        {status && <p role="status">{status}</p>}
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        <p className="muted">
-          Your data syncs through your configured project. Free-tier projects
-          may pause when inactive; keep a backup.
-        </p>
-      </section>
-    </>
+      )}
+      <p className="muted">
+        Your data syncs through your configured project. Free-tier projects may
+        pause when inactive; keep a backup.
+      </p>
+    </Card>
   );
 }

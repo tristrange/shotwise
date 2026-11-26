@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   EXPLORER_AXES,
   explorerAxis,
@@ -7,14 +7,23 @@ import {
   type ExplorerAxis,
   type ExplorerQuery,
 } from '../domain/explorer';
-import {
-  effectiveClub,
-  localToday,
-  type Dataset,
-} from '../domain/model';
+import { resolveShots } from '../domain/assessment';
+import { CLASSIFIER_VERSION } from '../domain/classify';
+import { effectiveClub, localToday, type Dataset } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
 import { BasisButton } from './AnalysisControls';
-import { ScatterPlot, type ScatterTick } from './ScatterPlot';
+import {
+  Button,
+  Card,
+  Disclosure,
+  EmptyState,
+  HelpPopover,
+  SectionHeader,
+  SegmentedControl,
+  Select,
+} from './ds';
+import type { SegmentedOption } from './ds';
+import { PerformanceScatterPlot, type ScatterTick } from './charts';
 import { ShapeViewTabs } from './ShotShapes';
 import { sessionOptionLabel } from './CompareSessions';
 
@@ -24,6 +33,25 @@ const INTENT_OPTIONS: { value: ExplorerQuery['intent']; label: string }[] = [
   { value: 'partial', label: 'Partial swings' },
   { value: 'unknown', label: 'Unknown intent' },
 ];
+const CONTACT_OPTIONS: { value: ExplorerQuery['contact']; label: string }[] = [
+  { value: 'all', label: 'All shots' },
+  { value: 'typical', label: 'Typical' },
+  { value: 'strong', label: 'Strong-strike' },
+];
+const SCOPE_OPTIONS: readonly SegmentedOption<'recent' | 'all' | 'session'>[] =
+  [
+    {
+      value: 'recent',
+      label: 'Recent',
+      title: 'Latest 50 shots for this club from the last 60 days',
+    },
+    { value: 'all', label: 'All-time', title: 'Every non-archived session' },
+    {
+      value: 'session',
+      label: 'Session',
+      title: 'One exact named visit, using its complete eligible population',
+    },
+  ];
 const SHOTS_PER_PAGE = 50;
 
 function valueText(value: number, unit: string) {
@@ -96,8 +124,7 @@ export function BallFlightExplorer({
     x: xAxis,
     y: yAxis,
     basis: settings.basis,
-    scope:
-      scope === 'session' ? { session: sessionId } : scope,
+    scope: scope === 'session' ? { session: sessionId } : scope,
     intent,
     contact,
     today,
@@ -118,16 +145,34 @@ export function BallFlightExplorer({
   const inspected = plot?.shots.find((shot) => shot.id === selected);
   const inspectedX = inspected?.measurements[xInfo.metric] ?? null;
   const inspectedY = inspected?.measurements[yInfo.metric] ?? null;
+  // Automatic likely-mishit provenance (ADR-0001): only shots whose contact is
+  // still unreviewed carry the automatic label, and a saved review always
+  // wins. Unassessed shots are never styled as confirmed good strikes.
+  const resolved = useMemo(
+    () => resolveShots(data.shots, data.sessions, 'premium-flat'),
+    [data.shots, data.sessions],
+  );
+  // resolveShots is cached per shots/sessions identity, so this pass is cheap.
+  const likelyMishits = new Set<string>();
+  for (const shot of plot?.shots ?? []) {
+    if (
+      shot.review.contact === 'uncertain' &&
+      resolved.get(shot.id)?.automatic?.contact.value === 'mishit'
+    ) {
+      likelyMishits.add(shot.id);
+    }
+  }
   const plotPoints = (plot?.points ?? []).map((point) => {
     const name = sessionNames.get(point.shot.sessionId) ?? '';
     const xText = valueText(point.x, xInfo.unit);
     const yText = valueText(point.y, yInfo.unit);
+    const mishit = likelyMishits.has(point.shot.id);
     return {
       id: point.shot.id,
       x: point.x,
       y: point.y,
-      label: `Plot ${plot?.club ?? ''} row ${point.shot.rowIndex} · ${name} · ${xInfo.label.toLowerCase()} ${xText} · ${yInfo.label.toLowerCase()} ${yText}`,
-      title: `Row ${point.shot.rowIndex} · Shot #${point.shot.sourceNumber || '—'} · ${name}: ${xInfo.label} ${xText}, ${yInfo.label} ${yText}`,
+      label: `Plot ${plot?.club ?? ''} row ${point.shot.rowIndex} · ${name} · ${xInfo.label.toLowerCase()} ${xText} · ${yInfo.label.toLowerCase()} ${yText}${mishit ? ' · auto likely mishit' : ''}`,
+      title: `Row ${point.shot.rowIndex} · Shot #${point.shot.sourceNumber || '—'} · ${name}: ${xInfo.label} ${xText}, ${yInfo.label} ${yText}${mishit ? ' · auto likely mishit (provisional)' : ''}`,
     };
   });
   const xDomain = domainOf(plotPoints.map((p) => p.x));
@@ -139,183 +184,131 @@ export function BallFlightExplorer({
         <h1>Ball-flight explorer</h1>
       </div>
       <ShapeViewTabs view="explorer" />
-      <section className="panel" aria-label="Ball-flight explorer">
-        <div className="panel-heading">
-          <div>
-            <h2>
-              {xInfo.label} vs {yInfo.label}
-              {plot ? ` · ${plot.club}` : ''}
-            </h2>
-            {plot && (
-              <p className="context">
-                {plot.points.length} of {plot.shots.length} shots plotted ·{' '}
-                {plot.omitted} omitted without both measurements · missing X (
-                {xInfo.label}): {plot.missingX} · missing Y ({yInfo.label}):{' '}
-                {plot.missingY}
-              </p>
-            )}
-          </div>
-          <div className="card-controls">
-            <BasisButton
-              basis={settings.basis}
-              onChange={(basis) =>
-                onSettingsChange({ ...settings, basis })
-              }
-            />
-          </div>
-        </div>
+      <Card
+        className="explorer-card"
+        role="region"
+        aria-label="Ball-flight explorer"
+      >
+        <SectionHeader
+          title={`${xInfo.label} vs ${yInfo.label}${plot ? ` · ${plot.club}` : ''}`}
+          sub={
+            plot
+              ? `${plot.points.length} of ${plot.shots.length} shots plotted · ${plot.omitted} omitted without both measurements · missing X (${xInfo.label}): ${plot.missingX} · missing Y (${yInfo.label}): ${plot.missingY}`
+              : undefined
+          }
+          aside={
+            <div className="card-controls">
+              <BasisButton
+                basis={settings.basis}
+                onChange={(basis) => onSettingsChange({ ...settings, basis })}
+              />
+              <HelpPopover label="How points are marked">
+                <p>
+                  Points marked <em>auto likely mishit</em> come from the
+                  automatic classifier ({CLASSIFIER_VERSION}) and only apply
+                  while the contact decision is still unreviewed — a saved
+                  review always wins. Unassessed shots are not marked, and no
+                  mark confirms a good strike.
+                </p>
+              </HelpPopover>
+            </div>
+          }
+        />
         {!clubs.length && (
-          <p>No shots match this view. Import a session to begin.</p>
+          <EmptyState title="No shots match this view">
+            Import a session to begin.
+          </EmptyState>
         )}
         {clubs.length > 0 && (
           <>
-            <div className="form-grid explorer-controls">
-              <label>
-                Effective club
-                <select
-                  value={activeClub}
-                  onChange={(e) => {
-                    setClub(e.target.value);
-                    setShotPage(0);
-                  }}
-                >
-                  {clubs.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                X axis
-                <select
-                  value={xAxis}
-                  onChange={(e) => setXAxis(e.target.value as ExplorerAxis)}
-                >
-                  {EXPLORER_AXES.map((axis) => (
-                    <option key={axis} value={axis}>
-                      {explorerAxis(axis, settings.basis).label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Y axis
-                <select
-                  value={yAxis}
-                  onChange={(e) => setYAxis(e.target.value as ExplorerAxis)}
-                >
-                  {EXPLORER_AXES.map((axis) => (
-                    <option key={axis} value={axis}>
-                      {explorerAxis(axis, settings.basis).label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="scope-control">
-                <span className="control-label" id="explorer-time-scope">
-                  Time scope
-                </span>
-                <div
-                  className="segmented"
-                  role="group"
-                  aria-labelledby="explorer-time-scope"
-                >
-                  <button
-                    className={scope === 'recent' ? 'active' : ''}
-                    aria-pressed={scope === 'recent'}
-                    title="Latest 50 shots for this club from the last 60 days"
-                    onClick={() => {
-                      setScope('recent');
-                      setShotPage(0);
-                    }}
-                  >
-                    Recent
-                  </button>
-                  <button
-                    className={scope === 'all' ? 'active' : ''}
-                    aria-pressed={scope === 'all'}
-                    title="Every non-archived session"
-                    onClick={() => {
-                      setScope('all');
-                      setShotPage(0);
-                    }}
-                  >
-                    All-time
-                  </button>
-                  <button
-                    className={scope === 'session' ? 'active' : ''}
-                    aria-pressed={scope === 'session'}
-                    title="One exact named visit, using its complete eligible population"
-                    onClick={() => {
-                      setScope('session');
-                      setShotPage(0);
-                    }}
-                  >
-                    Session
-                  </button>
-                </div>
-              </div>
-              <label>
-                Session
-                <select
-                  value={sessionId}
-                  disabled={scope !== 'session'}
-                  onChange={(e) => {
-                    setSessionId(e.target.value);
-                    setShotPage(0);
-                  }}
-                >
-                  <option value="">Choose a session</option>
-                  {sessionOptions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {sessionOptionLabel(session)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Shot intent
-                <select
-                  value={intent}
-                  onChange={(e) => {
-                    setIntent(e.target.value as ExplorerQuery['intent']);
-                    setShotPage(0);
-                  }}
-                >
-                  {INTENT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Contact
-                <select
-                  value={contact}
-                  onChange={(e) => {
-                    setContact(e.target.value as ExplorerQuery['contact']);
-                    setShotPage(0);
-                  }}
-                >
-                  <option value="all">All shots</option>
-                  <option value="typical">Typical</option>
-                  <option value="strong">Strong-strike</option>
-                </select>
-              </label>
-            </div>
-            <div className="actions">
-              <button
-                className="secondary"
+            <div className="explorer-controls">
+              <Select
+                label="Effective club"
+                value={activeClub}
+                onChange={(next) => {
+                  setClub(next);
+                  setShotPage(0);
+                }}
+                options={clubs.map((name) => ({ value: name, label: name }))}
+              />
+              <Select
+                label="X axis"
+                value={xAxis}
+                onChange={(next) => setXAxis(next)}
+                options={EXPLORER_AXES.map((axis) => ({
+                  value: axis,
+                  label: explorerAxis(axis, settings.basis).label,
+                }))}
+              />
+              <Select
+                label="Y axis"
+                value={yAxis}
+                onChange={(next) => setYAxis(next)}
+                options={EXPLORER_AXES.map((axis) => ({
+                  value: axis,
+                  label: explorerAxis(axis, settings.basis).label,
+                }))}
+              />
+              <SegmentedControl
+                label="Time scope"
+                options={SCOPE_OPTIONS}
+                value={scope}
+                onChange={(next) => {
+                  setScope(next);
+                  setShotPage(0);
+                }}
+              />
+              <Select
+                label="Session"
+                value={sessionId}
+                disabled={scope !== 'session'}
+                onChange={(next) => {
+                  setSessionId(next);
+                  setShotPage(0);
+                }}
+                options={[
+                  { value: '', label: 'Choose a session' },
+                  ...sessionOptions.map((session) => ({
+                    value: session.id,
+                    label: sessionOptionLabel(session),
+                  })),
+                ]}
+              />
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setXAxis(yAxis);
                   setYAxis(xAxis);
                 }}
               >
                 Swap axes
-              </button>
+              </Button>
             </div>
+            <Disclosure
+              summary="Filters"
+              className="explorer-filters-disclosure"
+            >
+              <div className="explorer-filters">
+                <Select
+                  label="Shot intent"
+                  value={intent}
+                  onChange={(next) => {
+                    setIntent(next);
+                    setShotPage(0);
+                  }}
+                  options={INTENT_OPTIONS}
+                />
+                <Select
+                  label="Contact"
+                  value={contact}
+                  onChange={(next) => {
+                    setContact(next);
+                    setShotPage(0);
+                  }}
+                  options={CONTACT_OPTIONS}
+                />
+              </div>
+            </Disclosure>
             {scope === 'session' && !namedSession && (
               <p className="notice" role="status">
                 Choose a session to plot that visit&apos;s complete eligible
@@ -323,7 +316,7 @@ export function BallFlightExplorer({
               </p>
             )}
             {scope === 'session' && namedSession && (
-              <p className="context">
+              <p className="chart-hint">
                 Session · {sessionOptionLabel(namedSession)}
               </p>
             )}
@@ -335,11 +328,11 @@ export function BallFlightExplorer({
             )}
             {plot && plot.shots.length > 0 && plotPoints.length > 0 && (
               <>
-                <p>
+                <p className="chart-hint">
                   Select a point or use the Left and Right arrow keys on the
                   chart.
                 </p>
-                <ScatterPlot
+                <PerformanceScatterPlot
                   label={`${plot.club} explorer plot · ${xLabel} vs ${yLabel}`}
                   caption={`Basis ${plot.basisLabel}`}
                   xLabel={xLabel}
@@ -348,20 +341,32 @@ export function BallFlightExplorer({
                   yTicks={ticksOf(yDomain)}
                   xDomain={xDomain}
                   yDomain={yDomain}
+                  zeroLines
                   points={plotPoints}
                   selectedId={selected}
                   onSelect={setSelected}
+                  pointClass={(id) =>
+                    likelyMishits.has(id) ? 'mishit' : undefined
+                  }
                 />
+                {likelyMishits.size > 0 && (
+                  <p className="chart-legend muted">
+                    <span className="legend-dot mishit" aria-hidden="true" />
+                    {likelyMishits.size} auto likely{' '}
+                    {likelyMishits.size === 1 ? 'mishit' : 'mishits'}{' '}
+                    (provisional; unassessed shots are not marked)
+                  </p>
+                )}
               </>
             )}
             {plot && plot.shots.length > 0 && plotPoints.length === 0 && (
-              <p>
+              <p className="notice">
                 No paired {xInfo.label} and {yInfo.label} measurements for{' '}
                 {plot.club} in this view.
               </p>
             )}
             <div
-              className="shape-detail notice"
+              className="shape-detail"
               role="region"
               aria-label={`Selected shot measurements for ${plot?.club ?? ''}`}
               aria-live="polite"
@@ -369,15 +374,19 @@ export function BallFlightExplorer({
               {plot && inspected ? (
                 <>
                   <strong>
-                    {effectiveClub(inspected)} · Row {inspected.rowIndex} · Shot #
-                    {inspected.sourceNumber || '—'} ·{' '}
+                    {effectiveClub(inspected)} · Row {inspected.rowIndex} · Shot
+                    #{inspected.sourceNumber || '—'} ·{' '}
                     {sessionNames.get(inspected.sessionId)}
                   </strong>
-                  <p>
-                    {xInfo.label}: {missingText(inspectedX, xInfo.unit)} ·{' '}
-                    {yInfo.label}: {missingText(inspectedY, yInfo.unit)}
-                  </p>
-                  <p>
+                  <div className="shape-tiles">
+                    <p className="shape-tile">
+                      {xInfo.label}: {missingText(inspectedX, xInfo.unit)}
+                    </p>
+                    <p className="shape-tile">
+                      {yInfo.label}: {missingText(inspectedY, yInfo.unit)}
+                    </p>
+                  </div>
+                  <p className="context">
                     Basis {plot.basisLabel} · X {xLabel} · Y {yLabel}
                   </p>
                   <p>
@@ -395,23 +404,23 @@ export function BallFlightExplorer({
                 <h3>All eligible shots ({plot.shots.length})</h3>
                 {lastPage > 0 && (
                   <div className="actions">
-                    <button
-                      className="secondary"
+                    <Button
+                      variant="secondary"
                       disabled={page === 0}
                       onClick={() => setShotPage(page - 1)}
                     >
                       Previous shot page
-                    </button>
+                    </Button>
                     <span role="status">
                       Shots {first + 1}–{last} of {shotCount}
                     </span>
-                    <button
-                      className="secondary"
+                    <Button
+                      variant="secondary"
                       disabled={page === lastPage}
                       onClick={() => setShotPage(page + 1)}
                     >
                       Next shot page
-                    </button>
+                    </Button>
                   </div>
                 )}
                 <div className="table-wrap">
@@ -420,12 +429,8 @@ export function BallFlightExplorer({
                       <tr>
                         <th>Session</th>
                         <th>Source row / shot #</th>
-                        <th>
-                          X · {xLabel}
-                        </th>
-                        <th>
-                          Y · {yLabel}
-                        </th>
+                        <th>X · {xLabel}</th>
+                        <th>Y · {yLabel}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -433,14 +438,15 @@ export function BallFlightExplorer({
                         <tr key={shot.id}>
                           <td>{sessionNames.get(shot.sessionId)}</td>
                           <td>
-                            <button
-                              className="text-button"
+                            <Button
+                              variant="ghost"
+                              small
                               aria-label={`Inspect row ${shot.rowIndex} · ${sessionNames.get(shot.sessionId) ?? ''}`}
                               aria-pressed={selected === shot.id}
                               onClick={() => setSelected(shot.id)}
                             >
                               {shot.rowIndex} / {shot.sourceNumber || '—'}
-                            </button>
+                            </Button>
                           </td>
                           <td>
                             {missingText(
@@ -463,7 +469,7 @@ export function BallFlightExplorer({
             )}
           </>
         )}
-      </section>
+      </Card>
     </>
   );
 }

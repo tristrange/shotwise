@@ -20,8 +20,48 @@ import {
   type Shot,
 } from '../domain/model';
 import type { Repository, RevisionInput } from '../data/contracts';
+import {
+  Badge,
+  Button,
+  Card,
+  Disclosure,
+  SectionHeader,
+  SegmentedControl,
+  Select,
+  TextField,
+} from './ds';
+import type { SegmentedOption } from './ds';
 
 type Filter = 'flags' | 'reviewed' | 'all';
+
+const FILTER_OPTIONS: readonly SegmentedOption<Filter>[] = [
+  { value: 'flags', label: 'Open flags' },
+  { value: 'reviewed', label: 'Manually reviewed' },
+  { value: 'all', label: 'All shots' },
+];
+const INTENT_DRAFT_OPTIONS = [
+  { value: '', label: 'Leave unchanged' },
+  { value: 'full', label: 'Full' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'unknown', label: 'Unknown' },
+] as const;
+const CONTACT_DRAFT_OPTIONS = [
+  { value: '', label: 'Leave unchanged' },
+  { value: 'typical', label: 'Typical' },
+  { value: 'mishit', label: 'Mishit' },
+  { value: 'uncertain', label: 'Uncertain' },
+] as const;
+const CLUB_DRAFT_OPTIONS = [
+  { value: '', label: 'Leave unchanged' },
+  { value: 'confirmed', label: 'Confirm recorded' },
+  { value: 'corrected', label: 'Correct club' },
+  { value: 'unreviewed', label: 'Reset club decision' },
+] as const;
+const EXCLUSION_DRAFT_OPTIONS = [
+  { value: '', label: 'Leave unchanged' },
+  { value: 'included', label: 'Include' },
+  { value: 'excluded', label: 'Exclude' },
+] as const;
 
 /**
  * Non-authoritative automatic labels for dimensions the user has not manually
@@ -140,11 +180,15 @@ export function ShotReview({
       ? [focus, ...shots]
       : shots;
   const flagCount = scoped.filter((shot) => flagged.has(shot.id)).length;
-  const autoMishits = scoped.filter(
-    (shot) => autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) => b.label.includes('mishit')),
+  const autoMishits = scoped.filter((shot) =>
+    autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) =>
+      b.label.includes('mishit'),
+    ),
   ).length;
-  const autoPartials = scoped.filter(
-    (shot) => autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) => b.label.includes('partial')),
+  const autoPartials = scoped.filter((shot) =>
+    autoBadges(shot, resolvedAssessments.get(shot.id)?.automatic).some((b) =>
+      b.label.includes('partial'),
+    ),
   ).length;
   const chosen = shown.filter((shot) => selected.includes(shot.id));
   const previewRows = useMemo(
@@ -402,86 +446,73 @@ export function ShotReview({
   );
   return (
     <div className="review">
-      <div className="panel-heading">
-        <div>
-          <span className="eyebrow">Review shots</span>
-          <h2>{sessionId ? 'Session shots' : 'Review queue'}</h2>
-          {evidence && (
-            <p>
-              {evidence.context}
-              {!evidence.singleShot && ` · ${scoped.length} measured shots`}
-            </p>
-          )}
-        </div>
-        <span className="pill">{flagCount} flagged</span>
-        {autoMishits + autoPartials > 0 && (
-          <span
-            className="pill"
-            title={`Automatic assessment ${CLASSIFIER_VERSION} — informational only; saved reviews always win.`}
-          >
-            auto: {autoMishits} likely mishits · {autoPartials} likely partials
-          </span>
-        )}
-      </div>
-      <p>
-        Club-label flags and likely-mishit flags are separate suggestions. Saved
-        shots and contact decisions stay unchanged. Use “Hide likely mishits” in
-        stats to compare the effect. Leave contact uncertain if you do not know.
-        Automatic labels ({CLASSIFIER_VERSION}) are provisional and never
-        override a saved review.
-      </p>
-      <details>
-        <summary>How unusual-shot flags work (experimental)</summary>
-        <p>
-          Recognised drivers, woods, hybrids, irons and wedges, using range-flat
-          carry and range ball speed. At least 20 earlier shots with both
-          positive measurements are needed. The baseline targets the latest 50
-          earlier shots within 60 days, keeping the full cutoff date. Unknown
-          intent remains eligible for drivers, woods, hybrids and irons. Wedge
-          shots need explicit full intent for assessment and baseline evidence.
-          Unreviewed contact remains eligible. Partial swings, known mishits,
-          exclusions and archived sessions are left out. Effective club labels
-          are used.
+      <Card className="review-summary">
+        <SectionHeader
+          title={sessionId ? 'Session shots' : 'Review queue'}
+          sub={
+            evidence
+              ? `${evidence.context}${!evidence.singleShot ? ` · ${scoped.length} measured shots` : ''}`
+              : undefined
+          }
+          aside={
+            <div className="card-controls">
+              <Badge tone="warn">{flagCount} flagged</Badge>
+              {autoMishits + autoPartials > 0 && (
+                <span
+                  className="ds-badge tone-warn provisional"
+                  title={`Automatic assessment ${CLASSIFIER_VERSION} — informational only; saved reviews always win.`}
+                >
+                  auto: {autoMishits} likely mishits · {autoPartials} likely
+                  partials
+                </span>
+              )}
+            </div>
+          }
+        />
+        <p className="review-guidance">
+          Club-label flags and likely-mishit flags are separate suggestions.
+          Reviewing is optional maintenance, not a step required before
+          analytics. Saved shots and contact decisions stay unchanged; use “Hide
+          likely mishits” in stats to compare the effect. Leave contact
+          uncertain if you do not know. Automatic labels ({CLASSIFIER_VERSION})
+          are provisional and never override a saved review — solid badges are
+          saved manual decisions, dashed badges are automatic labels.
         </p>
-        <p>
-          The reference is the 75th percentile of each earlier measurement.
-          Carry must be below 65% of its reference and ball speed below 80% of
-          its reference. Both must be low. Sparse or missing evidence abstains;
-          those shots stay included in stats. Untimed or equally timed sessions
-          on the same day are not used to assess one another. These provisional
-          thresholds are not a validated contact classifier. Marking contact
-          typical or mishit, or intent partial, clears the unusual-shot flag;
-          Undo selected restores the previous decision.
+        <Disclosure summary="How unusual-shot flags work (experimental)">
+          <p>
+            Recognised drivers, woods, hybrids, irons and wedges, using
+            range-flat carry and range ball speed. At least 20 earlier shots
+            with both positive measurements are needed. The baseline targets the
+            latest 50 earlier shots within 60 days, keeping the full cutoff
+            date. Unknown intent remains eligible for drivers, woods, hybrids
+            and irons. Wedge shots need explicit full intent for assessment and
+            baseline evidence. Unreviewed contact remains eligible. Partial
+            swings, known mishits, exclusions and archived sessions are left
+            out. Effective club labels are used.
+          </p>
+          <p>
+            The reference is the 75th percentile of each earlier measurement.
+            Carry must be below 65% of its reference and ball speed below 80% of
+            its reference. Both must be low. Sparse or missing evidence
+            abstains; those shots stay included in stats. Untimed or equally
+            timed sessions on the same day are not used to assess one another.
+            These provisional thresholds are not a validated contact classifier.
+            Marking contact typical or mishit, or intent partial, clears the
+            unusual-shot flag; Undo selected restores the previous decision.
+          </p>
+        </Disclosure>
+        <p className="muted">
+          All shots includes shots where the unusual-shot rule abstained.
         </p>
-      </details>
-      <p>All shots includes shots where the unusual-shot rule abstained.</p>
-      <div className="tabs">
-        <button
-          aria-pressed={filter === 'flags'}
-          className={filter === 'flags' ? 'active' : ''}
+        <SegmentedControl
+          label="Review filter"
+          options={FILTER_OPTIONS}
+          value={filter}
+          onChange={changeFilter}
           disabled={locked}
-          onClick={() => changeFilter('flags')}
-        >
-          Open flags
-        </button>
-        <button
-          aria-pressed={filter === 'reviewed'}
-          className={filter === 'reviewed' ? 'active' : ''}
-          disabled={locked}
-          onClick={() => changeFilter('reviewed')}
-        >
-          Manually reviewed
-        </button>
-        <button
-          aria-pressed={filter === 'all'}
-          className={filter === 'all' ? 'active' : ''}
-          disabled={locked}
-          onClick={() => changeFilter('all')}
-        >
-          All shots
-        </button>
-      </div>
-      <section className="focused-review" aria-label="Focused shot">
+        />
+      </Card>
+      <Card className="review-focus" role="region" aria-label="Focused shot">
         <div className="focused-head">
           <p className="focused-label" aria-live="polite">
             {focus ? (
@@ -498,20 +529,20 @@ export function ShotReview({
             )}
           </p>
           <div className="focused-nav">
-            <button
-              className="secondary"
+            <Button
+              variant="secondary"
               disabled={locked || !previous}
               onClick={() => go(previous)}
             >
               Previous shot
-            </button>
-            <button
-              className="secondary"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={locked || !next}
               onClick={() => go(next)}
             >
               Next shot
-            </button>
+            </Button>
           </div>
         </div>
         <section className="nearby" aria-label="Nearby source rows">
@@ -536,49 +567,45 @@ export function ShotReview({
             </ul>
           )}
         </section>
-      </section>
-      <div className="review-controls">
+      </Card>
+      <Card className="review-actions-card">
         <div className="actions">
-          <button
-            className="secondary"
+          <Button
+            variant="secondary"
             disabled={locked}
             onClick={() => setSelected(shots.map((s) => s.id))}
           >
             Select all matching
-          </button>
-          <button
-            className="text-button"
+          </Button>
+          <Button
+            variant="ghost"
             disabled={locked}
             onClick={() => setSelected([])}
           >
             Clear selection
-          </button>
-          <span>{chosen.length} selected</span>
+          </Button>
+          <span className="context">{chosen.length} selected</span>
         </div>
         {sessionId && (
           <div className="range-controls">
-            <label>
-              From source row
-              <input
-                type="number"
-                min="1"
-                disabled={locked}
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label>
-              To source row
-              <input
-                type="number"
-                min="1"
-                disabled={locked}
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
-            <button
-              className="secondary"
+            <TextField
+              label="From source row"
+              type="number"
+              min="1"
+              disabled={locked}
+              value={from}
+              onChange={setFrom}
+            />
+            <TextField
+              label="To source row"
+              type="number"
+              min="1"
+              disabled={locked}
+              value={to}
+              onChange={setTo}
+            />
+            <Button
+              variant="secondary"
               disabled={locked}
               onClick={() =>
                 setSelected(
@@ -593,81 +620,54 @@ export function ShotReview({
               }
             >
               Select range
-            </button>
+            </Button>
           </div>
         )}
-        <div className="form-grid">
-          <label>
-            Set intent
-            <select
-              value={intent}
-              disabled={locked}
-              onChange={(e) => setIntent(e.target.value)}
-            >
-              <option value="">Leave unchanged</option>
-              <option value="full">Full</option>
-              <option value="partial">Partial</option>
-              <option value="unknown">Unknown</option>
-            </select>
-          </label>
-          <label>
-            Set contact
-            <select
-              value={contact}
-              disabled={locked}
-              onChange={(e) => setContact(e.target.value)}
-            >
-              <option value="">Leave unchanged</option>
-              <option value="typical">Typical</option>
-              <option value="mishit">Mishit</option>
-              <option value="uncertain">Uncertain</option>
-            </select>
-          </label>
-          <label>
-            Club decision
-            <select
-              value={club}
-              disabled={locked}
-              onChange={(e) => setClub(e.target.value)}
-            >
-              <option value="">Leave unchanged</option>
-              <option value="confirmed">Confirm recorded</option>
-              <option value="corrected">Correct club</option>
-              <option value="unreviewed">Reset club decision</option>
-            </select>
-          </label>
+        <div className="review-fields">
+          <Select
+            label="Set intent"
+            value={intent}
+            disabled={locked}
+            onChange={setIntent}
+            options={INTENT_DRAFT_OPTIONS}
+          />
+          <Select
+            label="Set contact"
+            value={contact}
+            disabled={locked}
+            onChange={setContact}
+            options={CONTACT_DRAFT_OPTIONS}
+          />
+          <Select
+            label="Club decision"
+            value={club}
+            disabled={locked}
+            onChange={setClub}
+            options={CLUB_DRAFT_OPTIONS}
+          />
           {club === 'corrected' && (
-            <label>
-              Corrected club
-              <input
-                value={corrected}
-                disabled={locked}
-                onChange={(e) => setCorrected(e.target.value)}
-              />
-            </label>
-          )}
-          <label>
-            Exclusion
-            <select
-              value={exclusion}
+            <TextField
+              label="Corrected club"
+              value={corrected}
               disabled={locked}
-              onChange={(e) => setExclusion(e.target.value)}
-            >
-              <option value="">Leave unchanged</option>
-              <option value="included">Include</option>
-              <option value="excluded">Exclude</option>
-            </select>
-          </label>
+              onChange={setCorrected}
+            />
+          )}
+          <Select
+            label="Exclusion"
+            value={exclusion}
+            disabled={locked}
+            onChange={setExclusion}
+            options={EXCLUSION_DRAFT_OPTIONS}
+          />
           {exclusion === 'excluded' && (
-            <label>
-              Exclusion reason
-              <input
-                required
-                value={reason}
-                disabled={locked}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </label>
+            <TextField
+              label="Exclusion reason"
+              required
+              value={reason}
+              disabled={locked}
+              onChange={setReason}
+            />
           )}
         </div>
         {multiSession && (
@@ -677,36 +677,37 @@ export function ShotReview({
         )}
         <div className="actions" ref={reviewActions} tabIndex={-1}>
           {bulkCorrection ? (
-            <button disabled={locked || multiSession} onClick={startPreview}>
+            <Button disabled={locked || multiSession} onClick={startPreview}>
               Preview club correction
-            </button>
+            </Button>
           ) : (
-            <button disabled={locked} onClick={() => void run()}>
+            <Button disabled={locked} onClick={() => void run()}>
               Save review
-            </button>
+            </Button>
           )}
-          <button
-            className="secondary"
+          <Button
+            variant="secondary"
             disabled={locked}
             onClick={() => void run(true)}
           >
             Undo selected
-          </button>
+          </Button>
           {lastBatch && (
-            <button
-              className="secondary"
+            <Button
+              variant="secondary"
               disabled={locked}
               onClick={() => void undoLastBatch()}
             >
               Undo club correction
-            </button>
+            </Button>
           )}
         </div>
         {!preview && feedback}
-      </div>
+      </Card>
       {preview && (
-        <section
+        <Card
           className="correction-preview"
+          role="region"
           aria-label="Club correction preview"
         >
           <h3 ref={previewHeading} tabIndex={-1}>
@@ -762,28 +763,26 @@ export function ShotReview({
             ))}
           </ul>
           <div className="correction-actions">
-            <button
+            <Button
               disabled={busy || eligibleRows.length === 0}
               onClick={() => void applyPreview()}
             >
               Apply club correction
-            </button>
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={cancelPreview}
-            >
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={cancelPreview}>
               Cancel preview
-            </button>
+            </Button>
           </div>
           {eligibleRows.length === 0 && (
             <p className="notice">All selected rows are skipped.</p>
           )}
           {feedback}
-        </section>
+        </Card>
       )}
       {shown.length === 0 ? (
-        <p>No shots in this view.</p>
+        <Card>
+          <p>No shots in this view.</p>
+        </Card>
       ) : (
         <div className="shot-list">
           {shown.map((s) => {
@@ -842,15 +841,25 @@ export function ShotReview({
                     {s.review.exclusion.kind === 'excluded' &&
                       `: ${s.review.exclusion.reason}`}
                   </span>
-                  {autoBadges(s, resolvedAssessments.get(s.id)?.automatic).map((badge) => (
+                  {reviewedIds.has(s.id) && (
                     <span
-                      key={badge.label}
-                      className="pill"
-                      title={`${badge.reason} (${CLASSIFIER_VERSION}; saved reviews win)`}
+                      className="ds-badge tone-brand"
+                      title="Saved manual review — wins over automatic labels (ADR-0001)"
                     >
-                      {badge.label}
+                      manual review
                     </span>
-                  ))}
+                  )}
+                  {autoBadges(s, resolvedAssessments.get(s.id)?.automatic).map(
+                    (badge) => (
+                      <span
+                        key={badge.label}
+                        className="ds-badge tone-warn provisional"
+                        title={`${badge.reason} (${CLASSIFIER_VERSION}; saved reviews win)`}
+                      >
+                        {badge.label}
+                      </span>
+                    ),
+                  )}
                   {(() => {
                     const seq = resolvedAssessments.get(s.id)?.suspicion;
                     if (seq) {
@@ -863,7 +872,7 @@ export function ShotReview({
                           : '';
                       return (
                         <span
-                          className="pill"
+                          className="ds-badge tone-warn provisional"
                           title={`${seq.reason} (${SEQUENCE_RULE_VERSION}; recorded label kept${manual})`}
                         >
                           auto: possible wrong club ({seq.suspectedClub}?)
@@ -912,8 +921,7 @@ export function ShotReview({
                     {assessment.baselineCount} earlier paired shots available.
                   </p>
                 )}
-                <details>
-                  <summary>Original CSV cells</summary>
+                <Disclosure summary="Original CSV cells">
                   <dl className="raw">
                     {Object.entries(s.raw).map(([key, value]) => (
                       <div key={key}>
@@ -922,7 +930,7 @@ export function ShotReview({
                       </div>
                     ))}
                   </dl>
-                </details>
+                </Disclosure>
               </article>
             );
           })}

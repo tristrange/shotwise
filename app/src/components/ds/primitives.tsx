@@ -1,4 +1,9 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  HTMLAttributes,
+  ReactNode,
+  Ref,
+} from 'react';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -8,13 +13,16 @@ export function Button({
   small = false,
   className = '',
   children,
+  ref,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   small?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={ref}
       type="button"
       className={`ds-button${variant !== 'primary' ? ` ${variant}` : ''}${small ? ' small' : ''}${className ? ` ${className}` : ''}`}
       {...rest}
