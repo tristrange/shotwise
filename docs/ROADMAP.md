@@ -156,6 +156,15 @@ Evaluate whether Review deserves a permanent primary tab now that the product is
 
 Desktop can retain a sidebar, ideally with consistent information architecture.
 
+### Resolution (D12, PR #106 — supersedes the table above)
+
+The final five-tab navigation is **Home / Clubs / Progress / Sessions / More**. The Analyse tab
+was split: Clubs became its own primary tab (club profiles, gapping, shot shape, ball-flight
+explorer via secondary navigation), Progress became its own primary tab, and Review moved under
+More as secondary navigation alongside Settings. The desktop sidebar mirrors the same grouping.
+All requirements and acceptance criteria above hold; see `DESIGN_SYSTEM.md` §9 for the consolidated
+decision record.
+
 ### Acceptance criteria
 
 - Five or fewer primary mobile tabs.
@@ -1531,3 +1540,44 @@ captured at 390 and 1280 px, light and dark — shape (point selected, disclosur
 (likely-mishit marker asserted present), review queue and settings — via `npm run shots:d11`
 (`docs/design-system/shots/d11-*.png`), which also asserts no horizontal overflow.
 **Stopping after D11 for owner review before D12 (navigation, final consistency and polish).**
+
+## 13.15 D12 navigation + final polish implemented on `feat/d12-navigation-final-polish` (PR #106), design-system roadmap complete pending owner sign-off (2026-11-26)
+
+PR #105 (D11) is merged and was approved as the basis for completing the roadmap. D12 — the final
+redesign milestone from `DESIGN_SYSTEM.md` — is implemented on `feat/d12-navigation-final-polish`
+(PR #106):
+
+- **Navigation (approved IA applied):** the mobile bottom navigation is now
+  **Home / Clubs / Progress / Sessions / More**, replacing Home / Analyse / Sessions / Review /
+  More. Primary tabs open their primary content directly — no intermediate menu screens. Clubs
+  opens Club profiles (`#clubs`, `#clubs/<club>`) and exposes Gapping (`#gapping`), Shot shape
+  (`#shape`) and the Ball-flight explorer (`#shape/explorer`) through a compact sub-nav of icon
+  pills; More opens Settings (`#settings`, equipment + backups) with secondary access to Shot
+  review (`#review`) in the same sub-nav; the desktop sidebar mirrors the identical grouping with
+  Clubs / More section labels. All existing hash routes, deep links, session evidence links
+  (`#sessions/<id>?shot=…`) and shot-review links are preserved; the correct primary item stays
+  active for nested routes (re-tapping Clubs keeps the current deep link); browser back/forward
+  and PWA safe-area handling are unchanged. The session "N unassessed" pill now links to the
+  review queue so optional review is discoverable from Sessions.
+- **Consistency and cleanup:** the in-page Shape/Explorer segmented switcher was removed (the
+  sub-nav/sidebar now cover it) together with the obsolete `.pill-button`, `.view-tabs` and
+  `.tnum` styles; the bottom-nav active state now uses the brand colour, matching the approved
+  reference. No analytics, ratings, classification, measurement-basis, database or security
+  behaviour changed — presentation only, consuming the existing tested domain functions.
+- **Verification on the branch:** `npm test` **377 passed**, `tsc -b` and
+  `oxlint --deny-warnings` clean, `npm run build` and `npm run build -- --base=/shotwise/` both
+  clean with `dist/` free of showcase code (build-time guard intact),
+  `npm run test:e2e` **90/90** (desktop Chromium + iPhone-13 WebKit), including a new navigation
+  regression test covering nested routes, active states, deep links (`#clubs/7i`,
+  `#shape/explorer`, `#sessions/<id>?shot=…`, `#sessions/compare`, `#review`), back/forward
+  behaviour and Review access from More; `npm run verify:performance` unchanged (ratings ≈17 ms
+  warm at 12k shots, no scatter/chart regression). Representative screenshots for every primary
+  destination at 390 and 1280 px, light and dark, captured via `npm run shots:d12`
+  (`docs/design-system/shots/d12-*.png`, asserting no horizontal overflow and the active
+  primary/secondary item on each screen).
+- **Scope note:** all presentation work in the design-system roadmap (D1–D12) is now complete.
+  Outstanding work is **not** presentation: analytical validation of the ratings/classification
+  methodology and the external benchmark research in §7 (`docs/external-benchmark-sources.md`)
+  remain open and are unaffected by D12.
+
+**Stopping after D12 for final owner inspection and an independent Codex review.**

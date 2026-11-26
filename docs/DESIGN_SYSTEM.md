@@ -1,6 +1,7 @@
 # Shotwise — Design System & Visual Experience Plan
 
-**Status:** Owner-approved 2026-11-26. D2–D5 (tokens, ds primitives, chart kit,
+**Status:** Owner-approved 2026-11-26; the design-system roadmap D2–D12 is implemented
+(D12 on `feat/d12-navigation-final-polish`, PR #106, pending owner sign-off). D2–D5 (tokens, ds primitives, chart kit,
 ClubCard + dev showcase) are implemented on `feat/design-system-foundation` and the
 showcase direction was approved after owner inspection (badge/distribution-bar/score-bar
 refinements applied at the component level). D6 (Overview rebuild) is implemented and
@@ -67,7 +68,19 @@ methodology disclosure, filter segmented control), the focused shot, the batch c
 correction preview, with solid `manual review` badges versus dashed `provisional` automatic badges;
 Settings groups Manage bag, club suggestions and Backups into ds cards, and equipment assignment in
 session details uses ds fields — no settings, analytics, classification or database changes.
-Screenshots: `docs/design-system/shots/d11-*.png`.
+Screenshots: `docs/design-system/shots/d11-*.png`. D12 (navigation + final polish) is implemented on
+`feat/d12-navigation-final-polish` (PR #106): the mobile bottom navigation is now
+**Home / Clubs / Progress / Sessions / More**, each tab opening its primary content directly;
+the Clubs group (club profiles, gapping, shot shape, ball-flight explorer) and the More group
+(settings, secondary shot review) expose their screens through a compact sub-nav of icon pills on
+phones, and the desktop sidebar mirrors the same grouping with Clubs/More section labels. All
+existing hash routes and deep links (`#clubs/7i`, `#shape/explorer`, `#sessions/<id>?shot=…`,
+`#sessions/compare`, `#review`) keep working, the correct primary item stays active for nested
+routes, re-tapping Clubs preserves deep links, and back/forward plus PWA safe-area handling are
+unchanged (regression-tested). Cleanup: the now-redundant in-page Shape/Explorer segmented
+switcher was removed (the sub-nav/sidebar cover it), the session "unassessed" pill links to the
+review queue, and the obsolete `.pill-button` / `.view-tabs` / `.tnum` styles were deleted.
+Screenshots: `docs/design-system/shots/d12-*.png`.
 
 ## 0. Approval record — 2026-11-26
 
@@ -357,18 +370,27 @@ Everything useful within the first phone viewport; desktop keeps the sidebar.
 - **Gate:** owner reviews screenshots + live showcase and approves/refines the direction
   before Overview (Phase 4 / D6) starts.
 
-## 9. Navigation proposal — owner decision required
+## 9. Navigation — approved and implemented in D12 (PR #106)
 
-Current mobile tabs (shipped in PR #56): **Home / Analyse / Sessions / Review / More**, with
-Clubs, Gapping, Progress, Shot shape in the Analyse sub-nav; Ball-flight explorer under Shot
-shape. The brief proposes **Home / Clubs / Progress / Sessions / More** (Review demoted to
-secondary under Sessions or More; Gapping and ball-flight must stay discoverable).
+The pre-D12 mobile tabs (shipped in PR #56) were **Home / Analyse / Sessions / Review / More**,
+with Clubs, Gapping, Progress, Shot shape in the Analyse sub-nav and the ball-flight explorer
+under Shot shape. From D12 the shell is **Home / Clubs / Progress / Sessions / More**:
 
-Recommendation: adopt Home / Clubs / Progress / Sessions / More — Gapping becomes a section of
-Clubs, shot-shape + explorer become sections of Progress (or a "More analyses" row on Clubs),
-Review moves under More — **but this changes existing navigation and deep links, so it needs
-explicit owner approval**; all existing hash routes (`#clubs/7i`, `#shape/explorer`, …) keep
-working regardless. Desktop sidebar mirrors the same grouping.
+- **Home** → Overview (practice focus, club summaries). Hash `#overview`.
+- **Clubs** → Club profiles directly (`#clubs`, `#clubs/<club>`); secondary navigation (compact
+  sub-nav pills on phones, sidebar group on desktop) reaches Gapping (`#gapping`), Shot shape
+  (`#shape`) and the Ball-flight explorer (`#shape/explorer`).
+- **Progress** → historical trends directly (`#progress`).
+- **Sessions** → import, session history, recaps, comparisons and the embedded optional shot
+  review (`#sessions`, `#sessions/<id>`, `#sessions/<id>?shot=…`, `#sessions/compare`); the
+  "N unassessed" pill links to the review queue.
+- **More** → Settings (equipment, backups) directly (`#settings`), with secondary access to Shot
+  review (`#review`) in the sub-nav/sidebar.
+
+Primary tabs open their primary content directly — no intermediate menu screens. All existing
+hash routes and deep links keep working; the correct primary item stays active for nested routes
+(re-tapping Clubs preserves the current deep link); back/forward and PWA safe-area handling are
+unchanged. The desktop sidebar mirrors the same logical grouping.
 
 ## 10. Proposed implementation PRs (small, independently reviewable)
 
@@ -385,7 +407,7 @@ working regardless. Desktop sidebar mirrors the same grouping.
 | D9 | Gapping redesign on the ds — **implemented on `feat/gapping-redesign`** (see status above) | owner review before D10 |
 | D10 | Sessions (+recap/compare) redesign on the ds — **implemented on `feat/d10-sessions-comparisons`** (see status above) | owner review before D11 |
 | D11 | Shot shape + Explorer + Review/Settings redesign on the ds — **implemented on `feat/d11-explorer-review-settings`** (see status above) | owner review before D12 |
-| D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) | final sign-off |
+| D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) — **implemented on `feat/d12-navigation-final-polish` (PR #106)** | final owner sign-off + independent Codex review |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.
 
@@ -420,9 +442,9 @@ as the consolidated decision record, not as open items:
 
 1. **Direction + palette:** approved as provisional starting points; colours refined through the
    showcase and the automated WCAG-AA contrast test (`app/src/tokens.test.ts`).
-2. **Navigation:** keep the current Home / Analyse / Sessions / Review / More shell for now; the
-   proposed Home / Clubs / Progress / Sessions / More regrouping stays **scheduled for D12** (§9),
-   with all existing hash routes and deep links preserved until then.
+2. **Navigation:** the Home / Clubs / Progress / Sessions / More regrouping was scheduled for
+   D12 (§9) with all existing hash routes and deep links preserved — **implemented in D12**
+   (PR #106, see §9 for the consolidated information architecture).
 3. **Typography:** Instrument Sans throughout with tabular numerals; the expressive Newsreader
    wordmark stays in the header only.
 4. **Hero:** keep the animated identity as a much more compact hero on Overview (done in D6).
