@@ -54,6 +54,13 @@ const TEXT_PAIRS: [string, string][] = [
   ['--brand', '--bg'],
   ['--brand', '--surface'],
   ['--focus', '--bg'],
+  // semantic hues used as small status TEXT (deltas, badges) need full AA
+  ['--pos-text', '--bg'],
+  ['--pos-text', '--surface'],
+  ['--warn-text', '--bg'],
+  ['--warn-text', '--surface'],
+  ['--neg-text', '--bg'],
+  ['--neg-text', '--surface'],
 ];
 const GRAPHIC_PAIRS: [string, string][] = [
   ['--data', '--surface'],

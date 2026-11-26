@@ -28,6 +28,7 @@ export function HelpPopover({
   const [placement, setPlacement] = useState<CSSProperties>({});
   const rootRef = useRef<HTMLSpanElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLSpanElement>(null);
   const popoverId = useId();
   useLayoutEffect(() => {
     if (!open || !buttonRef.current) return;
@@ -37,7 +38,17 @@ export function HelpPopover({
       Math.max(8, rect.right - width),
       Math.max(8, window.innerWidth - width - 8),
     );
-    setPlacement({ top: rect.bottom + 8, left, width });
+    // Open below the button, but flip above it when the panel would clip the
+    // bottom of the viewport (e.g. a help icon in the last card row on a
+    // phone); the height is capped and the panel scrolls within the viewport.
+    const height = popoverRef.current?.getBoundingClientRect().height ?? 0;
+    const below = rect.bottom + 8;
+    const fitsBelow = below + height <= window.innerHeight - 8;
+    const top = fitsBelow
+      ? below
+      : Math.max(8, rect.top - 8 - height);
+    const maxHeight = window.innerHeight - 16;
+    setPlacement({ top, left, width, maxHeight });
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -71,6 +82,7 @@ export function HelpPopover({
       {open && (
         <span
           id={popoverId}
+          ref={popoverRef}
           role="region"
           aria-label={label}
           className="ds-help-popover"
@@ -83,7 +95,13 @@ export function HelpPopover({
   );
 }
 
-/** Styled <details> — progressive disclosure for methodology and long text. */
+/**
+ * Styled <details> — progressive disclosure for methodology and long text.
+ * The body mounts only after the first open: a native <details> hides closed
+ * content visually but keeps the whole React tree mounted, which made large
+ * tables (hundreds of rows) pay render cost while invisible. Once opened, the
+ * body stays mounted so reopening restores the same evidence and scroll state.
+ */
 export function Disclosure({
   summary,
   children,
@@ -93,10 +111,16 @@ export function Disclosure({
   children: ReactNode;
   className?: string;
 }) {
+  const [opened, setOpened] = useState(false);
   return (
-    <details className={`ds-disclosure${className ? ` ${className}` : ''}`}>
+    <details
+      className={`ds-disclosure${className ? ` ${className}` : ''}`}
+      onToggle={(event) => {
+        if ((event.currentTarget as HTMLDetailsElement).open) setOpened(true);
+      }}
+    >
       <summary>{summary}</summary>
-      <div>{children}</div>
+      {opened && <div>{children}</div>}
     </details>
   );
 }

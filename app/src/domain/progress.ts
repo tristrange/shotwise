@@ -102,7 +102,10 @@ export function clubProgress(
     for (const sessionId of perSession.keys()) set.add(sessionId);
     sessionIdsByClub.set(club, set);
   }
-  const clubs = [...groups.keys()].sort(
+  // A club can be absent from the selected cohort (e.g. no typical-contact
+  // shots under Typical) yet still carry valid broader-cohort P80 readings;
+  // keep those clubs so the Potential view never drops them.
+  const clubs = [...new Set([...groups.keys(), ...sessionIdsByClub.keys()])].sort(
     (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
   );
   return clubs.map((club) => ({
@@ -160,6 +163,46 @@ export type ClubMetricSummary = {
   delta: number | null;
 };
 
+/**
+ * Whether the chronological order of two sessions is actually known: different
+ * dates order naturally; on the same date both start times must be recorded and
+ * distinct — an untimed or equally-timed visit could have happened in either
+ * order, so any directional delta between such endpoints is ambiguous.
+ */
+export function chronologyKnown(a: Session, b: Session): boolean {
+  if (a.date !== b.date) return true;
+  return a.time !== null && b.time !== null && a.time !== b.time;
+}
+
+/**
+ * Shared first/latest/delta rule for every per-session series (Progress trend
+ * card, cross-club comparison, Club Profile history): the delta is
+ * latest − first over the measured points in display order, withheld when
+ * fewer than two distinct measured sessions exist or when the order of the
+ * two endpoint visits is not chronologically known. One rule, so the screens
+ * can never disagree.
+ */
+export function firstLatestDelta<T extends { session: Session; value: number | null }>(
+  points: readonly T[],
+): {
+  first: T | null;
+  latest: T | null;
+  delta: number | null;
+} {
+  const measured = points.filter((p) => p.value !== null);
+  const first = measured[0] ?? null;
+  const latest = measured.at(-1) ?? null;
+  const delta =
+    measured.length >= 2 &&
+    first !== null &&
+    latest !== null &&
+    first !== latest &&
+    chronologyKnown(first.session, latest.session)
+      ? (latest.value as number) - (first.value as number)
+      : null;
+  return { first, latest, delta };
+}
+
 /** Extract one metric's reading from a session point. */
 export function pointReading(
   point: ProgressSessionPoint,
@@ -200,8 +243,10 @@ export function summarizeClubMetric(
         ? []
         : [{ session: point.session, value: reading.value, n: reading.n }];
     });
-    const first = measured[0] ?? null;
-    const latest = measured.at(-1) ?? null;
+    // One shared first/latest/delta rule: with a single measured visit, or
+    // same-day endpoints whose order is unknown, the delta stays null instead
+    // of claiming a "+0.0" or an arbitrary direction.
+    const { first, latest, delta } = firstLatestDelta(measured);
     let best: ClubMetricPoint | null = null;
     for (const point of measured) {
       if (
@@ -217,12 +262,7 @@ export function summarizeClubMetric(
       first,
       latest,
       best,
-      // A delta needs two distinct measured sessions; with only one, first and
-      // latest are the same point and a "+0" would be a meaningless comparison.
-      delta:
-        measured.length >= 2 && first !== null && latest !== null
-          ? latest.value - first.value
-          : null,
+      delta,
     };
   });
 }

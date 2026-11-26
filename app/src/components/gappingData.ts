@@ -82,7 +82,12 @@ export function gappingView(
 export type GapPair = {
   upper: string;
   lower: string;
-  gap: number;
+  /**
+   * Signed median-carry gap (upper minus lower). Preserved as null when the
+   * domain did not compute one — a missing gap is never coerced to zero,
+   * because a true 0 m gap and a missing gap mean different things.
+   */
+  gap: number | null;
   flag: ClubGap['flag'];
   /** True when both clubs carry the approved minimum of band samples. */
   bothReliable: boolean;
@@ -95,7 +100,7 @@ export function gapPairs(rows: readonly GappingRow[]): GapPair[] {
     return {
       upper: upper.club,
       lower: lower.club,
-      gap: lower.gap ?? 0,
+      gap: lower.gap,
       flag: lower.flag,
       bothReliable: upper.reliable && lower.reliable,
     };

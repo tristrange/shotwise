@@ -63,10 +63,11 @@ export function Analysis({
   const dateRange = dates.length ? `${dates[0]} → ${dates.at(-1)}` : 'No dates';
   const cohort = `${summary.n} shots · ${summary.sessions} sessions · ${dateRange}`;
   // Club cards: every figure comes from the shared domain cohort functions via
-  // clubCardRows; ratings stay on the fixed premium-flat rating basis.
+  // clubCardRows; ratings stay on the fixed premium-flat rating basis. Skipped
+  // entirely on the Progress route, which never renders the card list.
   const cardRows = useMemo(
-    () => clubCardRows(data, basis, settings),
-    [data, basis, settings],
+    () => (progressView ? [] : clubCardRows(data, basis, settings)),
+    [progressView, data, basis, settings],
   );
   // One shared scale for every club's distribution band, so the plots are
   // comparable across clubs instead of each zooming to its own range.

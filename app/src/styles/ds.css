@@ -22,11 +22,16 @@
 
 .ds-icon-button {
   display: inline-flex; align-items: center; justify-content: center;
+  /* padding:0 overrides the legacy element-level `button` rule in styles.css,
+     whose 12px 18px padding would otherwise squeeze the icon out of the fixed
+     box (border-box) and render a 0px SVG. */
+  padding: 0;
   width: 44px; height: 44px; flex: none;
   border-radius: var(--radius-pill); border: 1px solid transparent;
   background: transparent; color: var(--text-2);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
+.ds-icon-button svg { flex: none; display: block; }
 .ds-icon-button:hover { background: var(--surface-2); color: var(--text); }
 .ds-icon-button.small { width: 32px; height: 32px; }
 
@@ -39,9 +44,9 @@
   font-family: var(--font-sans); font-size: 12px; font-weight: 500; line-height: 16px;
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.ds-badge.tone-pos { color: var(--pos); border-color: var(--pos); background: transparent; }
-.ds-badge.tone-warn { color: var(--warn); border-color: var(--warn); background: transparent; }
-.ds-badge.tone-neg { color: var(--neg); border-color: var(--neg); background: transparent; }
+.ds-badge.tone-pos { color: var(--pos-text); border-color: var(--pos); background: transparent; }
+.ds-badge.tone-warn { color: var(--warn-text); border-color: var(--warn); background: transparent; }
+.ds-badge.tone-neg { color: var(--neg-text); border-color: var(--neg); background: transparent; }
 .ds-badge.tone-brand { color: var(--brand); border-color: var(--brand); background: transparent; }
 .ds-badge.provisional { border-style: dashed; }
 .ds-badge.early { border-style: dotted; }
@@ -72,8 +77,8 @@
 .ds-metric-value.small { font-size: 22px; }
 .ds-metric-unit { font: 500 var(--text-xs)/1 var(--font-sans); color: var(--text-3); letter-spacing: 0; }
 .ds-metric-delta { font: 500 var(--text-xs)/1.4 var(--font-sans); font-variant-numeric: tabular-nums; }
-.ds-metric-delta.pos { color: var(--pos); }
-.ds-metric-delta.neg { color: var(--neg); }
+.ds-metric-delta.pos { color: var(--pos-text); }
+.ds-metric-delta.neg { color: var(--neg-text); }
 .ds-metric-delta.neutral { color: var(--text-3); }
 .ds-metric-grid {
   display: grid; gap: var(--space-3) var(--space-4);
@@ -174,9 +179,11 @@
 /* ---------- help popover ---------- */
 .ds-help { position: relative; display: inline-flex; }
 .ds-help-popover {
-  /* JS clamps top/left/width to the viewport on open (see HelpPopover). */
+  /* JS clamps top/left/width/max-height to the viewport on open and flips the
+     panel upward when it would clip the bottom edge (see HelpPopover). */
   position: fixed; z-index: 30;
   width: min(300px, calc(100vw - 16px)); padding: var(--space-3) var(--space-4);
+  overflow-y: auto;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-m); box-shadow: var(--shadow-2);
   font-size: var(--text-xs); color: var(--text-2); line-height: 1.55;
@@ -264,6 +271,10 @@
 .ds-distribution svg { display: block; width: 100%; height: 40px; }
 .ds-distribution .band-p { fill: var(--data); fill-opacity: 0.18; }
 .ds-distribution .band-iqr { fill: var(--data); fill-opacity: 0.4; }
+/* coincident endpoints: the zero-width band renders as a tick at the true coordinate */
+.ds-distribution line.band-tick { stroke: var(--data); fill: none; }
+.ds-distribution line.band-p.band-tick { stroke-opacity: 0.18; }
+.ds-distribution line.band-iqr.band-tick { stroke-opacity: 0.4; }
 .ds-distribution .median { stroke: var(--text); stroke-width: 2; }
 .ds-distribution text { fill: var(--text-3); font-size: 10px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
 
@@ -279,8 +290,8 @@
   background: var(--compare); border-radius: 1px;
 }
 .ds-benchmark-sub { font: 400 var(--text-xs)/1.4 var(--font-sans); color: var(--text-3); font-variant-numeric: tabular-nums; }
-.ds-benchmark-sub .pos { color: var(--pos); }
-.ds-benchmark-sub .neg { color: var(--neg); }
+.ds-benchmark-sub .pos { color: var(--pos-text); }
+.ds-benchmark-sub .neg { color: var(--neg-text); }
 
 /* sparkline */
 .ds-sparkline { display: inline-block; vertical-align: middle; }
@@ -328,7 +339,13 @@
   font-variant-numeric: tabular-nums; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
-.club-few { color: var(--warn); }
+/* shot count as its own fixed-width element — never inside the truncating line */
+.club-shots {
+  flex: none; font: 500 var(--text-xs)/1 var(--font-sans); color: var(--text-3);
+  font-variant-numeric: tabular-nums; padding: 4px 6px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
+}
+.club-few { color: var(--warn-text); }
 .club-card-ring { flex: none; }
 .club-chevron { flex: none; color: var(--text-3); transition: transform var(--dur) var(--ease); }
 .club-chevron.open { transform: rotate(180deg); }
@@ -388,12 +405,25 @@
 }
 .club-profile { overflow-wrap: anywhere; }
 .club-profile h3[tabindex] { scroll-margin-top: 64px; }
-.club-profile-head { display: flex; align-items: flex-start; gap: var(--space-3); }
-.club-profile-title { flex: 1; min-width: 0; }
-.club-profile-title h3 { margin: 0 0 2px; font-size: var(--text-lg); }
-.club-profile-title .context { margin: 0; }
-.club-profile-ring { flex: none; display: grid; justify-items: center; gap: 4px; }
-.club-profile-badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+/* Grid, not flex: row 1 is badge + name + ring at any width (the name column
+   keeps minmax(0,1fr) so it can shrink but never collapse to 0px), and the
+   evidence badges own a full-width second row that wraps below. */
+.club-profile-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-3);
+}
+.club-profile-title { min-width: 0; }
+.club-profile-title h3 { margin: 0 0 2px; font-size: var(--text-lg); overflow-wrap: anywhere; }
+.club-profile-title .context { margin: 0; overflow-wrap: anywhere; }
+.club-profile-ring { display: grid; justify-items: center; gap: 4px; }
+.club-profile-ring-basis {
+  font: 400 10px/1.3 var(--font-sans); color: var(--text-3);
+  white-space: nowrap;
+}
+.club-profile-badges {
+  grid-column: 1 / -1;
+  display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-start;
+}
 .profile-extras {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   margin-top: var(--space-2);
@@ -475,6 +505,9 @@
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   margin-bottom: var(--space-3);
 }
+/* Accessible alternative to tapping a chart point: a real select, reliable
+   for keyboard and touch. */
+.trend-inspect { margin-top: var(--space-2); max-width: 340px; width: 100%; }
 .chart-legend {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   margin: var(--space-2) 0 0; font-size: var(--text-xs);
@@ -575,23 +608,26 @@
 .gap-detail-head a { font-size: var(--text-xs); }
 .gap-detail .ds-metric-grid { width: 100%; }
 
-/* adjacent-club gap comparison */
+/* adjacent-club gap comparison — one grid so the bar tracks align across rows
+   even when only some rows carry a flag badge */
 .gap-pair-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
 .gap-pair-list li {
-  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  display: grid; grid-template-columns: minmax(64px, auto) minmax(48px, 1fr) 52px minmax(96px, auto);
+  align-items: center; gap: var(--space-3);
   padding: var(--space-2) 0; border-bottom: 1px solid var(--border);
 }
 .gap-pair-list li:last-child { border-bottom: 0; }
-.gap-pair-clubs { font: 600 var(--text-xs)/1.2 var(--font-sans); min-width: 76px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.gap-pair-clubs { font: 600 var(--text-xs)/1.2 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--text-2); }
 .gap-pair-track {
-  flex: 1; min-width: 60px; height: 8px; border-radius: 4px;
+  height: 8px; border-radius: 4px;
   background: var(--ring-track); overflow: hidden;
 }
 .gap-pair-fill { display: block; height: 100%; border-radius: 4px; background: var(--data); transition: width var(--dur) var(--ease); }
 .gap-pair-fill.small { background: var(--warn); }
 .gap-pair-fill.large { background: var(--brand); }
 .gap-pair-fill.reversed { background: var(--neg); }
-.gap-pair-value { font: 600 var(--text-xs)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); min-width: 44px; text-align: right; }
+.gap-pair-value { font: 600 var(--text-xs)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); text-align: right; }
+.gap-pair-flag { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* ---------- wedge practice (D9) ---------- */
 .wedge-practice { margin-top: var(--space-4); scroll-margin-top: 64px; overflow-wrap: anywhere; }
@@ -617,7 +653,7 @@
 
 @media (max-width: 480px) {
   .gap-row-item, .gap-axis-row { grid-template-columns: 36px minmax(0, 1fr) 76px; gap: var(--space-2); }
-  .gap-pair-clubs { min-width: 64px; }
+  .gap-pair-list li { grid-template-columns: minmax(48px, auto) minmax(36px, 1fr) 48px minmax(84px, auto); gap: var(--space-2); }
 }
 
 /* Wedge shot tables must fit the phone viewport without internal scrolling. */

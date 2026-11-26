@@ -1,5 +1,6 @@
-export { ChartContainer, ChartTooltipContent, ChartSummary } from './ChartKit';
+export { ChartContainer, ChartTooltipContent, ChartSummary, axisTick } from './ChartKit';
 export type { ChartPoint } from './ChartKit';
+export { bandPercent, bandX, BAND_VIEWBOX } from './DistributionPlot';
 export { TrendChart } from './TrendChart';
 export { ScoreRing } from './ScoreRing';
 export { ScoreBar } from './ScoreBar';

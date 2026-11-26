@@ -85,11 +85,16 @@ export function ClubCard({
           </span>
           <span className="club-id">
             <strong>{clubDisplayName(data.club)}</strong>
+            {/* Carry and potential stay on one truncating line; the shot count
+                is a separate fixed element so it cannot squeeze the headline
+                numbers off-screen at phone widths. */}
             <small>
-              <span className="club-shots">{data.total}</span> shots ·{' '}
               {fmtM(data.median)} {carryLabel} · {fmtM(data.potential)} potential
               {!data.reliable && <span className="club-few"> · few shots</span>}
             </small>
+          </span>
+          <span className="club-shots" title={`${data.total} shots in this view`}>
+            {data.total}
           </span>
           <span className="club-card-ring">
             <ScoreRing
@@ -132,7 +137,8 @@ export function ClubCard({
               Launch monitor
               <HelpPopover label="Measurement coverage for this club">
                 <p>
-                  measured: speed {data.speed.n}/{data.total} · launch {data.launch.n}/{data.total} ·
+                  {data.total} shots in this view · measured: speed {data.speed.n}/{data.total} ·
+                  launch {data.launch.n}/{data.total} ·
                   apex {data.apex.n}/{data.total} · carry {data.n}/{data.total}
                   {data.potential !== null && ` · P80 from ${data.potentialN} full swings`}
                 </p>

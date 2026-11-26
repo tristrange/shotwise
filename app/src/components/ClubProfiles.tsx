@@ -654,12 +654,17 @@ export function ClubProfileCard({
                 : `${club} overall rating ${Math.round(compositeValue)} of 100${composite?.provisional ? `, provisional, ${composite.coverage} of 4 categories` : ''}${weakest === 'early' ? ', early estimate' : ''}`
             }
           />
-          <div className="club-profile-badges">
-            {composite?.provisional && (
-              <Badge provisional>provisional {composite.coverage}/4</Badge>
-            )}
-            {weakest === 'early' && <Badge early>early estimate</Badge>}
-          </div>
+          <span className="club-profile-ring-basis">
+            rating · {BASES[RATING_BASIS].label}
+          </span>
+        </div>
+        {/* Evidence badges sit on their own full-width row so they can never
+            squeeze the club-name column to zero width at phone widths. */}
+        <div className="club-profile-badges">
+          {composite?.provisional && (
+            <Badge provisional>provisional {composite.coverage}/4</Badge>
+          )}
+          {weakest === 'early' && <Badge early>early estimate</Badge>}
         </div>
       </header>
 

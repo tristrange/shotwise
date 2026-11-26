@@ -1,5 +1,11 @@
-import { expect, it } from 'vitest';
-import { clubProgress, summarizeClubMetric, pointReading } from './progress';
+import { describe, expect, it } from 'vitest';
+import {
+  chronologyKnown,
+  clubProgress,
+  firstLatestDelta,
+  summarizeClubMetric,
+  pointReading,
+} from './progress';
 import { csvFixture, makeSession, makeShot } from './fixtures';
 import { emptyDataset } from './model';
 import type { AnalysisQuery } from './analytics';
@@ -292,4 +298,86 @@ it('summarizes first, latest, best and delta per club for one metric', () => {
   // pointReading exposes the same values the chart plots.
   expect(pointReading(groups[0]!.sessions[0]!, 'median').value).toBe(105);
   expect(pointReading(groups[0]!.sessions[2]!, 'median').value).toBeNull();
+});
+
+describe('firstLatestDelta', () => {
+  const s = (id: string, date: string, time: string | null = null) =>
+    makeSession({ id, date, time });
+  it('withholds the delta for a single measured visit (no meaningless "+0")', () => {
+    const session = s('a', '2026-11-10');
+    const { first, latest, delta } = firstLatestDelta([
+      { session, value: 120 },
+    ]);
+    expect(first).toBe(latest);
+    expect(delta).toBeNull();
+  });
+  it('withholds the delta when same-day endpoints have missing or equal times', () => {
+    const morning = s('m', '2026-11-10', '08:00');
+    const untimed = s('u', '2026-11-10', null);
+    const again = s('a', '2026-11-10', '08:00');
+    expect(chronologyKnown(morning, untimed)).toBe(false);
+    expect(chronologyKnown(morning, again)).toBe(false);
+    expect(
+      firstLatestDelta([
+        { session: untimed, value: 100 },
+        { session: morning, value: 150 },
+      ]).delta,
+    ).toBeNull();
+    expect(
+      firstLatestDelta([
+        { session: morning, value: 100 },
+        { session: again, value: 150 },
+      ]).delta,
+    ).toBeNull();
+  });
+  it('reports the delta for two known start times on the same day', () => {
+    const morning = s('m', '2026-11-10', '08:00');
+    const evening = s('e', '2026-11-10', '17:00');
+    expect(chronologyKnown(morning, evening)).toBe(true);
+    const { delta } = firstLatestDelta([
+      { session: morning, value: 100 },
+      { session: evening, value: 150 },
+    ]);
+    expect(delta).toBe(50);
+  });
+  it('reports the delta across different dates regardless of times', () => {
+    const early = s('e1', '2026-11-01');
+    const late = s('l1', '2026-11-10');
+    expect(chronologyKnown(early, late)).toBe(true);
+    expect(
+      firstLatestDelta([
+        { session: early, value: 100 },
+        { session: late, value: 90 },
+      ]).delta,
+    ).toBe(-10);
+  });
+});
+
+it('keeps a club with only broader-cohort P80 readings under a Typical filter', () => {
+  const session = makeSession({ id: 's-p80-only', date: '2026-11-16' });
+  // Full swings with uncertain contact: excluded from the Typical cohort but
+  // part of the broader population that feeds strong-strike potential.
+  const shots = Array.from({ length: 12 }, (_, i) =>
+    makeShot({
+      sessionId: session.id,
+      recordedClub: '7i',
+      rowIndex: i + 1,
+      measurements: { flatCarryPremium: 120 + i },
+      review: { intent: 'full', contact: 'uncertain' },
+    }),
+  );
+  const data = { ...emptyDataset, sessions: [session], shots };
+  const typical = { ...query, contact: 'typical' as const };
+  const groups = clubProgress(data, 'premium-flat', typical);
+  const group = groups.find((g) => g.club === '7i');
+  // The club must not disappear: its Potential (P80) reading stays available
+  // even though no shot passes the Typical contact filter.
+  expect(group).toBeDefined();
+  expect(group?.sessions[0]?.median).toBeNull();
+  expect(group?.sessions[0]?.n).toBe(0);
+  expect(group?.sessions[0]?.p80.n).toBe(12);
+  expect(group?.sessions[0]?.p80.value).toBeCloseTo(128.8);
+  const [summary] = summarizeClubMetric(groups, 'p80');
+  expect(summary?.measured).toBe(1);
+  expect(summary?.latest?.value).toBeCloseTo(128.8);
 });

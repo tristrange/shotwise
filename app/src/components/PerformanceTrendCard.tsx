@@ -6,6 +6,7 @@ import {
   clubProgress,
   pointReading,
   summarizeClubMetric,
+  type ClubProgressGroup,
   type ProgressMetric,
   type ProgressSessionPoint,
 } from '../domain/progress';
@@ -102,9 +103,12 @@ const EMPTY_SESSIONS: ProgressSessionPoint[] = [];
 export function PerformanceTrendCard({
   data,
   settings,
+  groups: groupsProp,
 }: {
   data: Dataset;
   settings: AnalysisSettings;
+  /** Precomputed `clubProgress` groups (the Progress page already has them). */
+  groups?: ClubProgressGroup[];
 }) {
   const { basis } = settings;
   const query = useMemo(
@@ -118,16 +122,19 @@ export function PerformanceTrendCard({
     [settings],
   );
   // One shared domain source for the club list, the chart series, the summary
-  // tiles and the cross-club comparison — they can never disagree.
+  // tiles and the cross-club comparison — they can never disagree. When the
+  // parent already computed the groups, `clubProgress` is not called again.
   const groups = useMemo(
-    () => clubProgress(data, basis, query),
-    [data, basis, query],
+    () => groupsProp ?? clubProgress(data, basis, query),
+    [groupsProp, data, basis, query],
   );
   const clubs = useMemo(() => groups.map((group) => group.club), [groups]);
   const [club, setClub] = useState<string>(clubs[0] ?? '');
   const [metric, setMetric] = useState<TrendMetric>('median');
   const [showPotential, setShowPotential] = useState(false);
-  const [inspected, setInspected] = useState<number | null>(null);
+  // Selection is keyed by session ID, not array index: switching club, metric
+  // or window must never silently re-point the recap link at another session.
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
 
   const effectiveClub = clubs.includes(club) ? club : (clubs[0] ?? '');
   const clubGroup = useMemo(
@@ -145,6 +152,7 @@ export function PerformanceTrendCard({
         const reading = pointReading(point, metric);
         const potential = pointReading(point, 'p80');
         return {
+          id: point.session.id,
           label: `S${i + 1} · ${shortDate(point.session.date)}`,
           value: reading.value,
           compare:
@@ -152,6 +160,10 @@ export function PerformanceTrendCard({
               ? potential.value
               : undefined,
           detail: `${visitLabel(point.session)} · ${reading.n} measured · ${reading.missing} missing`,
+          compareDetail:
+            metric === 'median' && showPotential
+              ? `${potential.n} measured full swings`
+              : undefined,
         };
       }),
     [sessions, metric, showPotential],
@@ -202,10 +214,20 @@ export function PerformanceTrendCard({
       : seriesName;
   const chartLabel = `${effectiveClub} ${seriesName.toLowerCase()} per session`;
   const compareActive = metric === 'median' && showPotential;
+  // The inspected point is looked up by session id; when the selected session
+  // leaves the series (club/window change) the selection simply clears.
   const inspectedPoint =
-    inspected !== null && sessions[inspected] ? sessions[inspected] : null;
-  const inspectedReading = inspectedPoint
-    ? pointReading(inspectedPoint, metric)
+    inspectedId !== null
+      ? (points.find((p) => p.id === inspectedId) ?? null)
+      : null;
+  const inspectedIndex = inspectedPoint
+    ? points.findIndex((p) => p.id === inspectedPoint.id)
+    : -1;
+  const inspectedSession = inspectedPoint
+    ? (sessions.find((s) => s.session.id === inspectedPoint.id) ?? null)
+    : null;
+  const inspectedReading = inspectedSession
+    ? pointReading(inspectedSession, metric)
     : null;
 
   return (
@@ -300,10 +322,7 @@ export function PerformanceTrendCard({
         label={chartLabel}
         name={seriesName}
         compare={compareActive ? 'Strong-strike potential (P80)' : undefined}
-        onSelect={(label) => {
-          const index = points.findIndex((p) => p.label === label);
-          setInspected(index >= 0 ? index : null);
-        }}
+        onSelect={(point) => setInspectedId(point.id ?? null)}
       />
       {compareActive && (
         <p className="chart-legend muted" aria-hidden="true">
@@ -311,17 +330,31 @@ export function PerformanceTrendCard({
           <span className="legend-dot compare" /> Strong-strike potential (P80)
         </p>
       )}
+      <div className="trend-inspect">
+        <Select
+          label="Inspect session"
+          value={inspectedPoint?.id ?? ''}
+          onChange={(id) => setInspectedId(id || null)}
+          options={[
+            { value: '', label: 'No session selected' },
+            ...points.map((p, i) => ({
+              value: p.id ?? `S${i + 1}`,
+              label: p.label,
+            })),
+          ]}
+        />
+      </div>
       <p className="muted" style={{ margin: '10px 0 0' }}>
-        {inspectedPoint && inspectedReading ? (
+        {inspectedPoint && inspectedSession && inspectedReading ? (
           <>
-            Selected S{inspected! + 1} · {visitLabel(inspectedPoint.session)} —{' '}
+            Selected S{inspectedIndex + 1} · {visitLabel(inspectedSession.session)} —{' '}
             {fmt(inspectedReading.value, metric)} {unit} · {inspectedReading.n} measured ·{' '}
             {inspectedReading.missing} missing ·{' '}
-            <a href={sessionHref(inspectedPoint.session.id)}>open session recap</a>
+            <a href={sessionHref(inspectedSession.session.id)}>open session recap</a>
           </>
         ) : (
           <>
-            Tap a point (or hover) to inspect that session.{' '}
+            Tap a point (or pick a session above) to inspect it.{' '}
             <TrendingUp size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} />
           </>
         )}

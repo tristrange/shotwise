@@ -140,14 +140,6 @@ input[type='checkbox'] { width: 16px; min-height: 16px; accent-color: var(--bran
 .hero-dek { color: #d5d3dd; font-size: 1.08rem; max-width: 62ch; }
 .hero-meta { color: var(--night-muted); font-size: 11px; letter-spacing: .04em; margin: 28px 0 0; }
 .hero-meta span { padding: 0 6px; }
-.statstrip { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--ink); }
-.statstrip > div { padding: 26px 0 22px 22px; border-right: 1px solid var(--line); }
-.statstrip > div:first-child { padding-left: 0; }
-.statstrip > div:last-child { border-right: 0; }
-.statstrip .n { font: 600 32px/1 var(--font-sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.statstrip .n.small { font-size: 15px; font-family: var(--mono); padding-top: 12px; }
-.statstrip .l { font: 600 11px/1.4 var(--font-sans); letter-spacing: .02em; color: var(--mute); margin-top: 10px; }
-
 /* ---------- figure-like sections, no tiles ---------- */
 .panel {
   margin: 0 0 54px; padding: 0; background: transparent; border: 0; border-radius: 0;
@@ -408,8 +400,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
   .hero h1, .hero h2 { font-size: clamp(1.9rem, 8.5vw, 2.5rem); margin: 12px 0 14px; }
   .hero-dek { font-size: 1rem; }
   .hero-meta { margin-top: 20px; }
-  .statstrip, .form-grid, .review-controls .form-grid { grid-template-columns: 1fr 1fr; }
-  .statstrip > div:nth-child(2) { border-right: 0; }
+  .form-grid, .review-controls .form-grid { grid-template-columns: 1fr 1fr; }
   .panel-heading { flex-wrap: wrap; }
   .card-controls { justify-content: flex-start; }
   .suggestion-row { grid-template-columns: minmax(0,1fr); gap: 8px; }
@@ -430,12 +421,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
    No hidden-by-default CSS: content stays visible if JavaScript is unavailable. */
 /* Personal-reference form styles live in styles/ds.css (D7 redesign). */
 
-/* ADR-0005 ratings (ratings-2) — compact chip + breakdown bars */
-.rating-chip { display: inline-flex; align-items: baseline; gap: 4px; font: 600 13px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
-.rating-chip small { font: 400 10px/1 var(--mono); color: var(--mute); }
-.rating-chip.none { color: var(--mute); font-weight: 400; }
-.rating-chip.provisional { outline: 1px dashed var(--mute); outline-offset: 2px; border-radius: 2px; }
-.rating-chip.early { outline: 1px dotted var(--mute); outline-offset: 2px; border-radius: 2px; }
 /* Rating breakdown visuals live in styles/ds.css (ds-score-bar); the
    rating-* classes remain as semantic hooks for the e2e suite only. */
 .rating-overall { margin: 0 0 8px; font-size: 13px; }
