@@ -67,9 +67,11 @@ export function Badge({
   early?: boolean;
   children: ReactNode;
 }) {
+  // Tone classes are prefixed (tone-*) so they can never collide with legacy
+  // app classes such as the `.brand` wordmark.
   return (
     <span
-      className={`ds-badge${tone !== 'neutral' ? ` ${tone}` : ''}${provisional ? ' provisional' : ''}${early ? ' early' : ''}`}
+      className={`ds-badge${tone !== 'neutral' ? ` tone-${tone}` : ''}${provisional ? ' provisional' : ''}${early ? ' early' : ''}`}
     >
       {children}
     </span>
