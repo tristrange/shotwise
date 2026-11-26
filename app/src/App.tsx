@@ -157,11 +157,13 @@ const pages: Page[] = [
   'settings',
 ];
 function routeFromHash() {
-  const [path, query] = window.location.hash.slice(1).split('?');
+  const hash = window.location.hash;
+  const [path, query] = hash.slice(1).split('?');
   const [name, id, extra] = (path ?? '').split('/');
   const page = pages.find((item) => item === name) ?? 'overview';
   const sessionsPath = page === 'sessions' && !extra;
   return {
+    hash,
     page,
     sessionId:
       sessionsPath && id !== 'compare'
@@ -179,19 +181,27 @@ function routeFromHash() {
   };
 }
 
+function revealActiveSubNavEntry(entry: HTMLButtonElement | null) {
+  const strip = entry?.parentElement;
+  if (!entry || !strip || strip.scrollWidth <= strip.clientWidth) return;
+  const item = entry.getBoundingClientRect();
+  const bounds = strip.getBoundingClientRect();
+  const offset = item.left < bounds.left
+    ? item.left - bounds.left
+    : Math.max(0, item.right - bounds.right);
+  strip.scrollLeft += offset;
+}
+
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const manageBagHeading = useRef<HTMLHeadingElement>(null);
   const pendingBagFocus = useRef(false);
-  // Counts deliberate in-app navigations (sidebar, sub-nav and primary tab
-  // clicks). Each hash change they cause starts the destination at the top;
-  // history Back/Forward and evidence deep links never set it, so the browser
-  // and the evidence screens keep control of the scroll position.
-  const pendingNavScroll = useRef(0);
-  const navigate = useCallback((hash: string) => {
-    if (window.location.hash === `#${hash}`) return;
-    pendingNavScroll.current += 1;
-    window.location.hash = hash;
+  const pendingNavScroll = useRef<string | null>(null);
+  const navigate = useCallback((target: string) => {
+    const destination = `#${target}`;
+    if (window.location.hash === destination) return;
+    pendingNavScroll.current = destination;
+    window.location.hash = destination;
   }, []);
   const [analysisSettings, setAnalysisSettings] = useState(
     initialAnalysisSettings,
@@ -201,7 +211,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ page, sessionId, compare, club, shapeView, evidence }, setRoute] =
+  const [{ hash, page, sessionId, compare, club, shapeView, evidence }, setRoute] =
     useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
@@ -269,25 +279,16 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
-  // Deliberate nav clicks (see `navigate`) start the destination at the top.
-  // Runs after the route commits (and once more on the next frame) because
-  // WebKit re-applies its own scroll adjustment after the hashchange event.
   useEffect(() => {
-    if (pendingNavScroll.current <= 0) return;
-    pendingNavScroll.current = 0;
-    window.scrollTo(0, 0);
-    const raf = requestAnimationFrame(() => window.scrollTo(0, 0));
-    return () => cancelAnimationFrame(raf);
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the route fields are an intentional re-run trigger, not values read in the effect.
-  }, [page, sessionId, compare, club, shapeView, evidence]);
-  // Bring the active sub-nav entry (e.g. a direct #shape/explorer deep link)
-  // into view inside the horizontally scrollable strip on phones.
-  useEffect(() => {
-    document
-      .querySelector('.sub-nav button[aria-current="page"]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- page/shapeView are an intentional re-run trigger, not values read in the effect.
-  }, [page, shapeView]);
+    const destination = pendingNavScroll.current;
+    pendingNavScroll.current = null;
+    if (destination !== hash) return;
+    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
+    scrollToTop();
+    // WebKit may restore its own scroll position after the hash change.
+    const frame = requestAnimationFrame(scrollToTop);
+    return () => cancelAnimationFrame(frame);
+  }, [hash]);
   useEffect(() => {
     if (page === 'settings' && pendingBagFocus.current) {
       pendingBagFocus.current = false;
@@ -404,6 +405,7 @@ export default function App() {
                   aria-current={
                     secondaryKey(page, shapeView) === key ? 'page' : undefined
                   }
+                  ref={secondaryKey(page, shapeView) === key ? revealActiveSubNavEntry : undefined}
                   onClick={() => navigate(hash)}
                 >
                   <Icon size={15} aria-hidden="true" />

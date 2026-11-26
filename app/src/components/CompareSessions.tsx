@@ -614,28 +614,16 @@ export function CompareSessions({
         ),
     [data.sessions],
   );
+  const referenceUnavailable = Boolean(
+    referenceId && !options.some((session) => session.id === referenceId),
+  );
+  const comparisonUnavailable = Boolean(
+    comparisonId && !options.some((session) => session.id === comparisonId),
+  );
   const comparison =
-    referenceId && comparisonId
+    referenceId && comparisonId && !referenceUnavailable && !comparisonUnavailable
       ? compareSessions(data, referenceId, comparisonId, basis, intent)
       : null;
-  // A saved URL can name an archived (or missing) visit; the selectors
-  // deliberately exclude those, so surface the unavailable state immediately
-  // instead of waiting for a second selection.
-  const namedReference = referenceId
-    ? data.sessions.find((session) => session.id === referenceId)
-    : undefined;
-  const namedComparison = comparisonId
-    ? data.sessions.find((session) => session.id === comparisonId)
-    : undefined;
-  const referenceUnavailable =
-    !!referenceId && (!namedReference || namedReference.archived);
-  const comparisonUnavailable =
-    !!comparisonId && (!namedComparison || namedComparison.archived);
-  const bothAvailable =
-    comparison !== null &&
-    !comparison.duplicate &&
-    comparison.reference.available &&
-    comparison.comparison.available;
   // Open (and scroll to) one club's detail accordion from a chart bar or chip.
   const openClub = (club: string) => {
     const el = document.getElementById(`compare-club-${club}`);
@@ -686,7 +674,7 @@ export function CompareSessions({
         <div className="compare-selects">
           <Select
             label="Reference session"
-            value={referenceId ?? ''}
+            value={referenceUnavailable ? '' : (referenceId ?? '')}
             onChange={(value) => onSelect(value || undefined, comparisonId)}
             options={[
               { value: '', label: 'Choose a session' },
@@ -698,7 +686,7 @@ export function CompareSessions({
           />
           <Select
             label="Comparison session"
-            value={comparisonId ?? ''}
+            value={comparisonUnavailable ? '' : (comparisonId ?? '')}
             onChange={(value) => onSelect(referenceId, value || undefined)}
             options={[
               { value: '', label: 'Choose a session' },
@@ -724,7 +712,7 @@ export function CompareSessions({
         <div className="actions" style={{ margin: 0 }}>
           <Button
             variant="secondary"
-            disabled={!referenceId || !comparisonId}
+            disabled={!comparison}
             onClick={() => onSelect(comparisonId, referenceId)}
           >
             Swap sessions
@@ -747,7 +735,7 @@ export function CompareSessions({
         <p className="notice" role="status">
           Choose two different sessions to compare.
         </p>
-      ) : comparison && bothAvailable ? (
+      ) : comparison ? (
         <>
           <div className="compare-sides">
             <SideSummary
@@ -855,17 +843,7 @@ export function CompareSessions({
             per side; direction differences are in percentage points.
           </p>
         </>
-      ) : (
-        comparison && (
-          <p className="notice" role="status">
-            {!comparison.reference.available && !comparison.comparison.available
-              ? 'Both selected sessions are archived or unavailable. Choose other sessions from the selectors.'
-              : !comparison.reference.available
-                ? 'The reference session is archived or unavailable. Choose another reference session.'
-                : 'The comparison session is archived or unavailable. Choose another comparison session.'}
-          </p>
-        )
-      )}
+      ) : null}
     </section>
   );
 }
