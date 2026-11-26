@@ -30,6 +30,13 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
       if (error.message.includes('JWT') || error.code === 'PGRST301')
         throw new Error('Your sign-in has expired. Sign in again and retry.');
       if (
+        error.code === '57014' ||
+        error.message.includes('statement timeout')
+      )
+        throw new Error(
+          'The server took too long and cancelled this operation. Nothing was saved or changed — split a very large import into smaller files, or retry.',
+        );
+      if (
         error.message.includes('Failed to fetch') ||
         error.message.includes('fetch failed')
       )

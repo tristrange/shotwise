@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadConsistent } from './snapshot';
+import { createRepository } from './repository';
+import type { Database } from './database.types';
 import { parseBackup, serializeBackup } from '../domain/backup';
 import {
   csvFixture,
@@ -313,5 +316,57 @@ describe('equipment backups', () => {
     expect(restored.equipmentAssignments).toEqual([
       { shotId: corrected.id, equipmentId: club.id, clubLabel: '7i' },
     ]);
+  });
+});
+
+describe('repository error mapping', () => {
+  const stubClient = (error: unknown) =>
+    ({
+      rpc: async () => ({ data: null, error }),
+    }) as unknown as SupabaseClient<Database>;
+  const input = async () => ({
+    filename: 'a.csv',
+    date: '2026-11-16',
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture([{}]))),
+  });
+
+  it('turns a statement timeout into an actionable nothing-was-saved message', async () => {
+    const repo = createRepository(
+      stubClient({
+        code: '57014',
+        message: 'canceling statement due to statement timeout',
+        details: null,
+        hint: null,
+      }),
+    );
+    await expect(repo.importCsv(await input())).rejects.toThrow(
+      'took too long and cancelled this operation. Nothing was saved or changed',
+    );
+    await expect(
+      repo.restore({
+        version: 0,
+        sessions: [],
+        shots: [],
+        imports: [],
+        events: [],
+        equipment: [],
+        equipmentAssignments: [],
+        userReferenceValues: [],
+      }),
+    ).rejects.toThrow('Nothing was saved or changed');
+  });
+
+  it('passes other database errors through unchanged', async () => {
+    const repo = createRepository(
+      stubClient({ code: 'P0001', message: 'Invalid import' }),
+    );
+    await expect(repo.importCsv(await input())).rejects.toThrow(
+      'Invalid import',
+    );
   });
 });
