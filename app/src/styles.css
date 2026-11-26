@@ -376,15 +376,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .assignment-preview h4 { overflow-wrap: anywhere; }
 .assignment-preview .table-wrap { margin: 12px 0; }
 
-/* ---------- progress ---------- */
-.club-progress { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--ink); }
-.progress-plots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
-.progress-plots figure { margin: 0; min-width: 0; }
-.progress-plots figcaption { font: 600 11px/1.4 var(--font-sans); letter-spacing: .01em; color: var(--mute); margin-bottom: 10px; }
-.progress-plot { overflow-x: auto; }
-.progress-plot svg { display: block; font: 11px var(--mono); color: var(--ink2); }
-.progress-plot text { fill: currentColor; }
-
 /* ---------- shot shapes ---------- */
 .shape-club { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--ink); }
 .shape-plot { display: block; width: 100%; max-width: 640px; font: 11px var(--mono); color: var(--ink2); }
@@ -411,7 +402,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .mobile-header, .bottom-nav, .sub-nav { display: none; }
 @media (max-width: 1000px) {
   .form-grid, .review-controls .form-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .progress-plots { grid-template-columns: 1fr; }
   .app { display: block; }
   .sidebar { display: none; }
   .mobile-header {

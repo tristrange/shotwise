@@ -80,23 +80,28 @@ function cohortLabel(cohort: 'reviewed' | 'broader') {
     : 'broader estimate (unreviewed non-wedge swings included, confirmed mishits excluded)';
 }
 
-function gapNote(gap: ClubProfile['gap']) {
+function gapFlag(gap: ClubProfile['gap']) {
   if (!gap || gap.gap === null) return null;
-  const flag =
-    gap.flag === 'small'
-      ? ' · small median gap'
-      : gap.flag === 'reversed'
-        ? ' · medians reversed'
-        : gap.flag === 'large'
-          ? ' · large gap'
-          : '';
-  return `Gap to the next longer club: ${decimal.format(gap.gap)} m${flag}`;
+  return gap.flag === 'small'
+    ? 'small median gap'
+    : gap.flag === 'reversed'
+      ? 'medians reversed'
+      : gap.flag === 'large'
+        ? 'large gap'
+        : null;
 }
 
 /** Compact horizontal club selection — deep links to each profile. */
 function ClubPicker({ clubs, active }: { clubs: string[]; active?: string }) {
   return (
     <nav className="club-picker" aria-label="Select a club profile">
+      <a
+        href="#clubs"
+        className={active ? '' : 'active'}
+        aria-current={active ? undefined : 'true'}
+      >
+        All clubs
+      </a>
       {clubs.map((club) => (
         <a
           key={club}
@@ -604,7 +609,6 @@ export function ClubProfileCard({
     : null;
   const latestSpread = latest ? latest.recap.reliability.spread : null;
   const contact = latest?.recap.reliability.contact;
-  const gapText = gapNote(gap);
   const composite = rating?.composite ?? null;
   const compositeValue = composite?.value ?? null;
   const weakest = rating
@@ -840,40 +844,78 @@ export function ClubProfileCard({
 
       <section className="profile-section">
         <span className="ds-field-label">Facts</span>
-        {best ? (
-          <p>
-            Longest carry <strong>{fmt(best.value)} m</strong> ·{' '}
-            <a href={sessionHref(best.session.id)}>{visitLabel(best.session)}</a> · that
-            session had {best.n} measured, {best.missing} missing for {club}
-            {best.n < 10 && <Badge tone="warn"> Sample limited</Badge>}
-            {best.reviewedShare !== null &&
-              ` · ${percent.format(best.reviewedShare)} of full swings contact-reviewed`}
-            {best.mishit &&
-              ` · ${best.mishit === 'confirmed' ? 'confirmed' : 'auto-flagged'} mishit, treat with care`}
-            .
-          </p>
-        ) : (
-          <p>No measured carry on this basis for {club} yet.</p>
-        )}
-        {gapText && <p>{gapText}.</p>}
-        {latest && latestCarry && latestSpread && (
-          <p>
-            Latest session{' '}
-            <a href={sessionHref(latest.session.id)}>{visitLabel(latest.session)}</a>:
-            typical carry {fmt(latestCarry.current.value)} m from{' '}
-            {latestCarry.current.measured} measured shots, spread{' '}
-            {fmt(latestSpread.current.value)} m — the same numbers as the{' '}
-            <a href={sessionHref(latest.session.id)}>session recap</a>
-            {contact &&
-              contact.full > 0 &&
-              ` (contact reviewed for ${contact.reviewed} of ${contact.full} full swings${
-                contact.reviewedShare !== null
-                  ? `, ${percent.format(contact.reviewedShare)}`
-                  : ''
-              })`}
-            .
-          </p>
-        )}
+        <MetricGrid>
+          {best ? (
+            <Metric
+              small
+              label={
+                <>
+                  Longest carry ·{' '}
+                  <a href={sessionHref(best.session.id)}>
+                    {visitLabel(best.session)}
+                  </a>
+                </>
+              }
+              value={fmt(best.value)}
+              unit="m"
+              delta={
+                <>
+                  {best.n} measured, {best.missing} missing for {club}
+                  {best.n < 10 && <Badge tone="warn"> Sample limited</Badge>}
+                  {best.reviewedShare !== null &&
+                    ` · ${percent.format(best.reviewedShare)} of full swings contact-reviewed`}
+                  {best.mishit &&
+                    ` · ${best.mishit === 'confirmed' ? 'confirmed' : 'auto-flagged'} mishit, treat with care`}
+                </>
+              }
+            />
+          ) : (
+            <Metric
+              small
+              label="Longest carry"
+              value="—"
+              delta={`No measured carry on this basis for ${club} yet`}
+            />
+          )}
+          {gap && gap.gap !== null && (
+            <Metric
+              small
+              label="Gap to the next longer club"
+              value={decimal.format(gap.gap)}
+              unit="m"
+              delta={gapFlag(gap) ?? undefined}
+            />
+          )}
+          {latest && latestCarry && latestSpread && (
+            <Metric
+              small
+              label={
+                <>
+                  Latest session ·{' '}
+                  <a href={sessionHref(latest.session.id)}>
+                    {visitLabel(latest.session)}
+                  </a>
+                </>
+              }
+              value={fmt(latestCarry.current.value)}
+              unit="m"
+              delta={
+                <>
+                  typical carry from {latestCarry.current.measured} measured shots · spread{' '}
+                  {fmt(latestSpread.current.value)} m ·{' '}
+                  <a href={sessionHref(latest.session.id)}>session recap</a>
+                  {contact &&
+                    contact.full > 0 &&
+                    ` (contact reviewed for ${contact.reviewed} of ${contact.full} full swings${
+                      contact.reviewedShare !== null
+                        ? `, ${percent.format(contact.reviewedShare)}`
+                        : ''
+                    })`}
+                </>
+              }
+            />
+          )}
+        </MetricGrid>
         {bagCount > 0 && (
           <p className="context">
             <Wrench size={13} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Equipment ·{' '}
@@ -903,46 +945,50 @@ export function ClubProfileCard({
       <section className="profile-section">
         <span className="ds-field-label">Session history</span>
         <ClubHistoryChart club={club} points={history} />
-        <div className="table-wrap">
-          <table aria-label={`${club} history across sessions`}>
-            <caption>
-              {history.length} {history.length === 1 ? 'session' : 'sessions'} on
-              the Progress cohort ·{' '}
-              <a href="#progress">Open carry charts in Progress</a>
-            </caption>
-            <thead>
-              <tr>
-                <th>Session</th>
-                <th>Median carry</th>
-                <th>Carry spread (IQR)</th>
-                <th>Measured / missing</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((point) => (
-                <tr key={point.session.id}>
-                  <td>
-                    <a href={sessionHref(point.session.id)}>
-                      {visitLabel(point.session)}
-                    </a>
-                  </td>
-                  <td>
-                    {point.median === null ? 'No carry' : `${fmt(point.median)} m`}
-                  </td>
-                  <td>
-                    {point.iqr === null ? 'Needs 4 measured' : `${fmt(point.iqr)} m`}
-                  </td>
-                  <td>
-                    {point.n} / {point.missing}{' '}
-                    {point.n < 10 && point.n > 0 && (
-                      <Badge tone="warn">Sample limited</Badge>
-                    )}
-                  </td>
+        <Disclosure
+          summary={`Session table (${history.length} ${history.length === 1 ? 'session' : 'sessions'})`}
+        >
+          <div className="table-wrap">
+            <table aria-label={`${club} history across sessions`}>
+              <caption>
+                {history.length} {history.length === 1 ? 'session' : 'sessions'} on
+                the Progress cohort ·{' '}
+                <a href="#progress">Open carry charts in Progress</a>
+              </caption>
+              <thead>
+                <tr>
+                  <th>Session</th>
+                  <th>Median carry</th>
+                  <th>Carry spread (IQR)</th>
+                  <th>Measured / missing</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {history.map((point) => (
+                  <tr key={point.session.id}>
+                    <td>
+                      <a href={sessionHref(point.session.id)}>
+                        {visitLabel(point.session)}
+                      </a>
+                    </td>
+                    <td>
+                      {point.median === null ? 'No carry' : `${fmt(point.median)} m`}
+                    </td>
+                    <td>
+                      {point.iqr === null ? 'Needs 4 measured' : `${fmt(point.iqr)} m`}
+                    </td>
+                    <td>
+                      {point.n} / {point.missing}{' '}
+                      {point.n < 10 && point.n > 0 && (
+                        <Badge tone="warn">Sample limited</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Disclosure>
       </section>
     </section>
   );
@@ -978,6 +1024,12 @@ export function ClubProfiles({
     () => sharedBandScale(views.map((view) => view.band)),
     [views],
   );
+  // A deep-linked club (#clubs/7i) shows that one full profile; the plain
+  // #clubs view lists every profile.
+  const focused = focusClub
+    ? views.find((view) => view.profile.club === focusClub)
+    : undefined;
+  const visibleViews = focused ? [focused] : views;
   const [referenceError, setReferenceError] = useState('');
   const saveReference = async (input: UserReferenceValueSaveInput) => {
     try {
@@ -1014,10 +1066,14 @@ export function ClubProfiles({
       </div>
       <Card className="club-profiles-head">
         <SectionHeader
-          title="One profile per club"
+          title={
+            focused
+              ? `Profile: ${clubDisplayName(focused.profile.club)}`
+              : 'One profile per club'
+          }
           sub={`${settings.mode === 'recent' ? 'Last 60 days' : 'All-time'} · ${
             settings.hideLikelyMishits ? 'Unusual-shot filter on · ' : ''
-          }${views.length} ${views.length === 1 ? 'club' : 'clubs'}`}
+          }${views.length} ${views.length === 1 ? 'club' : 'clubs'}${focused ? ' · showing 1' : ''}`}
           aside={
             <div className="card-controls">
               <Button variant="secondary" small onClick={onManageBag}>
@@ -1061,7 +1117,7 @@ export function ClubProfiles({
         )}
       </Card>
       <div className="club-profile-list">
-        {views.map((view) => (
+        {visibleViews.map((view) => (
           <ClubProfileCard
             key={view.profile.club}
             view={view}

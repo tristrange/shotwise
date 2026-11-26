@@ -302,6 +302,8 @@ test('toggles automatic mishits across stats without changing reviews', async ({
   ).toContainText('small median gap');
   await nav(page, 'Progress');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  // Detailed session tables sit behind one disclosure per club.
+  await page.locator('summary', { hasText: 'Driver session details' }).click();
   await expect(
     page.getByRole('table', { name: 'D session details', exact: true }),
   ).toContainText('20 / 0');
@@ -976,13 +978,23 @@ test('shares the analysis window and measurement basis across pages', async ({
 
   await nav(page, 'Progress');
   await expect(
-    page.getByRole('heading', { name: 'Carry over time' }),
+    page.getByRole('heading', { name: 'Performance trend' }),
   ).toBeVisible();
   await expect(window.getByRole('button', { name: 'All-time' })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
-  await expect(page.getByRole('table').first().getByRole('row')).toHaveCount(3);
+  // One interactive trend chart drives the page; the per-club session table
+  // opens from its disclosure.
+  await expect(
+    page.getByRole('group', { name: /7i median carry per session/ }),
+  ).toBeVisible();
+  await page.locator('summary', { hasText: '7 iron session details' }).click();
+  await expect(
+    page
+      .getByRole('table', { name: '7i session details', exact: true })
+      .getByRole('row'),
+  ).toHaveCount(3);
   await window.getByRole('button', { name: 'Recent' }).click();
 
   await nav(page, 'Overview');
@@ -995,7 +1007,7 @@ test('shares the analysis window and measurement basis across pages', async ({
   await expect(gapping).toContainText('Median 130 m');
 });
 
-test('shows separate carry and consistency charts per club with sparse and missing data', async ({
+test('explores progress through one interactive chart with sparse and missing data', async ({
   page,
   account,
 }, testInfo) => {
@@ -1025,21 +1037,73 @@ test('shows separate carry and consistency charts per club with sparse and missi
   }
   await login(page, account);
   await nav(page, 'Progress');
-  const median = page.getByRole('region', {
-    name: '7i median carry chart',
-    exact: true,
+  // One interactive trend card: club selector, metric segmented control,
+  // headline + change vs the first session, tappable chart.
+  const trend = page.locator('.performance-trend');
+  await expect(
+    page.getByRole('heading', { name: 'Performance trend' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Club', { exact: true })).toHaveValue('7i');
+  const metricGroup = trend.getByRole('group', { name: 'Metric' });
+  await expect(
+    metricGroup.getByRole('button', { name: 'Carry' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  const chart = page.getByRole('group', { name: /7i median carry per session/ });
+  await expect(chart).toBeVisible();
+  // Prominent headline: latest measured session, with the change vs the
+  // clearly identified first session.
+  const headline = trend.locator('.ds-metric').first();
+  await expect(headline).toContainText('117.5');
+  await expect(headline).toContainText('m');
+  await expect(headline).toContainText(/\+12\.5 m vs first session/);
+  // Compact first / latest / best session summaries.
+  const summaryMetric = (label: string) =>
+    trend
+      .locator('.ds-metric-label', { hasText: new RegExp(`^${label}`) })
+      .locator('xpath=..');
+  await expect(summaryMetric('First session')).toContainText('105');
+  await expect(summaryMetric('Latest session')).toContainText('117.5');
+  await expect(summaryMetric('Best session')).toContainText('117.5');
+  await expect(trend).toContainText('Tap a point (or hover) to inspect that session');
+  // Hovering the chart shows the concise tooltip with date, value and sample.
+  await chart.hover();
+  const tooltip = page.locator('.ds-chart-tooltip');
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText('measured');
+  // Tapping the chart selects the nearest session (touch-friendly inspection).
+  await chart.click();
+  await expect(trend).toContainText(/Selected S\d ·/);
+  await expect(
+    trend.getByRole('link', { name: 'open session recap' }),
+  ).toBeVisible();
+  // Metric switch: the same chart swaps to carry spread (lower = consistent).
+  await metricGroup.getByRole('button', { name: 'Spread' }).click();
+  await expect(
+    page.getByRole('group', { name: /7i carry spread \(iqr\) per session/ }),
+  ).toBeVisible();
+  await metricGroup.getByRole('button', { name: 'Carry' }).click();
+  // Optional comparison series on carry: median + strong-strike potential.
+  const potentialToggle = trend.getByRole('button', {
+    name: /Potential \(P80\) series/,
   });
-  const spread = page.getByRole('region', {
-    name: '7i carry spread chart',
-    exact: true,
-  });
-  await expect(median).toBeVisible();
-  await expect(spread).toBeVisible();
-  await expect(median.locator('svg')).toContainText('105.0');
-  await expect(median.locator('svg')).toContainText('117.5');
-  await expect(spread.locator('svg')).toContainText('15.0');
-  await expect(spread.locator('svg')).toContainText('7.5');
-  await expect(median.locator('rect')).toHaveCount(2);
+  await potentialToggle.click();
+  await expect(potentialToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(trend.locator('.chart-legend')).toContainText(
+    'Strong-strike potential (P80)',
+  );
+  await potentialToggle.click();
+  // Concise cross-club comparison on compatible session measurements (median
+  // carry, first vs latest measured session), with the no-proof caveat.
+  const crossClub = page.getByRole('list', { name: 'Carry trend by club' });
+  await expect(crossClub).toContainText('7 iron');
+  await expect(crossClub).toContainText('+12.5 m');
+  await expect(crossClub).toContainText('9 iron');
+  await expect(crossClub).toContainText('+0.0 m');
+  await expect(page.locator('.cross-club')).toContainText(
+    'do not prove long-term improvement',
+  );
+  // Detailed session tables retained behind per-club disclosures.
+  await page.locator('summary', { hasText: '7 iron session details' }).click();
   const details = page.getByRole('table', {
     name: '7i session details',
     exact: true,
@@ -1052,6 +1116,7 @@ test('shows separate carry and consistency charts per club with sparse and missi
   await expect(details.getByRole('row').nth(3)).toContainText(
     'Needs 4 measured shots',
   );
+  await page.locator('summary', { hasText: '9 iron session details' }).click();
   await expect(
     page.getByRole('table', { name: '9i session details', exact: true }),
   ).toContainText('60.0 m');
@@ -1061,19 +1126,8 @@ test('shows separate carry and consistency charts per club with sparse and missi
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  if (
-    await median.evaluate(
-      (element) => element.scrollWidth > element.clientWidth,
-    )
-  ) {
-    await median.focus();
-    await page.keyboard.press('ArrowRight');
-    await expect
-      .poll(() => median.evaluate((element) => element.scrollLeft))
-      .toBeGreaterThan(0);
-  }
   await page.screenshot({
-    path: testInfo.outputPath('club-progress.png'),
+    path: testInfo.outputPath('progress.png'),
     fullPage: true,
   });
   await page.getByRole('button', { name: 'All-time', exact: true }).click();
@@ -1720,7 +1774,7 @@ test('retries duplicate imports, restores private backup and renders accessible 
   ).toBe(true);
   await nav(page, 'Progress');
   await expect(
-    page.getByRole('heading', { name: 'Carry over time' }),
+    page.getByRole('heading', { name: 'Performance trend' }),
   ).toBeVisible();
   await nav(
     page,
@@ -2914,6 +2968,8 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   // Discoverable entry point: the Overview club cards link to the profile.
   await page.getByRole('link', { name: 'Open the full 7i profile' }).click();
   await expect(page).toHaveURL(/#clubs\/7i$/);
+  // A deep-linked club shows that one selected full profile, not every one.
+  await expect(page.locator('.club-profile')).toHaveCount(1);
   const heading = page.getByRole('heading', { name: '7i', exact: true });
   await expect(heading).toBeFocused();
   await expect(
@@ -2923,6 +2979,14 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   const card = page
     .locator('.club-profile')
     .filter({ has: page.getByRole('heading', { name: '7i', exact: true }) });
+  // Anchor metric lookups on the label so fact rows like "Latest session ·
+  // … typical carry from 13 measured shots" never collide with headline tiles.
+  const metricTile = (scope: ReturnType<typeof page.locator>, label: string) =>
+    scope
+      .locator('.ds-metric-label', {
+        hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+      })
+      .locator('xpath=..');
   await expect(card).toContainText('Premium · flat (estimate)');
   await expect(card).toContainText('2 sessions · 26 shots');
   // Compact club selection: the picker deep-links to every profile.
@@ -2939,10 +3003,10 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(card.locator('.club-profile-title')).toContainText('7 iron');
   await expect(card.locator('.club-badge').first()).toHaveText('7I');
   // Headline metrics: typical carry and strong-strike potential as metric tiles.
-  const typical = card.locator('.ds-metric', { hasText: 'Typical carry' });
+  const typical = metricTile(card, 'Typical carry');
   await expect(typical).toContainText('122');
   await expect(typical).toContainText('m');
-  const potential = card.locator('.ds-metric', { hasText: 'Strong-strike carry (P80)' });
+  const potential = metricTile(card, 'Strong-strike carry (P80)');
   await expect(potential).toContainText('m');
   // Repetitive coverage explanations live in a contextual popover; the
   // evidence indicators (badges) stay visible.
@@ -2971,10 +3035,15 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(
     card.getByRole('group', { name: 'History metric' }).getByRole('button', { name: 'Spread' }),
   ).toBeVisible();
-  await expect(card).toContainText('Longest carry 150 m');
-  await expect(card).toContainText('13 measured, 1 missing for 7i');
-  await expect(card).toContainText('100% of full swings contact-reviewed');
-  await expect(card).toContainText('Gap to the next longer club: 20 m');
+  // Facts render as compact metric rows (label + value + context with links).
+  const longest = metricTile(card, 'Longest carry');
+  await expect(longest).toContainText('150');
+  await expect(longest).toContainText('m');
+  await expect(longest).toContainText('13 measured, 1 missing for 7i');
+  await expect(longest).toContainText('100% of full swings contact-reviewed');
+  const gapMetric = metricTile(card, 'Gap to the next longer club');
+  await expect(gapMetric).toContainText('20');
+  await expect(gapMetric).toContainText('m');
   // No personal reference yet: the benchmark section says so instead of a bar.
   await expect(card).toContainText(
     'No personal carry reference for 7i yet — add one below to benchmark this club',
@@ -3067,9 +3136,10 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   // benchmark section shows the reason instead of a bar.
   await expect(card).toContainText('Not compared:');
 
-  // The latest-session line links to the same numbers as the session recap.
-  const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
-  await expect(latestLine).toContainText('typical carry 122 m from 13 measured shots');
+  // The latest-session metric row links to the same numbers as the session recap.
+  const latestLine = metricTile(card, 'Latest session');
+  await expect(latestLine).toContainText('122');
+  await expect(latestLine).toContainText('typical carry from 13 measured shots');
   await latestLine.getByRole('link', { name: 'session recap' }).click();
   await expect(page).toHaveURL(new RegExp(`#sessions/${todayResult.sessionId}$`));
   const recap = page.getByRole('region', { name: 'Session recap' });
@@ -3084,14 +3154,17 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(broader).toContainText('This session · 122 m · 13 measured, 1 missing');
 
   await nav(page, 'Clubs');
+  // The plain #clubs view lists every profile again after a deep link.
+  await expect(page.locator('.club-profile').first()).toBeVisible();
+  expect(await page.locator('.club-profile').count()).toBeGreaterThan(1);
   // Sparse club is qualified, archived session stays out of history.
   const five = page
     .locator('.club-profile')
     .filter({ has: page.getByRole('heading', { name: '5i', exact: true }) });
-  await expect(
-    five.locator('.ds-metric', { hasText: 'Typical carry' }),
-  ).toContainText('140');
+  await expect(metricTile(five, 'Typical carry')).toContainText('140');
   await expect(five).toContainText('Sample limited');
+  // The detailed history table sits behind a disclosure.
+  await card.locator('summary', { hasText: 'Session table' }).click();
   const history = card.getByRole('table', { name: '7i history across sessions' });
   await expect(history.getByRole('row')).toHaveCount(4);
   await expect(history).toContainText(old);
@@ -3121,9 +3194,7 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
     .click();
   await expect(card).toContainText('Range · flat');
-  await expect(
-    card.locator('.ds-metric', { hasText: 'Typical carry' }),
-  ).toContainText('132');
+  await expect(metricTile(card, 'Typical carry')).toContainText('132');
 
   // Range-ball bases never get an external benchmark overlay (no external
   // source measures limited-flight range balls); premium bases do.

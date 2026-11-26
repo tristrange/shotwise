@@ -17,7 +17,7 @@ import { ClubCard } from './ClubCard';
 import { PerformanceTrendCard } from './PerformanceTrendCard';
 import { Hero } from './Hero';
 import { PracticeInsights } from './PracticeInsights';
-import { ClubProgress } from './ClubProgress';
+import { Progress } from './Progress';
 import { Disclosure, EmptyState, Metric } from './ds';
 import { sharedBandScale } from './charts';
 
@@ -127,7 +127,7 @@ export function Analysis({
         </p>
       )}
       {progressView ? (
-        <ClubProgress
+        <Progress
           data={data}
           settings={settings}
           onSettingsChange={onSettingsChange}
@@ -191,11 +191,7 @@ export function Analysis({
           </section>
           {cardRows.length > 0 && (
             <section aria-label="Performance trend" className="panel">
-              <PerformanceTrendCard
-                data={data}
-                basis={basis}
-                mode={settings.mode}
-              />
+              <PerformanceTrendCard data={data} settings={settings} />
             </section>
           )}
         </>

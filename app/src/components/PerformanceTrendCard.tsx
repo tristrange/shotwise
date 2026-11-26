@@ -1,44 +1,78 @@
 import { useMemo, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
+import { BASES, localToday, type Dataset } from '../domain/model';
+import type { AnalysisSettings } from '../domain/analytics';
 import {
-  BASES,
-  clubOrder,
-  localToday,
-  type Basis,
-  type Dataset,
-  type MetricKey,
-} from '../domain/model';
-import {
-  benchmarkClubGroups,
-  metricStats,
-  selectCohort,
-} from '../domain/analytics';
-import { resolveShots } from '../domain/assessment';
+  clubProgress,
+  pointReading,
+  summarizeClubMetric,
+  type ProgressMetric,
+  type ProgressSessionPoint,
+} from '../domain/progress';
+import { sessionHref, visitLabel } from './SessionRecap';
 import {
   Card,
+  HelpPopover,
   Metric,
+  MetricGrid,
   SectionHeader,
   SegmentedControl,
   Select,
   type SegmentedOption,
 } from './ds';
-import { TrendChart, ChartSummary, type ChartPoint } from './charts';
+import { ChartSummary, TrendChart, type ChartPoint } from './charts';
 
-type TrendMetric = 'carry' | 'iqr' | 'speed' | 'launch' | 'apex';
+type TrendMetric = ProgressMetric;
 
 const METRICS: readonly SegmentedOption<TrendMetric>[] = [
-  { value: 'carry', label: 'Carry', title: 'Median carry per session' },
-  { value: 'iqr', label: 'Spread', title: 'Carry IQR per session — lower is more consistent' },
-  { value: 'speed', label: 'Ball speed', title: 'Median ball speed per session' },
+  { value: 'median', label: 'Carry', title: 'Median carry per session — higher is farther' },
+  {
+    value: 'p80',
+    label: 'Potential',
+    title: 'Strong-strike potential (P80 carry) per session — from all full swings, needs 10+ measured in a session',
+  },
+  {
+    value: 'iqr',
+    label: 'Spread',
+    title: 'Carry IQR per session — the width of the middle half of carries; lower is more consistent',
+  },
+  { value: 'speed', label: 'Speed', title: 'Median ball speed per session' },
   { value: 'launch', label: 'Launch', title: 'Median launch angle per session' },
   { value: 'apex', label: 'Apex', title: 'Median apex per session' },
 ];
 const METRIC_UNIT: Record<TrendMetric, string> = {
-  carry: 'm',
+  median: 'm',
+  p80: 'm',
   iqr: 'm',
   speed: 'kph',
   launch: '°',
   apex: 'm',
+};
+const METRIC_SERIES_NAME: Record<TrendMetric, string> = {
+  median: 'Median carry',
+  p80: 'Strong-strike potential (P80)',
+  iqr: 'Carry spread (IQR)',
+  speed: 'Ball speed',
+  launch: 'Launch angle',
+  apex: 'Apex',
+};
+/** Lower values are the favourable direction only for the carry spread. */
+const LOWER_IS_BETTER: Record<TrendMetric, boolean> = {
+  median: false,
+  p80: false,
+  iqr: true,
+  speed: false,
+  launch: false,
+  apex: false,
+};
+/** Deltas imply improvement only where direction is meaningful. */
+const DELTA_IS_DIRECTIONAL: Record<TrendMetric, boolean> = {
+  median: true,
+  p80: true,
+  iqr: true,
+  speed: true,
+  launch: false,
+  apex: false,
 };
 
 // Parse the date-only value as a local calendar date — parsing at UTC midnight
@@ -51,171 +85,278 @@ export const shortDate = (iso: string) => {
   });
 };
 
-function metricKey(basis: Basis, metric: TrendMetric): MetricKey {
-  const fields = BASES[basis];
-  switch (metric) {
-    case 'carry':
-    case 'iqr':
-      return fields.carry;
-    case 'speed':
-      return fields.speed;
-    case 'launch':
-      return fields.launch;
-    case 'apex':
-      return fields.apex;
-  }
-}
+const decimals = (metric: TrendMetric) => (metric === 'speed' ? 0 : 1);
+const fmt = (value: number | null, metric: TrendMetric) =>
+  value === null ? '—' : value.toFixed(decimals(metric));
+
+const EMPTY_SESSIONS: ProgressSessionPoint[] = [];
 
 /**
  * Interactive progress composition (reference: interactive-charts
  * screenshot): heading + club selector + metric segmented control + headline
- * value with change vs the first session + tappable trend chart. All values
- * come from the shared domain cohort functions on the selected basis —
+ * value with change vs the first measured session + first/latest/best session
+ * summaries + tappable trend chart with an optional comparison series. All
+ * values come from the shared domain cohort functions on the selected basis —
  * historical ratings are deliberately not charted (no fabricated series).
  */
 export function PerformanceTrendCard({
   data,
-  basis,
-  mode,
+  settings,
 }: {
   data: Dataset;
-  basis: Basis;
-  mode: 'recent' | 'all';
+  settings: AnalysisSettings;
 }) {
+  const { basis } = settings;
   const query = useMemo(
     () => ({
-      mode,
-      intent: 'all' as const,
-      contact: 'all' as const,
-      hideLikelyMishits: false,
+      mode: settings.mode,
+      intent: settings.intent,
+      contact: settings.contact,
+      hideLikelyMishits: settings.hideLikelyMishits,
       today: localToday(),
     }),
-    [mode],
+    [settings],
   );
-  const resolved = useMemo(
-    () => resolveShots(data.shots, data.sessions, basis),
-    [data, basis],
-  );
-  const selected = useMemo(
-    () => selectCohort(data.shots, data.sessions, query, basis),
-    [data, query, basis],
-  );
+  // One shared domain source for the club list, the chart series, the summary
+  // tiles and the cross-club comparison — they can never disagree.
   const groups = useMemo(
-    () => benchmarkClubGroups(selected, resolved),
-    [selected, resolved],
+    () => clubProgress(data, basis, query),
+    [data, basis, query],
   );
-  const clubs = useMemo(
-    () =>
-      [...groups.keys()].sort(
-        (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
-      ),
-    [groups],
-  );
+  const clubs = useMemo(() => groups.map((group) => group.club), [groups]);
   const [club, setClub] = useState<string>(clubs[0] ?? '');
-  const [metric, setMetric] = useState<TrendMetric>('carry');
-  const [inspected, setInspected] = useState<string | null>(null);
+  const [metric, setMetric] = useState<TrendMetric>('median');
+  const [showPotential, setShowPotential] = useState(false);
+  const [inspected, setInspected] = useState<number | null>(null);
 
   const effectiveClub = clubs.includes(club) ? club : (clubs[0] ?? '');
+  const clubGroup = useMemo(
+    () => groups.find((group) => group.club === effectiveClub),
+    [groups, effectiveClub],
+  );
+  const sessions = useMemo(
+    () => clubGroup?.sessions ?? EMPTY_SESSIONS,
+    [clubGroup],
+  );
 
-  const points: ChartPoint[] = useMemo(() => {
-    if (!effectiveClub) return [];
-    const shots = groups.get(effectiveClub) ?? [];
-    const bySession = new Map<string, typeof shots>();
-    for (const shot of shots) {
-      bySession.set(shot.sessionId, [...(bySession.get(shot.sessionId) ?? []), shot]);
-    }
-    const sessions = data.sessions
-      .filter((s) => bySession.has(s.id))
-      .toSorted(
-        (a, b) =>
-          a.date.localeCompare(b.date) ||
-          (a.time ?? '').localeCompare(b.time ?? '') ||
-          a.id.localeCompare(b.id),
-      );
-    const key = metricKey(basis, metric);
-    return sessions.map((session, i) => {
-      const stats = metricStats(bySession.get(session.id) ?? [], key);
-      const value =
-        metric === 'iqr' ? stats.iqr : (stats.median ?? null);
-      return {
-        label: `${shortDate(session.date)} · S${i + 1}`,
-        value,
-        detail: `${stats.n} measured · ${stats.missing} missing`,
-      };
-    });
-  }, [data.sessions, groups, effectiveClub, metric, basis]);
+  const points: ChartPoint[] = useMemo(
+    () =>
+      sessions.map((point, i) => {
+        const reading = pointReading(point, metric);
+        const potential = pointReading(point, 'p80');
+        return {
+          label: `S${i + 1} · ${shortDate(point.session.date)}`,
+          value: reading.value,
+          compare:
+            metric === 'median' && showPotential
+              ? potential.value
+              : undefined,
+          detail: `${visitLabel(point.session)} · ${reading.n} measured · ${reading.missing} missing`,
+        };
+      }),
+    [sessions, metric, showPotential],
+  );
 
+  const summary = useMemo(
+    () =>
+      clubGroup
+        ? summarizeClubMetric([clubGroup], metric, LOWER_IS_BETTER[metric])[0]
+        : null,
+    [clubGroup, metric],
+  );
   const measured = points.filter((p) => p.value !== null);
-  const headline = measured.at(-1) ?? null;
-  const first = measured[0] ?? null;
-  const delta =
-    headline?.value !== null && headline?.value !== undefined &&
-    first?.value !== null && first?.value !== undefined
-      ? headline.value - first.value
-      : null;
-  const lowerIsBetter = metric === 'iqr';
+  const headline = summary?.latest ?? null;
+  const first = summary?.first ?? null;
+  const delta = summary?.delta ?? null;
+  const lowerIsBetter = LOWER_IS_BETTER[metric];
+  const directional = DELTA_IS_DIRECTIONAL[metric];
   const deltaText =
     delta === null
       ? undefined
-      : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(metric === 'launch' ? 1 : 0)} ${METRIC_UNIT[metric]}`;
-  const deltaTone =
-    delta === null ? 'neutral' : lowerIsBetter ? (delta < 0 ? 'pos' : 'neg') : (delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'neutral');
+      : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(decimals(metric))} ${METRIC_UNIT[metric]}`;
+  const deltaTone = !directional
+    ? 'neutral'
+    : delta === null
+      ? 'neutral'
+      : lowerIsBetter
+        ? delta < 0
+          ? 'pos'
+          : 'neg'
+        : delta > 0
+          ? 'pos'
+          : delta < 0
+            ? 'neg'
+            : 'neutral';
 
   const unit = METRIC_UNIT[metric];
-  const chartLabel = `${effectiveClub} ${metric} per session`;
+  const seriesName = METRIC_SERIES_NAME[metric];
+  // The headline names the selected cohort's statistic explicitly, so a
+  // strong-strike median is never read as typical carry.
+  const headlineLabel =
+    metric === 'median'
+      ? settings.contact === 'strong'
+        ? 'Strong-strike median carry'
+        : settings.contact === 'typical'
+          ? 'Typical median carry'
+          : 'Median carry'
+      : seriesName;
+  const chartLabel = `${effectiveClub} ${seriesName.toLowerCase()} per session`;
+  const compareActive = metric === 'median' && showPotential;
+  const inspectedPoint =
+    inspected !== null && sessions[inspected] ? sessions[inspected] : null;
+  const inspectedReading = inspectedPoint
+    ? pointReading(inspectedPoint, metric)
+    : null;
 
   return (
-    <Card>
+    <Card className="performance-trend">
       <SectionHeader
         title="Performance trend"
         aside={
-          <Select
-            label="Club"
-            value={effectiveClub}
-            onChange={setClub}
-            options={clubs.map((c) => ({ value: c, label: c }))}
-          />
+          <div className="card-controls">
+            <Select
+              label="Club"
+              value={effectiveClub}
+              onChange={setClub}
+              options={clubs.map((c) => ({ value: c, label: c }))}
+            />
+            <HelpPopover label="How to read this chart">
+              <p>
+                Each point is one session (S1, S2… in date order — sessions without a
+                recorded time are not ordered within a day). {seriesName} per session on
+                the {BASES[basis].label} basis.
+              </p>
+              {metric === 'median' && (
+                <p>
+                  The optional potential line is the strong-strike potential (P80 carry)
+                  of each session's full swings — it needs 10+ measured carries in a
+                  session and stays a gap below that.
+                </p>
+              )}
+              {metric === 'iqr' && (
+                <p>
+                  Spread is the carry IQR: the width of the middle half of measured
+                  carries. Lower means less variability — a smaller number is more
+                  consistent. It needs at least 4 measured shots.
+                </p>
+              )}
+              <p>
+                Missing measurements stay gaps, never zero. Fewer than 10 measured shots
+                in a session is sample-limited. Session differences alone do not prove
+                long-term improvement.
+              </p>
+              <p>
+                Ratings are never charted over time — no historical rating series exists.
+              </p>
+            </HelpPopover>
+          </div>
         }
       />
-      <div style={{ marginBottom: 12 }}>
+      <div className="trend-controls">
         <SegmentedControl
           label="Metric"
           options={METRICS}
           value={metric}
           onChange={setMetric}
         />
+        {metric === 'median' && (
+          <button
+            type="button"
+            className="ds-toggle"
+            aria-pressed={showPotential}
+            title="Overlay each session's strong-strike potential (P80 carry) on the median carry line"
+            onClick={() => setShowPotential((current) => !current)}
+          >
+            Potential (P80) series: {showPotential ? 'shown' : 'hidden'}
+          </button>
+        )}
       </div>
       {headline ? (
         <Metric
-          label={METRICS.find((m) => m.value === metric)?.label ?? metric}
-          value={headline.value === null ? '—' : headline.value.toFixed(metric === 'launch' ? 1 : 0)}
+          label={`${headlineLabel} · latest session`}
+          value={fmt(headline.value, metric)}
           unit={unit}
-          delta={deltaText ? `${deltaText} vs first session` : undefined}
+          delta={
+            deltaText
+              ? `${deltaText} vs first session${first ? ` · ${shortDate(first.session.date)}` : ''}`
+              : undefined
+          }
           deltaTone={deltaTone}
         />
       ) : (
-        <Metric label={metric} value="—" unit={unit} />
+        <Metric label={headlineLabel} value="—" unit={unit} />
       )}
       <p className="muted" style={{ margin: '4px 0 12px' }}>
         Over {measured.length} of {points.length} sessions · {BASES[basis].label}
       </p>
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
-          ? `From ${first?.value?.toFixed(1)} to ${headline?.value?.toFixed(1)} ${unit} across ${measured.length} sessions.`
+          ? `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
           : 'No measured values in this window.'}
       </ChartSummary>
       <TrendChart
         data={points}
         unit={unit}
         label={chartLabel}
-        onSelect={setInspected}
+        name={seriesName}
+        compare={compareActive ? 'Strong-strike potential (P80)' : undefined}
+        onSelect={(label) => {
+          const index = points.findIndex((p) => p.label === label);
+          setInspected(index >= 0 ? index : null);
+        }}
       />
+      {compareActive && (
+        <p className="chart-legend muted" aria-hidden="true">
+          <span className="legend-dot primary" /> {seriesName}
+          <span className="legend-dot compare" /> Strong-strike potential (P80)
+        </p>
+      )}
       <p className="muted" style={{ margin: '10px 0 0' }}>
-        {inspected
-          ? `Selected ${inspected} — tap points or hover for values.`
-          : 'Tap a point (or hover) to inspect that session.'}{' '}
-        <TrendingUp size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} />
+        {inspectedPoint && inspectedReading ? (
+          <>
+            Selected S{inspected! + 1} · {visitLabel(inspectedPoint.session)} —{' '}
+            {fmt(inspectedReading.value, metric)} {unit} · {inspectedReading.n} measured ·{' '}
+            {inspectedReading.missing} missing ·{' '}
+            <a href={sessionHref(inspectedPoint.session.id)}>open session recap</a>
+          </>
+        ) : (
+          <>
+            Tap a point (or hover) to inspect that session.{' '}
+            <TrendingUp size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} />
+          </>
+        )}
       </p>
+      {summary && summary.measured > 0 && (
+        <MetricGrid>
+          {summary.first && (
+            <Metric
+              small
+              label={`First session · ${shortDate(summary.first.session.date)}`}
+              value={fmt(summary.first.value, metric)}
+              unit={unit}
+              delta={`${summary.first.n} measured`}
+            />
+          )}
+          {summary.latest && (
+            <Metric
+              small
+              label={`Latest session · ${shortDate(summary.latest.session.date)}`}
+              value={fmt(summary.latest.value, metric)}
+              unit={unit}
+              delta={`${summary.latest.n} measured`}
+            />
+          )}
+          {summary.best && (
+            <Metric
+              small
+              label={`${lowerIsBetter ? 'Most consistent' : 'Best'} session · ${shortDate(summary.best.session.date)}`}
+              value={fmt(summary.best.value, metric)}
+              unit={unit}
+              delta={`${summary.best.n} measured`}
+            />
+          )}
+        </MetricGrid>
+      )}
     </Card>
   );
 }
