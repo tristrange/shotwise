@@ -253,15 +253,26 @@ function WedgeGroupCard({
             {group.aimed === 1 ? 'shot' : 'shots'} with proximity
           </p>
           <ul className="wedge-metrics">
-            {directions.map(
-              ({ label, metric }) =>
-                metric.n > 0 && (
-                  <li key={label}>
-                    {label} · {metric.left} left, {metric.straight} centred,{' '}
-                    {metric.right} right · {metric.n} of {group.aimed} measured
-                  </li>
-                ),
-            )}
+            {directions.map(({ label, metric }) => {
+              if (metric.n <= 0) return null;
+              const total = metric.left + metric.straight + metric.right;
+              const seg = (n: number) => `${(n / total) * 100}%`;
+              return (
+                <li key={label}>
+                  <span
+                    className="direction-bar"
+                    aria-hidden="true"
+                    style={{ width: 'min(140px, 32vw)', marginRight: 6 }}
+                  >
+                    <span className="seg left" style={{ width: seg(metric.left) }} />
+                    <span className="seg straight" style={{ width: seg(metric.straight) }} />
+                    <span className="seg right" style={{ width: seg(metric.right) }} />
+                  </span>
+                  {label} · {metric.left} left, {metric.straight} centred,{' '}
+                  {metric.right} right · {metric.n} of {group.aimed} measured
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

@@ -662,3 +662,104 @@
     white-space: normal; padding-inline: 6px;
   }
 }
+
+/* ---------- sessions & import (D10) ---------- */
+.import-panel > .ds-section-header { margin-bottom: var(--space-3); }
+.import-panel .file-button { margin-bottom: var(--space-3); }
+.logbook .session-list { display: grid; gap: var(--space-2); }
+.session-card {
+  border: 1px solid var(--border); border-radius: var(--radius-m);
+  background: var(--surface); overflow: hidden;
+}
+.session-card.active { border-color: var(--brand); }
+.session-card-main {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text); text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+.session-card-main:hover { background: var(--surface-2); }
+.session-card-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.session-card-id strong { font: 600 var(--text-sm)/1.2 var(--font-sans); font-variant-numeric: tabular-nums; }
+.session-card-id small { font: 400 var(--text-xs)/1.4 var(--font-sans); color: var(--text-3); }
+.session-card-shots {
+  flex: none; font: 600 var(--text-xs)/1 var(--font-sans); color: var(--brand);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.session-card-meta {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  padding: 0 var(--space-4) var(--space-2);
+}
+.session-card-summary { font: 400 var(--text-xs)/1.5 var(--font-sans); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.session-card-compare { margin-left: auto; width: 32px; height: 32px; }
+.session-card-more { border-top: 1px solid var(--border); }
+.session-card-more summary {
+  cursor: pointer; list-style: none; min-height: 36px;
+  display: flex; align-items: center; padding: 0 var(--space-4);
+  font: 500 var(--text-xs)/1.4 var(--font-sans); color: var(--text-2);
+}
+.session-card-more summary::-webkit-details-marker { display: none; }
+.session-card-facts {
+  margin: 0; padding: 0 var(--space-4) var(--space-3);
+  display: grid; gap: 4px;
+}
+.session-card-facts div { display: flex; gap: var(--space-2); font-size: var(--text-xs); }
+.session-card-facts dt { color: var(--text-3); min-width: 110px; flex: none; }
+.session-card-facts dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* ---------- session recap (D10) ---------- */
+.session-recap { display: grid; gap: var(--space-3); }
+.recap-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }
+.recap-heading p, .recap-metric p, .recap-highlights p { margin: 4px 0; }
+.recap-highlights, .recap-metrics { list-style: none; margin: 0; padding: 0; }
+.recap-highlights > li {
+  padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-m);
+  display: grid; gap: 4px; justify-items: start;
+  background: var(--surface);
+}
+.recap-highlights > li + li { margin-top: var(--space-2); }
+.recap-highlights strong { font-size: var(--text-sm); }
+.recap-club { border-top: 1px solid var(--border); }
+.recap-club > div > p { margin-top: var(--space-2); }
+.recap-club h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-sm); }
+.recap-metric { padding: var(--space-2) 0; border-bottom: 1px solid var(--border); display: grid; gap: 2px; justify-items: start; }
+.recap-metric:last-child { border-bottom: 0; }
+.recap-metric strong { font-size: var(--text-xs); color: var(--text); }
+.recap-metric p { font-size: var(--text-xs); color: var(--text-2); }
+.recap-metric a { display: inline-block; font-size: var(--text-xs); }
+.recap-samples { padding-inline-start: 20px; }
+.recap-samples li { margin-block: 4px; font-size: var(--text-xs); color: var(--text-2); }
+/* club participation: one compact share bar per club */
+.recap-club-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.recap-club-bars li { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: var(--space-2); }
+.recap-club-bars .club-badge { width: 28px; height: 28px; font-size: 11px; border-radius: var(--radius-s); }
+.recap-club-bar-track { height: 8px; border-radius: 4px; background: var(--ring-track); overflow: hidden; }
+.recap-club-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--data); }
+.recap-club-n { font: 600 var(--text-xs)/1 var(--font-sans); color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- session comparison (D10) ---------- */
+.compare-panel > .panel-heading { margin-bottom: var(--space-3); }
+.compare-controls { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.compare-selects { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: var(--space-3); flex: 1; min-width: min(100%, 320px); }
+@media (max-width: 700px) { .compare-selects { grid-template-columns: minmax(0, 1fr); } }
+.compare-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-2); margin: var(--space-3) 0; }
+.compare-side {
+  display: grid; gap: 2px; padding: var(--space-3);
+  border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.compare-side.ab-a { border-left-color: var(--data); }
+.compare-side.ab-b { border-left-color: var(--compare); }
+.compare-side p { margin: 0; overflow-wrap: anywhere; }
+.ab-chip {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  font: 600 11px/1 var(--font-sans); color: var(--bg); margin-bottom: 2px;
+}
+.ab-chip.a { background: var(--data); }
+.ab-chip.b { background: var(--compare); }
+.compare-chart-legend .legend-dot.a { background: var(--data); }
+.compare-chart-legend .legend-dot.b { background: var(--compare); }
+th.ab-a, .compare-club th.ab-a { color: var(--data); }
+th.ab-b, .compare-club th.ab-b { color: var(--compare); }
+.compare-club-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 0 var(--space-3); }
+.wedge-metrics li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

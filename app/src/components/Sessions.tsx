@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeftRight } from 'lucide-react';
 import { parseCsv, suggestDate, type CsvPreview } from '../domain/csv';
 import {
   BASES,
   dateSchema,
+  effectiveClub,
   idSchema,
+  isUnknownClub,
   type Basis,
   type Dataset,
   type Session,
+  type Shot,
 } from '../domain/model';
+import { metricStats, reviewCoverage } from '../domain/analytics';
+import { resolvedClub, resolveShots } from '../domain/assessment';
 import { sessionRecap } from '../domain/recap';
 import type { Repository } from '../data/contracts';
 import { resolvePracticeEvidence } from './PracticeInsights';
@@ -19,6 +25,7 @@ import {
   compareHref,
   parseCompareQuery,
 } from './CompareSessions';
+import { Badge, Button, Card, Disclosure, SectionHeader } from './ds';
 
 type Preview = {
   id: number;
@@ -57,6 +64,46 @@ export function Sessions({
     if (!compare && !sessionId) returnLink.current?.focus();
   }, [compare, sessionId]);
   const session = data.sessions.find((s) => s.id === sessionId);
+  // Compact per-session summaries for the logbook cards: shot/club counts, a
+  // median carry on the selected basis and review coverage — all from the
+  // shared domain functions, so the cards never disagree with the recap.
+  const sessionCards = useMemo(() => {
+    const resolved = resolveShots(data.shots, data.sessions, basis);
+    const bySession = new Map<string, Shot[]>();
+    for (const shot of data.shots) {
+      const list = bySession.get(shot.sessionId) ?? [];
+      list.push(shot);
+      bySession.set(shot.sessionId, list);
+    }
+    const carryKey = BASES[basis].carry;
+    return [...data.sessions]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((s) => {
+        const shots = bySession.get(s.id) ?? [];
+        const included = shots.filter(
+          (x) => x.review.exclusion.kind === 'included',
+        );
+        const clubs = [
+          ...new Set(
+            included
+              .map((x) => {
+                const r = resolved.get(x.id);
+                return r ? resolvedClub(r) : effectiveClub(x);
+              })
+              .filter((club) => !isUnknownClub(club)),
+          ),
+        ];
+        const coverage = reviewCoverage(shots, resolved);
+        return {
+          session: s,
+          recorded: shots.length,
+          included: included.length,
+          clubs,
+          median: metricStats(included, carryKey).median,
+          unassessed: coverage.total - coverage.assessed,
+        };
+      });
+  }, [data, basis]);
   const { reference: compareReference, comparison: compareComparison } = compare
     ? parseCompareQuery(evidenceQuery)
     : { reference: undefined, comparison: undefined };
@@ -155,17 +202,11 @@ export function Sessions({
       <div className="section-heading">
         <h1>Sessions & import</h1>
       </div>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Add shots</span>
-            <h2>Import CSV files</h2>
-          </div>
-        </div>
-        <p>
-          Choose one or more Inrange CSV exports. Dates are filled from
-          filenames when available; otherwise enter a session date.
-        </p>
+      <Card className="import-panel">
+        <SectionHeader
+          title="Import CSV files"
+          sub="Choose one or more Inrange CSV exports. Dates are filled from filenames when available; otherwise enter a session date."
+        />
         <label className="file-button">
           Choose CSV files
           <input
@@ -266,10 +307,7 @@ export function Sessions({
                   </button>
                 )}
                 {p.preview.warnings.length > 0 && (
-                  <details>
-                    <summary>
-                      View import warnings ({p.preview.warnings.length})
-                    </summary>
+                  <Disclosure summary={`View import warnings (${p.preview.warnings.length})`}>
                     <ul>
                       {p.preview.warnings.map((w, i) => (
                         <li key={i}>
@@ -277,10 +315,9 @@ export function Sessions({
                         </li>
                       ))}
                     </ul>
-                  </details>
+                  </Disclosure>
                 )}
-                <details>
-                  <summary>Inspect preview rows</summary>
+                <Disclosure summary="Inspect preview rows">
                   <div className="table-wrap">
                     <table>
                       <thead>
@@ -303,7 +340,7 @@ export function Sessions({
                       </tbody>
                     </table>
                   </div>
-                </details>
+                </Disclosure>
               </>
             )}
             {p.result && (
@@ -331,60 +368,97 @@ export function Sessions({
           </div>
         ))}
         {previews.length > 0 && (
-          <button disabled={busy} onClick={() => void importAll()}>
+          <Button disabled={busy} onClick={() => void importAll()}>
             Import valid files
-          </button>
+          </Button>
         )}
-      </section>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Logbook</span>
-            <h2>Sessions</h2>
-          </div>
-          <span className="pill">{data.sessions.length} total</span>
-        </div>
-        <div className="actions">
-          <a className="text-button" href={compareHref()}>
-            Compare sessions
-          </a>
-        </div>
+      </Card>
+      <Card className="logbook">
+        <SectionHeader
+          title="Sessions"
+          sub={`${data.sessions.length} total`}
+          aside={
+            <a className="text-button" href={compareHref()}>
+              Compare sessions
+            </a>
+          }
+        />
         {data.sessions.length === 0 ? (
           <p>No sessions yet. Import a CSV above to begin.</p>
         ) : (
-          <div className="session-list">
-            {[...data.sessions]
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .map((s) => (
-                <a
-                  className={`session-row ${sessionId === s.id ? 'active' : ''}`}
+          <div className="session-list" role="list" aria-label="Session history">
+            {sessionCards.map((card) => {
+              const { session: s } = card;
+              const active = sessionId === s.id;
+              return (
+                <article
+                  className={`session-card${active ? ' active' : ''}`}
+                  role="listitem"
                   key={s.id}
-                  href={sessionHref(s.id)}
-                  aria-current={sessionId === s.id ? 'true' : undefined}
-                  onClick={(e) => {
-                    returnLink.current = e.currentTarget;
-                  }}
                 >
-                  <span>
-                    <strong>
-                      {s.date}
-                      {s.time && ` · ${s.time.slice(0, 5)}`}
-                    </strong>
-                    <small>
-                      {s.venue && `${s.venue} · `}
-                      {s.filename}
-                      {s.archived && ' · Archived'}
-                    </small>
-                  </span>
-                  <span>
-                    {data.shots.filter((x) => x.sessionId === s.id).length}{' '}
-                    shots →
-                  </span>
-                </a>
-              ))}
+                  <a
+                    className="session-card-main"
+                    href={sessionHref(s.id)}
+                    aria-current={active ? 'true' : undefined}
+                    onClick={(e) => {
+                      returnLink.current = e.currentTarget;
+                    }}
+                  >
+                    <span className="session-card-id">
+                      <strong>
+                        {s.date}
+                        {s.time && ` · ${s.time.slice(0, 5)}`}
+                      </strong>
+                      <small>
+                        {s.venue && `${s.venue} · `}
+                        {s.filename}
+                      </small>
+                    </span>
+                    <span className="session-card-shots">
+                      {card.recorded} shots →
+                    </span>
+                  </a>
+                  <div className="session-card-meta">
+                    <span className="session-card-summary">
+                      {card.clubs.length} {card.clubs.length === 1 ? 'club' : 'clubs'}
+                      {card.median !== null && (
+                        <> · median carry {card.median.toFixed(0)} m</>
+                      )}
+                      {card.included !== card.recorded && (
+                        <> · {card.included} included</>
+                      )}
+                    </span>
+                    {s.archived && <Badge tone="warn">Archived</Badge>}
+                    {card.unassessed > 0 && (
+                      <span className="pill" title="Shots still without a contact assessment; analytics already include the automatic assessments">
+                        {card.unassessed} unassessed
+                      </span>
+                    )}
+                    <a
+                      className="ds-icon-button small session-card-compare"
+                      href={compareHref(s.id)}
+                      aria-label={`Compare ${s.date}${s.time ? ` ${s.time.slice(0, 5)}` : ''}`}
+                      title="Compare this session with another"
+                    >
+                      <ArrowLeftRight size={15} aria-hidden="true" />
+                    </a>
+                  </div>
+                  <details className="session-card-more">
+                    <summary>File details</summary>
+                    <dl className="session-card-facts">
+                      <div><dt>File</dt><dd>{s.filename}</dd></div>
+                      <div><dt>Time</dt><dd>{s.time ?? 'Unknown'}</dd></div>
+                      <div><dt>Recorded / included</dt><dd>{card.recorded} / {card.included}</dd></div>
+                      <div><dt>Clubs</dt><dd>{card.clubs.join(', ') || '—'}</dd></div>
+                      {s.notes && <div><dt>Notes</dt><dd>{s.notes}</dd></div>}
+                    </dl>
+                  </details>
+                </article>
+              );
+            })}
           </div>
         )}
-      </section>
+      </Card>
       {sessionId && !session && data.sessions.length > 0 && (
         <p className="notice" role="status">
           This session is unavailable. Choose a session from the logbook.
@@ -494,7 +568,7 @@ function SessionDetail({
     setBusy(false);
   }
   return (
-    <section className="panel session-detail" aria-labelledby={headingId}>
+    <section className="ds-card session-detail" aria-labelledby={headingId}>
       <h2 id={headingId} tabIndex={-1} ref={detailHeading}>
         Session details
       </h2>

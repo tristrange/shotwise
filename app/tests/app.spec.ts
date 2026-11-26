@@ -1064,7 +1064,7 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(summaryMetric('First session')).toContainText('105');
   await expect(summaryMetric('Latest session')).toContainText('117.5');
   await expect(summaryMetric('Best session')).toContainText('117.5');
-  await expect(trend).toContainText('Tap a point (or hover) to inspect that session');
+  await expect(trend).toContainText('Tap a point (or pick a session above) to inspect it');
   // Hovering the chart shows the concise tooltip with date, value and sample.
   await chart.hover();
   const tooltip = page.locator('.ds-chart-tooltip');
@@ -1176,7 +1176,8 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(1)).toContainText('123 m');
   await expect(rows.nth(1)).not.toContainText('bands overlap');
-  await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
+  // The P10–P90 band needs 10 shots; the 1-shot 9i row says so explicitly.
+  await expect(rows.nth(2)).toContainText('P10–P90 needs 10 shots');
   // Tapping a club's band selects it and surfaces carry, spread, potential
   // and the adjacent gap in the detail panel below the shared-scale chart.
   await rows.nth(1).getByRole('button', { name: /Median 123 m/ }).click();

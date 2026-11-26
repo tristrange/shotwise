@@ -230,42 +230,20 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .actions, .range-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
 .range-controls label { max-width: 180px; }
-.session-list { display: grid; }
-.session-row { background: transparent; color: var(--ink); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; text-decoration: none; padding: 16px 4px; }
-.session-row:hover, .session-row.active { background: var(--panel); color: var(--ink); }
-.session-row span:first-child { display: grid; gap: 5px; overflow-wrap: anywhere; }
-.session-row span:last-child { flex-shrink: 0; }
-.session-row small { font-weight: 400; color: var(--mute); }
+/* Session list/cards, recap and comparison styles live in styles/ds.css (D10). */
 .session-detail, .session-filename { overflow-wrap: anywhere; }
 .session-detail h2[tabindex], .session-evidence h3[tabindex] { scroll-margin-top: 64px; }
-.session-recap { border-block: 1px solid var(--line); padding: 20px 0; margin: 24px 0; }
-.recap-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; margin-bottom: 16px; }
-.recap-heading p, .recap-metric p, .recap-highlights p { margin: 4px 0; }
-.recap-highlights, .recap-metrics { list-style: none; margin: 0; padding: 0; }
-.recap-highlights > li, .recap-metric { padding: 12px 0; border-bottom: 1px solid var(--line); }
-.recap-club { padding-top: 12px; border-top: 1px solid var(--line); }
-.recap-club > p { margin-top: 12px; }
-.recap-club h4 { margin: 24px 0 8px; }
-.recap-metric a { display: inline-block; }
-.recap-samples { padding-inline-start: 20px; }
-.recap-samples li { margin-block: 4px; }
 .import-result { margin-bottom: 0; }
 .import-result p { margin-bottom: 4px; }
 .preview h3 { overflow-wrap: anywhere; }
 
 /* ---------- session comparison ---------- */
 .compare-panel h2[tabindex] { scroll-margin-top: 64px; outline: none; }
-.compare-controls .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.compare-sides p { margin: 4px 0; overflow-wrap: anywhere; }
-.compare-club { padding-top: 12px; border-top: 1px solid var(--line); }
 .compare-club summary .pill { margin-left: 8px; }
-.compare-club table caption { text-align: left; font: 400 12px/1.5 var(--mono); color: var(--mute); padding-bottom: 8px; }
-.compare-club .table-wrap { margin: 16px 0; }
+.compare-club table caption { text-align: left; font-size: var(--text-xs); color: var(--text-3); padding-bottom: 8px; }
+.compare-club .table-wrap { margin: var(--space-4) 0; }
 .compare-club .table-wrap + .table-wrap { margin-top: 0; }
 .compare-club th .pill { margin-left: 8px; }
-@media (max-width: 1000px) {
-  .compare-controls .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 700px) {
   .compare-controls .form-grid { grid-template-columns: 1fr; }
   .compare-club .table-wrap { margin: 12px 0; }

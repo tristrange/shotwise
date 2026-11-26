@@ -1,6 +1,7 @@
 import type { Basis, MetricKey, Session } from '../domain/model';
 import type { sessionRecap } from '../domain/recap';
 import { BasisButton } from './AnalysisControls';
+import { Disclosure, HelpPopover, Metric, MetricGrid } from './ds';
 
 type Recap = NonNullable<ReturnType<typeof sessionRecap>>;
 type ClubRecap = Recap['clubs'][number];
@@ -342,6 +343,7 @@ export function SessionRecap({
   recap: Recap;
   onBasisChange: (basis: Basis) => void;
 }) {
+  const maxIncluded = Math.max(...recap.clubs.map((c) => c.included), 1);
   return (
     <section className="session-recap" aria-labelledby="session-recap">
       <div className="recap-heading">
@@ -358,28 +360,112 @@ export function SessionRecap({
         <strong>
           {recap.recorded} recorded · {recap.included} included shots
         </strong>
+        {recap.clubs.length > 0 && (
+          <>
+            {' '}· known clubs {recap.clubs.map(({ club }) => club).join(', ')}
+          </>
+        )}
       </p>
       {recap.clubs.length > 0 && (
-        <p>
-          Known clubs with included shots ·{' '}
-          {recap.clubs.map(({ club }) => club).join(', ')}
-        </p>
+        <ul
+          className="recap-club-bars"
+          aria-label="Included shots per club in this session"
+        >
+          {recap.clubs.map(({ club, included }) => (
+            <li key={club}>
+              <span className="club-badge" aria-hidden="true">
+                {club.toUpperCase()}
+              </span>
+              <span className="recap-club-bar-track" aria-hidden="true">
+                <span
+                  className="recap-club-bar-fill"
+                  style={{ width: `${(included / maxIncluded) * 100}%` }}
+                />
+              </span>
+              <span className="recap-club-n">{included}</span>
+            </li>
+          ))}
+        </ul>
       )}
       <Findings recap={recap} />
       {recap.clubs.map((club) => {
         const { contact } = club.reliability;
         const unknown = club.potential.broader.current.unknownIntentShare;
+        const preferred = club.potential[club.potential.preferred];
+        const carryDelta =
+          preferred.current.value !== null && preferred.baseline.value !== null
+            ? preferred.current.value - preferred.baseline.value
+            : null;
         return (
-          <details className="recap-club" key={club.club}>
-            <summary>
-              {club.club} metric details · {club.included} included shots
-            </summary>
-            <p>Baseline values give each session equal weight.</p>
+          <Disclosure
+            className="recap-club"
+            key={club.club}
+            summary={`${club.club} metric details · ${club.included} included shots`}
+          >
+            <p className="context">
+              Baseline values give each session equal weight.
+              <HelpPopover label="How the baseline comparison works">
+                <p>
+                  The baseline is the median of the up-to-3 newest earlier
+                  sessions with enough evidence on the same venue and basis —
+                  each session weighted equally. Comparisons are withheld when
+                  the sample is too small, the chronology is unclear, or the
+                  venue, shot mix or measurement coverage changed materially.
+                </p>
+                <p>
+                  Missing measurements stay missing — never zero. A longer carry
+                  is not automatically a better session.
+                </p>
+              </HelpPopover>
+            </p>
+            <MetricGrid>
+              <Metric
+                small
+                label={`Carry vs baseline · ${club.potential.preferred}`}
+                value={valueText(preferred.current.value, 'm')}
+                delta={
+                  carryDelta === null
+                    ? `${preferred.baseline.sessions.length} baseline ${preferred.baseline.sessions.length === 1 ? 'session' : 'sessions'}`
+                    : `${carryDelta >= 0 ? '+' : '−'}${decimal.format(Math.abs(carryDelta))} m vs ${valueText(preferred.baseline.value, 'm')}`
+                }
+                deltaTone="neutral"
+              />
+              <Metric
+                small
+                label="Confirmed mishits · reviewed full swings"
+                value={`${contact.mishits} of ${contact.reviewed}`}
+                delta={
+                  contact.rate !== null
+                    ? percent.format(contact.rate)
+                    : 'rate unavailable'
+                }
+              />
+              <Metric
+                small
+                label="Contact reviewed"
+                value={`${contact.reviewed} of ${contact.full}`}
+                delta={
+                  contact.reviewedShare !== null
+                    ? percent.format(contact.reviewedShare)
+                    : undefined
+                }
+              />
+              <Metric
+                small
+                label="Assessed (manual or automatic)"
+                value={`${contact.assessed} of ${contact.full}`}
+                delta={
+                  contact.automatic > 0
+                    ? `${contact.automatic} automatic`
+                    : 'review is optional'
+                }
+              />
+            </MetricGrid>
             {metricGroups(club).map(({ label, metrics }) => (
               <section key={label}>
                 <h4>{label}</h4>
                 {label === 'Potential' && (
-                  <p>
+                  <p className="context">
                     The broader estimate includes unreviewed non-wedge swings
                     and leaves out reviewed mishits. Wedges require full intent.
                     {unknown !== null &&
@@ -387,18 +473,8 @@ export function SessionRecap({
                   </p>
                 )}
                 {label === 'Reliability' && (
-                  <p>
-                    Includes eligible shots with mishits and unusual-shot flags.{' '}
-                    {contact.mishits} confirmed mishits from {contact.reviewed}{' '}
-                    contact-reviewed full swings
-                    {contact.rate !== null
-                      ? ` (${percent.format(contact.rate)})`
-                      : ' (rate unavailable)'}
-                    . Contact reviewed for {contact.reviewed} of {contact.full}{' '}
-                    full swings
-                    {contact.reviewedShare !== null &&
-                      ` (${percent.format(contact.reviewedShare)})`}
-                    .
+                  <p className="context">
+                    Includes eligible shots with mishits and unusual-shot flags.
                   </p>
                 )}
                 <ul className="recap-metrics">
@@ -412,7 +488,7 @@ export function SessionRecap({
                 </ul>
               </section>
             ))}
-          </details>
+          </Disclosure>
         );
       })}
     </section>
