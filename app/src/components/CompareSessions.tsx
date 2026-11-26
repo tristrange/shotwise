@@ -618,6 +618,19 @@ export function CompareSessions({
     referenceId && comparisonId
       ? compareSessions(data, referenceId, comparisonId, basis, intent)
       : null;
+  // A saved URL can name an archived (or missing) visit; the selectors
+  // deliberately exclude those, so surface the unavailable state immediately
+  // instead of waiting for a second selection.
+  const namedReference = referenceId
+    ? data.sessions.find((session) => session.id === referenceId)
+    : undefined;
+  const namedComparison = comparisonId
+    ? data.sessions.find((session) => session.id === comparisonId)
+    : undefined;
+  const referenceUnavailable =
+    !!referenceId && (!namedReference || namedReference.archived);
+  const comparisonUnavailable =
+    !!comparisonId && (!namedComparison || namedComparison.archived);
   const bothAvailable =
     comparison !== null &&
     !comparison.duplicate &&
@@ -718,7 +731,15 @@ export function CompareSessions({
           </Button>
         </div>
       </div>
-      {!referenceId || !comparisonId ? (
+      {referenceUnavailable || comparisonUnavailable ? (
+        <p className="notice" role="status">
+          {referenceUnavailable && comparisonUnavailable
+            ? 'Both selected sessions are archived or unavailable. Choose other sessions from the selectors.'
+            : referenceUnavailable
+              ? 'The reference session is archived or unavailable. Choose another reference session.'
+              : 'The comparison session is archived or unavailable. Choose another comparison session.'}
+        </p>
+      ) : !referenceId || !comparisonId ? (
         <p className="notice" role="status">
           Choose a reference and a comparison session to see their shared clubs.
         </p>

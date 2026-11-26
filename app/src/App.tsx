@@ -90,22 +90,24 @@ const moreScreens: NavItem[] = [
   { label: 'Shot review', hash: 'review', page: 'review', icon: ClipboardCheck, key: 'review' },
 ];
 /** Desktop sidebar: the same logical grouping as the five mobile tabs. */
-const sidebarGroups: { label: string | null; items: NavItem[] }[] = [
+const sidebarGroups: { id: string; label: string | null; items: NavItem[] }[] = [
   {
+    id: 'primary-top',
     label: null,
     items: [
       { label: 'Overview', hash: 'overview', page: 'overview', icon: BarChart3, key: 'overview' },
     ],
   },
-  { label: 'Clubs', items: clubScreens },
+  { id: 'clubs', label: 'Clubs', items: clubScreens },
   {
+    id: 'primary-bottom',
     label: null,
     items: [
       { label: 'Progress', hash: 'progress', page: 'progress', icon: TrendingUp, key: 'progress' },
       { label: 'Sessions & import', hash: 'sessions', page: 'sessions', icon: FolderOpen, key: 'sessions' },
     ],
   },
-  { label: 'More', items: moreScreens },
+  { id: 'more', label: 'More', items: moreScreens },
 ];
 type Tab = 'home' | 'clubs' | 'progress' | 'sessions' | 'more';
 /** Five primary mobile tabs; each opens its primary content directly. */
@@ -181,6 +183,16 @@ export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const manageBagHeading = useRef<HTMLHeadingElement>(null);
   const pendingBagFocus = useRef(false);
+  // Counts deliberate in-app navigations (sidebar, sub-nav and primary tab
+  // clicks). Each hash change they cause starts the destination at the top;
+  // history Back/Forward and evidence deep links never set it, so the browser
+  // and the evidence screens keep control of the scroll position.
+  const pendingNavScroll = useRef(0);
+  const navigate = useCallback((hash: string) => {
+    if (window.location.hash === `#${hash}`) return;
+    pendingNavScroll.current += 1;
+    window.location.hash = hash;
+  }, []);
   const [analysisSettings, setAnalysisSettings] = useState(
     initialAnalysisSettings,
   );
@@ -257,6 +269,25 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+  // Deliberate nav clicks (see `navigate`) start the destination at the top.
+  // Runs after the route commits (and once more on the next frame) because
+  // WebKit re-applies its own scroll adjustment after the hashchange event.
+  useEffect(() => {
+    if (pendingNavScroll.current <= 0) return;
+    pendingNavScroll.current = 0;
+    window.scrollTo(0, 0);
+    const raf = requestAnimationFrame(() => window.scrollTo(0, 0));
+    return () => cancelAnimationFrame(raf);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the route fields are an intentional re-run trigger, not values read in the effect.
+  }, [page, sessionId, compare, club, shapeView, evidence]);
+  // Bring the active sub-nav entry (e.g. a direct #shape/explorer deep link)
+  // into view inside the horizontally scrollable strip on phones.
+  useEffect(() => {
+    document
+      .querySelector('.sub-nav button[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- page/shapeView are an intentional re-run trigger, not values read in the effect.
+  }, [page, shapeView]);
   useEffect(() => {
     if (page === 'settings' && pendingBagFocus.current) {
       pendingBagFocus.current = false;
@@ -310,7 +341,7 @@ export default function App() {
         <Brand />
         <nav aria-label="Main navigation">
           {sidebarGroups.map((group) => (
-            <Fragment key={group.label ?? 'primary'}>
+            <Fragment key={group.id}>
               {group.label && (
                 <span className="nav-group-label">{group.label}</span>
               )}
@@ -321,9 +352,7 @@ export default function App() {
                     key={hash}
                     className={active ? 'active' : ''}
                     aria-current={active ? 'page' : undefined}
-                    onClick={() => {
-                      window.location.hash = hash;
-                    }}
+                    onClick={() => navigate(hash)}
                   >
                     <Icon size={18} />
                     {label}
@@ -375,9 +404,7 @@ export default function App() {
                   aria-current={
                     secondaryKey(page, shapeView) === key ? 'page' : undefined
                   }
-                  onClick={() => {
-                    window.location.hash = hash;
-                  }}
+                  onClick={() => navigate(hash)}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {shortLabel ?? label}
@@ -396,7 +423,7 @@ export default function App() {
                 // deep link such as #clubs/7i or #shape/explorer) instead of
                 // resetting to club profiles.
                 if (id === 'clubs' && tabForPage(page) === 'clubs') return;
-                window.location.hash = target;
+                navigate(target);
               }}
             >
               <Icon size={20} />

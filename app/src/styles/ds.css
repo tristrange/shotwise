@@ -1028,6 +1028,40 @@
   flex-wrap: wrap;
   justify-content: flex-start;
 }
+/* Narrow phones: promote the title's children to grid items (display:
+   contents) and move the scope/basis context to its own full-width wrapping
+   row, so the fixed rating-basis label under the ring can no longer squeeze
+   the context column to a sliver. The display basis stays in the context row
+   and the rating basis stays under the ring — both remain identifiable. */
+@media (max-width: 480px) {
+  .club-profile-title {
+    display: contents;
+  }
+  .club-profile-head > .club-badge {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .club-profile-title h3 {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .club-profile-ring {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .club-profile-title .context {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .club-profile-badges {
+    grid-row: 3;
+  }
+  .club-profile-ring-basis {
+    white-space: normal;
+    max-width: 92px;
+    text-align: center;
+  }
+}
 .profile-extras {
   display: flex;
   align-items: center;

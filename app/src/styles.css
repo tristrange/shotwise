@@ -728,6 +728,24 @@ hr {
     padding-bottom: calc(128px + env(safe-area-inset-bottom));
   }
 }
+/* Very narrow phones: shrink the pills so all four Clubs entries (including
+   Explorer) fit the strip instead of hiding the last one offscreen. The active
+   entry is additionally scrolled into view from App. */
+@media (max-width: 480px) {
+  .sub-nav {
+    gap: 4px;
+    padding: 8px 6px;
+  }
+  .sub-nav button {
+    gap: 4px;
+    padding: 9px 8px;
+    min-height: 36px;
+    font-size: 11px;
+  }
+  .sub-nav button svg {
+    display: none;
+  }
+}
 @media (max-width: 700px) {
   .main-content {
     padding-left: calc(16px + env(safe-area-inset-left));
