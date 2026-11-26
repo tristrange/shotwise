@@ -32,7 +32,10 @@ function flagTone(flag: GappingRow['flag']): 'warn' | 'neg' | 'brand' | null {
  */
 export function AdjacentGaps({ rows }: { rows: readonly GappingRow[] }) {
   const pairs = gapPairs(rows);
-  const maxAbs = Math.max(...pairs.map((p) => Math.abs(p.gap)), 1);
+  // Scale bars to the largest absolute gap; a missing gap (null) draws no bar
+  // and a true zero draws none either — only the signed value tells them apart.
+  const measured = pairs.flatMap((p) => (p.gap === null ? [] : [Math.abs(p.gap)]));
+  const maxAbs = Math.max(...measured, 1);
   return (
     <Card className="adjacent-gaps">
       <SectionHeader
@@ -72,29 +75,36 @@ export function AdjacentGaps({ rows }: { rows: readonly GappingRow[] }) {
         <ul className="gap-pair-list" aria-label="Adjacent club gaps">
           {pairs.map((pair) => {
             const text = flagText(pair.flag);
+            const width =
+              pair.gap === null || pair.gap === 0
+                ? 0
+                : (Math.abs(pair.gap) / maxAbs) * 100;
             return (
               <li key={`${pair.upper}->${pair.lower}`}>
                 <span className="gap-pair-clubs">
                   {pair.upper} → {pair.lower}
                 </span>
                 <span className="gap-pair-track" aria-hidden="true">
-                  <span
-                    className={`gap-pair-fill${pair.flag ? ` ${pair.flag}` : ''}`}
-                    style={{
-                      width: `${Math.max(6, (Math.abs(pair.gap) / maxAbs) * 100)}%`,
-                    }}
-                  />
+                  {width > 0 && (
+                    <span
+                      className={`gap-pair-fill${pair.flag ? ` ${pair.flag}` : ''}`}
+                      style={{ width: `${width}%` }}
+                    />
+                  )}
                 </span>
                 <span className="gap-pair-value">
-                  {pair.gap >= 0 ? '+' : '−'}
-                  {decimal.format(Math.abs(pair.gap))} m
+                  {pair.gap === null
+                    ? '—'
+                    : `${pair.gap >= 0 ? '+' : '−'}${decimal.format(Math.abs(pair.gap))} m`}
                 </span>
-                {text && (
-                  <Badge tone={flagTone(pair.flag) ?? 'neutral'}>{text}</Badge>
-                )}
-                {!pair.bothReliable && (
-                  <span className="pill">Sample limited</span>
-                )}
+                {/* Fixed-width flag slot keeps every track the same width,
+                    whether or not this row carries a badge. */}
+                <span className="gap-pair-flag">
+                  {text && (
+                    <Badge tone={flagTone(pair.flag) ?? 'neutral'}>{text}</Badge>
+                  )}
+                  {!pair.bothReliable && <span className="pill">Sample limited</span>}
+                </span>
               </li>
             );
           })}

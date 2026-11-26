@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   idSchema,
   type Basis,
@@ -23,6 +24,14 @@ import {
   type LabelEquipmentSummary,
 } from '../domain/equipment';
 import { BasisButton } from './AnalysisControls';
+import { Button, HelpPopover, Select } from './ds';
+import {
+  axisTick,
+  ChartContainer,
+  ChartSummary,
+  ChartTooltipContent,
+  usePrefersReducedMotion,
+} from './charts';
 
 /** Hash route for the comparison view; reload and Back keep the pair. */
 export function compareHref(reference?: string, comparison?: string) {
@@ -105,20 +114,127 @@ function shareText(side: DirectionComparison['reference'], key: keyof Shares) {
 
 function SideSummary({
   label,
+  chip,
   side,
   intent,
 }: {
   label: string;
+  chip: 'A' | 'B';
   side: SessionComparison['reference'];
   intent: CompareIntent;
 }) {
   return (
-    <p>
-      <strong>{label}</strong>
-      {side.session ? ` · ${sessionOptionLabel(side.session)}` : ''} ·{' '}
-      {side.recorded} recorded · {side.included} included
-      {intent !== 'all' && ` · ${side.afterIntent} after intent filter`}
-    </p>
+    <div className={`compare-side ab-${chip === 'A' ? 'a' : 'b'}`}>
+      <span className={`ab-chip ${chip === 'A' ? 'a' : 'b'}`} aria-hidden="true">
+        {chip}
+      </span>
+      <p>
+        <strong>{label}</strong>
+        {side.session ? ` · ${sessionOptionLabel(side.session)}` : ''} ·{' '}
+        {side.recorded} recorded · {side.included} included
+        {intent !== 'all' && ` · ${side.afterIntent} after intent filter`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Shared-scale carry comparison: one pair of A/B bars per common club on a
+ * single zero-based distance axis. Tapping a bar (or a club chip) opens that
+ * club's detail accordion below.
+ */
+function CarryCompareChart({
+  clubs,
+  onSelectClub,
+}: {
+  clubs: SessionComparison['common'];
+  onSelectClub: (club: string) => void;
+}) {
+  const reduced = usePrefersReducedMotion();
+  const data = useMemo(
+    () =>
+      clubs.map((club) => ({
+        club: club.club,
+        reference: club.reference.carry.median,
+        comparison: club.comparison.carry.median,
+        detail: `${club.reference.included} / ${club.comparison.included} included shots · ${club.reference.carry.n} / ${club.comparison.carry.n} measured`,
+      })),
+    [clubs],
+  );
+  const max = Math.max(
+    ...data.flatMap((d) => [d.reference ?? 0, d.comparison ?? 0]),
+    10,
+  );
+  const xMax = Math.ceil(max / 10) * 10;
+  const pick = (entry: unknown) => {
+    const club = (entry as { payload?: { club?: string } })?.payload?.club;
+    if (club) onSelectClub(String(club));
+  };
+  return (
+    <>
+      <ChartSummary label="Median carry per club, reference vs comparison">
+        {data
+          .map(
+            (d) =>
+              `${d.club}: reference ${d.reference === null ? '—' : `${decimal.format(d.reference)} m`}, comparison ${d.comparison === null ? '—' : `${decimal.format(d.comparison)} m`}`,
+          )
+          .join('. ')}
+        .
+      </ChartSummary>
+      <ChartContainer
+        label="Median carry by club: reference (A) vs comparison (B)"
+        height={Math.max(160, data.length * 48 + 28)}
+      >
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
+        >
+          <CartesianGrid horizontal={false} />
+          <XAxis
+            type="number"
+            domain={[0, xMax]}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => String(v)}
+          />
+          <YAxis
+            type="category"
+            dataKey="club"
+            tick={axisTick}
+            width={48}
+            tickLine={false}
+            axisLine={false}
+          />
+          <Tooltip
+            content={<ChartTooltipContent unit="m" />}
+            cursor={{ fill: 'var(--surface-2)' }}
+            isAnimationActive={!reduced}
+          />
+          <Bar
+            dataKey="reference"
+            name="Reference (A)"
+            fill="var(--data)"
+            radius={[0, 6, 6, 0]}
+            isAnimationActive={!reduced}
+            onClick={pick}
+          />
+          <Bar
+            dataKey="comparison"
+            name="Comparison (B)"
+            fill="var(--compare)"
+            radius={[0, 6, 6, 0]}
+            isAnimationActive={!reduced}
+            onClick={pick}
+          />
+        </BarChart>
+      </ChartContainer>
+      <p className="chart-legend muted compare-chart-legend" aria-hidden="true">
+        <span className="legend-dot a" /> Reference (A)
+        <span className="legend-dot b" /> Comparison (B) · shared 0–{xMax} m scale
+      </p>
+    </>
   );
 }
 
@@ -222,7 +338,11 @@ function ClubDetails({
   } = club;
   const reviewThin = review.reference.thin || review.comparison.thin;
   return (
-    <details className="recap-club compare-club" name="compare-clubs">
+    <details
+      className="recap-club compare-club"
+      name="compare-clubs"
+      id={`compare-club-${club.club}`}
+    >
       <summary>
         <strong>{club.club}</strong> · {metres(reference.carry.median)} /{' '}
         {metres(comparison.carry.median)} · {reference.included} /{' '}
@@ -238,8 +358,8 @@ function ClubDetails({
           <thead>
             <tr>
               <th>Carry</th>
-              <th>Reference</th>
-              <th>Comparison</th>
+              <th className="ab-a">Reference (A)</th>
+              <th className="ab-b">Comparison (B)</th>
               <th>Difference</th>
             </tr>
           </thead>
@@ -341,8 +461,8 @@ function ClubDetails({
           <thead>
             <tr>
               <th>Flight</th>
-              <th>Reference</th>
-              <th>Comparison</th>
+              <th className="ab-a">Reference (A)</th>
+              <th className="ab-b">Comparison (B)</th>
               <th>Difference</th>
             </tr>
           </thead>
@@ -367,8 +487,8 @@ function ClubDetails({
           <thead>
             <tr>
               <th>Direction</th>
-              <th>Reference</th>
-              <th>Comparison</th>
+              <th className="ab-a">Reference (A)</th>
+              <th className="ab-b">Comparison (B)</th>
               <th>Difference</th>
             </tr>
           </thead>
@@ -503,8 +623,20 @@ export function CompareSessions({
     !comparison.duplicate &&
     comparison.reference.available &&
     comparison.comparison.available;
+  // Open (and scroll to) one club's detail accordion from a chart bar or chip.
+  const openClub = (club: string) => {
+    const el = document.getElementById(`compare-club-${club}`);
+    if (!el) return;
+    if (!(el as HTMLDetailsElement).open) {
+      (el.querySelector('summary') as HTMLElement | null)?.click();
+    }
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
   return (
-    <section className="panel compare-panel" aria-labelledby="compare-heading">
+    <section
+      className="ds-card compare-panel"
+      aria-labelledby="compare-heading"
+    >
       <div className="panel-heading">
         <div>
           <h2 id="compare-heading" tabIndex={-1} ref={headingRef}>
@@ -516,70 +648,74 @@ export function CompareSessions({
             Back to logbook
           </a>
           <BasisButton basis={basis} onChange={onBasisChange} />
+          <HelpPopover label="How this comparison works">
+            <p>
+              Both sessions use their complete non-archived included shots on the
+              same measurement basis and intent filter. Only clubs present in
+              both are compared; “Only in reference/comparison” lists the rest.
+            </p>
+            <p>
+              Differences are comparison minus reference. Direction and review
+              differences are percentage points (pp); relative changes are
+              percentages and need a positive reference with at least{' '}
+              {MIN_PCT_MEASURED} measured shots per side. A longer carry is not
+              automatically better — venue, shot-mix and coverage differences
+              are flagged above the chart.
+            </p>
+          </HelpPopover>
         </div>
       </div>
-      <p>Pick two sessions to compare their included shots club by club.</p>
+      <p className="context">
+        Pick two sessions to compare their included shots club by club — A is
+        the reference, B the comparison.
+      </p>
       <div className="compare-controls">
-        <div className="form-grid">
-          <label>
-            Reference session
-            <select
-              value={referenceId ?? ''}
-              onChange={(e) =>
-                onSelect(e.target.value || undefined, comparisonId)
-              }
-            >
-              <option value="">Choose a session</option>
-              {options.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {sessionOptionLabel(session)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Comparison session
-            <select
-              value={comparisonId ?? ''}
-              onChange={(e) =>
-                onSelect(referenceId, e.target.value || undefined)
-              }
-            >
-              <option value="">Choose a session</option>
-              {options.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {sessionOptionLabel(session)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Shot intent
-            <select
-              value={intent}
-              onChange={(e) => {
-                const next = COMPARE_INTENTS.find(
-                  (value) => value === e.currentTarget.value,
-                );
-                if (next) setIntent(next);
-              }}
-            >
-              {COMPARE_INTENTS.map((value) => (
-                <option key={value} value={value}>
-                  {INTENT_LABELS[value]}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="compare-selects">
+          <Select
+            label="Reference session"
+            value={referenceId ?? ''}
+            onChange={(value) => onSelect(value || undefined, comparisonId)}
+            options={[
+              { value: '', label: 'Choose a session' },
+              ...options.map((session) => ({
+                value: session.id,
+                label: sessionOptionLabel(session),
+              })),
+            ]}
+          />
+          <Select
+            label="Comparison session"
+            value={comparisonId ?? ''}
+            onChange={(value) => onSelect(referenceId, value || undefined)}
+            options={[
+              { value: '', label: 'Choose a session' },
+              ...options.map((session) => ({
+                value: session.id,
+                label: sessionOptionLabel(session),
+              })),
+            ]}
+          />
+          <Select
+            label="Shot intent"
+            value={intent}
+            onChange={(value) => {
+              const next = COMPARE_INTENTS.find((v) => v === value);
+              if (next) setIntent(next);
+            }}
+            options={COMPARE_INTENTS.map((value) => ({
+              value,
+              label: INTENT_LABELS[value],
+            }))}
+          />
         </div>
-        <div className="actions">
-          <button
-            className="secondary"
+        <div className="actions" style={{ margin: 0 }}>
+          <Button
+            variant="secondary"
             disabled={!referenceId || !comparisonId}
             onClick={() => onSelect(comparisonId, referenceId)}
           >
             Swap sessions
-          </button>
+          </Button>
         </div>
       </div>
       {!referenceId || !comparisonId ? (
@@ -595,11 +731,13 @@ export function CompareSessions({
           <div className="compare-sides">
             <SideSummary
               label="Reference"
+              chip="A"
               side={comparison.reference}
               intent={intent}
             />
             <SideSummary
               label="Comparison"
+              chip="B"
               side={comparison.comparison}
               intent={intent}
             />
@@ -653,9 +791,32 @@ export function CompareSessions({
             </p>
           ) : (
             <>
+              <CarryCompareChart
+                clubs={comparison.common}
+                onSelectClub={openClub}
+              />
+              <div
+                className="compare-club-chips"
+                role="group"
+                aria-label="Select a club"
+              >
+                {comparison.common.map((club) => (
+                  <button
+                    key={club.club}
+                    type="button"
+                    className="gap-club-chip"
+                    onClick={() => openClub(club.club)}
+                  >
+                    <span className="club-badge" aria-hidden="true">
+                      {club.club.toUpperCase()}
+                    </span>
+                    <span>{club.club}</span>
+                  </button>
+                ))}
+              </div>
               <p className="muted">
                 Median carry and shot counts are shown in reference / comparison
-                order.
+                order. Select a club above or tap a bar for its details.
               </p>
               {comparison.common.map((club) => (
                 <ClubDetails

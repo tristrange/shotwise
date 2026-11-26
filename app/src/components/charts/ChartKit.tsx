@@ -30,10 +30,21 @@ export function ChartContainer({
   );
 }
 
+/**
+ * Shared axis-tick props for every Recharts axis in the app. Recharts defaults
+ * tick text to an inline #666, which fails contrast on dark surfaces, so the
+ * theme-token fill is passed as a prop (inline defaults beat stylesheet rules).
+ */
+export const axisTick = { fill: 'var(--text-3)', fontSize: 11 } as const;
+
 type TooltipEntry = {
   value?: number | string | null;
   name?: string;
-  payload?: Record<string, unknown> & { detail?: string };
+  dataKey?: string;
+  payload?: Record<string, unknown> & {
+    detail?: string;
+    compareDetail?: string;
+  };
 };
 
 const formatValue = (value: TooltipEntry['value']) =>
@@ -42,9 +53,10 @@ const formatValue = (value: TooltipEntry['value']) =>
     : (value ?? null);
 
 /**
- * Shared tooltip surface for every Recharts chart in the app. With a single
- * series it shows the value only; with several series (e.g. median carry plus
- * a strong-strike potential comparison) each series gets its own labelled row.
+ * Shared tooltip surface for every Recharts chart in the app. Every series
+ * keeps its own labelled row — even when only one series has a value at this
+ * x position, so a dropped series can never make a number look like the
+ * primary one. Sample counts ride on the point (`detail`, `compareDetail`).
  */
 export function ChartTooltipContent({
   active,
@@ -60,7 +72,6 @@ export function ChartTooltipContent({
   if (!active || !payload?.length) return null;
   const detail = payload.find((entry) => entry.payload?.detail)?.payload
     ?.detail;
-  const multi = payload.length > 1;
   return (
     <div className="ds-chart-tooltip">
       {label !== undefined && (
@@ -68,16 +79,25 @@ export function ChartTooltipContent({
       )}
       {payload.map((entry, index) => {
         const value = formatValue(entry.value);
+        const rowDetail =
+          entry.dataKey === 'compare'
+            ? entry.payload?.compareDetail
+            : undefined;
         return (
-          <div className="ds-chart-tooltip-row" key={entry.name ?? index}>
-            {multi && entry.name && (
-              <span className="ds-chart-tooltip-name">{entry.name}</span>
+          <div key={entry.name ?? index}>
+            <div className="ds-chart-tooltip-row">
+              {entry.name && (
+                <span className="ds-chart-tooltip-name">{entry.name}</span>
+              )}
+              <span className="ds-chart-tooltip-value">
+                {value === null || value === undefined || value === ''
+                  ? 'not measured'
+                  : `${value}${unit ? ` ${unit}` : ''}`}
+              </span>
+            </div>
+            {rowDetail && (
+              <div className="ds-chart-tooltip-name">{rowDetail}</div>
             )}
-            <span className="ds-chart-tooltip-value">
-              {value === null || value === undefined || value === ''
-                ? 'not measured'
-                : `${value}${unit ? ` ${unit}` : ''}`}
-            </span>
           </div>
         );
       })}
@@ -89,9 +109,13 @@ export function ChartTooltipContent({
 export type ChartPoint = {
   label: string;
   value: number | null;
+  /** Stable identity (e.g. session id) so selection survives club/window changes. */
+  id?: string;
   /** Optional comparison-series value for the same x position (null = gap). */
   compare?: number | null;
   detail?: string;
+  /** Sample counts for the comparison series at this x position. */
+  compareDetail?: string;
 };
 
 export function ChartSummary({

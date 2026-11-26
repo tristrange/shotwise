@@ -12,6 +12,7 @@ import { carryBandOf } from './clubProfileData';
 import { sessionHref, visitLabel } from './SessionRecap';
 import { Badge, Disclosure, EmptyState, HelpPopover } from './ds';
 import {
+  axisTick,
   ChartContainer,
   ChartSummary,
   ChartTooltipContent,
@@ -252,15 +253,26 @@ function WedgeGroupCard({
             {group.aimed === 1 ? 'shot' : 'shots'} with proximity
           </p>
           <ul className="wedge-metrics">
-            {directions.map(
-              ({ label, metric }) =>
-                metric.n > 0 && (
-                  <li key={label}>
-                    {label} · {metric.left} left, {metric.straight} centred,{' '}
-                    {metric.right} right · {metric.n} of {group.aimed} measured
-                  </li>
-                ),
-            )}
+            {directions.map(({ label, metric }) => {
+              if (metric.n <= 0) return null;
+              const total = metric.left + metric.straight + metric.right;
+              const seg = (n: number) => `${(n / total) * 100}%`;
+              return (
+                <li key={label}>
+                  <span
+                    className="direction-bar"
+                    aria-hidden="true"
+                    style={{ width: 'min(140px, 32vw)', marginRight: 6 }}
+                  >
+                    <span className="seg left" style={{ width: seg(metric.left) }} />
+                    <span className="seg straight" style={{ width: seg(metric.straight) }} />
+                    <span className="seg right" style={{ width: seg(metric.right) }} />
+                  </span>
+                  {label} · {metric.left} left, {metric.straight} centred,{' '}
+                  {metric.right} right · {metric.n} of {group.aimed} measured
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
@@ -335,13 +347,17 @@ function WedgeGroupCard({
 function TargetComparison({ groups }: { groups: WedgeGroup[] }) {
   const reduced = usePrefersReducedMotion();
   const data = groups.map((group) => ({
+    // Compact axis label (rounded target) so long exact targets never clip
+    // from the left; the exact target rides in the tooltip detail.
     label:
       group.kind === 'target'
-        ? `${group.club} ${exact.format(group.target)} m`
+        ? `${group.club} ${Math.round(group.target)} m`
         : group.club,
     target: group.kind === 'target' ? group.target : null,
     median: group.carry.median,
-    detail: `${group.shots.length} shots · ${group.visits} ${group.visits === 1 ? 'session' : 'sessions'} · ${group.carry.n} measured`,
+    detail:
+      (group.kind === 'target' ? `target exactly ${exact.format(group.target)} m · ` : '') +
+      `${group.shots.length} shots · ${group.visits} ${group.visits === 1 ? 'session' : 'sessions'} · ${group.carry.n} measured`,
   }));
   const max = Math.max(
     ...data.flatMap((d) => [d.target ?? 0, d.median ?? 0]),
@@ -372,6 +388,7 @@ function TargetComparison({ groups }: { groups: WedgeGroup[] }) {
           <XAxis
             type="number"
             domain={[0, xMax]}
+            tick={axisTick}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => String(v)}
@@ -379,7 +396,8 @@ function TargetComparison({ groups }: { groups: WedgeGroup[] }) {
           <YAxis
             type="category"
             dataKey="label"
-            width={86}
+            tick={axisTick}
+            width={76}
             tickLine={false}
             axisLine={false}
           />

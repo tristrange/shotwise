@@ -136,8 +136,12 @@ export function RangeSlider({
 }) {
   const [lo, hi] = value;
   const move = (which: 0 | 1, raw: number) => {
+    // Clamp the moving thumb against its neighbour instead of swapping: with
+    // overlapping thumbs, ArrowRight on the minimum must move the minimum,
+    // never the maximum.
+    const clamped = which === 0 ? Math.min(raw, hi) : Math.max(raw, lo);
     const next = normalizeRange(
-      which === 0 ? [raw, hi] : [lo, raw],
+      which === 0 ? [clamped, hi] : [lo, clamped],
       min,
       max,
       step,

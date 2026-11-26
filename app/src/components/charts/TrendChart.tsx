@@ -7,13 +7,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ChartContainer, ChartTooltipContent, type ChartPoint } from './ChartKit';
+import { axisTick, ChartContainer, ChartTooltipContent, type ChartPoint } from './ChartKit';
 import { clamp, usePrefersReducedMotion } from './hooks';
 
 /**
  * Interactive trend chart (reference: interactive-charts screenshot). One
  * primary series with visible points; hover or tap shows the shared tooltip,
- * tapping the chart selects the nearest point (reported through onSelect).
+ * tapping the chart selects the nearest point (reported through onSelect with
+ * the full point, so callers can key the selection by a stable `id`).
  * An optional comparison series (`compare`, e.g. strong-strike potential next
  * to median carry) renders as a dashed `--compare` line so the two stay
  * distinguishable. Missing values stay gaps — never zero. Animation is
@@ -32,7 +33,7 @@ export function TrendChart({
   unit: string;
   height?: number;
   label: string;
-  onSelect?: (label: string) => void;
+  onSelect?: (point: ChartPoint) => void;
   /** Comparison series label; rendered only when at least one point carries a compare value. */
   compare?: string;
   /** Short primary-series name for multi-series tooltips (defaults to `label`). */
@@ -51,15 +52,22 @@ export function TrendChart({
     <ChartContainer label={label} height={height}>
       <AreaChart
         data={data}
-        margin={{ top: 10, right: 6, bottom: 0, left: -14 }}
+        // No negative left margin: the y-axis labels must keep their full
+        // width (e.g. "160.4") inside the chart instead of being clipped.
+        margin={{ top: 10, right: 6, bottom: 0, left: 0 }}
         onClick={(state) => {
           const activeLabel = state?.activeLabel;
-          if (activeLabel != null && onSelect) onSelect(String(activeLabel));
+          const point =
+            activeLabel != null
+              ? data.find((p) => p.label === String(activeLabel))
+              : undefined;
+          if (point && onSelect) onSelect(point);
         }}
       >
         <CartesianGrid vertical={false} />
         <XAxis
           dataKey="label"
+          tick={axisTick}
           tickLine={false}
           axisLine={false}
           minTickGap={28}
@@ -67,9 +75,10 @@ export function TrendChart({
         />
         <YAxis
           domain={[min - pad, max + pad]}
+          tick={axisTick}
           tickLine={false}
           axisLine={false}
-          width={52}
+          width={56}
           tickFormatter={(v: number) => (v % 1 === 0 ? String(v) : v.toFixed(1))}
         />
         <Tooltip

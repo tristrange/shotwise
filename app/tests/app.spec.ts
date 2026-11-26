@@ -1,6 +1,7 @@
 import {
   test as base,
   expect,
+  devices,
   type Locator,
   type Page,
   type TestInfo,
@@ -504,12 +505,27 @@ test('keeps theme controls in sync across desktop, tablet and phone', async ({
 });
 
 test('uses a five-tab bottom navigation on phones with every feature reachable', async ({
-  page,
+  page: projectPage,
+  browser,
   account,
-}) => {
+},
+testInfo,
+) => {
+  // WebKit cannot resize the layout viewport of a mobile-emulated page:
+  // setViewportSize only changes the visual viewport, which leaves the fixed
+  // bottom nav outside the hit-test area on pages shorter than the visual
+  // viewport. Give the phone project a context with a real 390x844 layout.
+  const phoneContext =
+    testInfo.project.name === 'phone-webkit'
+      ? await browser.newContext({
+          ...devices['iPhone 13'],
+          viewport: { width: 390, height: 844 },
+        })
+      : null;
+  const page = phoneContext ? await phoneContext.newPage() : projectPage;
   await seed(account);
   await login(page, account);
-  await page.setViewportSize({ width: 390, height: 844 });
+  if (!phoneContext) await page.setViewportSize({ width: 390, height: 844 });
   const bottomNav = page.locator('.bottom-nav');
   await expect(bottomNav).toBeVisible();
   await expect(bottomNav.getByRole('button')).toHaveCount(5);
@@ -582,6 +598,7 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
     );
   });
   expect(clearance).toBe(true);
+  await phoneContext?.close();
 });
 
 test('fits the overview hero on phone viewports without pinch zoom', async ({
@@ -1064,7 +1081,7 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(summaryMetric('First session')).toContainText('105');
   await expect(summaryMetric('Latest session')).toContainText('117.5');
   await expect(summaryMetric('Best session')).toContainText('117.5');
-  await expect(trend).toContainText('Tap a point (or hover) to inspect that session');
+  await expect(trend).toContainText('Tap a point (or pick a session above) to inspect it');
   // Hovering the chart shows the concise tooltip with date, value and sample.
   await chart.hover();
   const tooltip = page.locator('.ds-chart-tooltip');
@@ -1176,7 +1193,8 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(1)).toContainText('123 m');
   await expect(rows.nth(1)).not.toContainText('bands overlap');
-  await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
+  // The P10–P90 band needs 10 shots; the 1-shot 9i row says so explicitly.
+  await expect(rows.nth(2)).toContainText('P10–P90 needs 10 shots');
   // Tapping a club's band selects it and surfaces carry, spread, potential
   // and the adjacent gap in the detail panel below the shared-scale chart.
   await rows.nth(1).getByRole('button', { name: /Median 123 m/ }).click();
@@ -2172,6 +2190,15 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
   await recapLink(older.name).click();
   await expect(heading).toBeFocused();
   await expect(recap).toContainText('Sparse comparable history');
+  const olderClub = recap
+    .locator('details')
+    .filter({ hasText: '7i metric details' });
+  await olderClub.locator('summary').click();
+  const withheldCarry = olderClub.locator('.ds-metric', {
+    hasText: 'Carry vs baseline',
+  });
+  await expect(withheldCarry).toContainText('Withheld');
+  await expect(withheldCarry).not.toContainText('m vs');
   await page.goBack();
   await expect(recapLink(older.name)).toBeFocused();
   await expect(details).toHaveCount(0);
@@ -2192,6 +2219,16 @@ test('opens saved recaps and supporting shots from imports and the logbook', asy
     .filter({ hasText: '7i metric details' });
   await expect(club).not.toHaveAttribute('open', '');
   await club.locator('summary').click();
+  // Unreviewed CSV shots are automatically assessed, so the assessed metric
+  // uses the resolved full-swing population as its denominator.
+  const assessed = club.locator('.ds-metric', {
+    hasText: 'Assessed (manual or automatic)',
+  });
+  await expect(assessed.locator('.ds-metric-value')).toContainText('of 13');
+  const carryVsBaseline = club.locator('.ds-metric', {
+    hasText: 'Carry vs baseline',
+  });
+  await expect(carryVsBaseline).toContainText('m vs');
   const broader = club
     .locator('.recap-metric')
     .filter({ hasText: 'Median carry · broader estimate' });

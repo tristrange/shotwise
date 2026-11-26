@@ -117,6 +117,30 @@ describe('gapPairs', () => {
     expect(pairs[1]!.flag).toBeNull();
   });
 
+  it('preserves missing, true-zero and negative gaps instead of coercing them', () => {
+    // Adapter-level contract: gapPairs must never turn a missing gap into 0
+    // (a missing gap and a true 0 m gap mean different things).
+    const row = (club: string, gap: number | null, flag: 'small' | 'reversed' | 'large' | null = null) => ({
+      club,
+      band: { p10: null, q1: null, median: 100, q3: null, p90: null },
+      potential: null,
+      n: 12,
+      reliable: true,
+      gap,
+      flag,
+    });
+    const pairs = gapPairs([
+      row('6i', null),
+      row('7i', 0, 'small'),
+      row('9i', -5, 'reversed'),
+      row('PW', null),
+    ]);
+    expect(pairs.map((p) => p.gap)).toEqual([0, -5, null]);
+    expect(pairs[0]!.flag).toBe('small');
+    expect(pairs[1]!.flag).toBe('reversed');
+    expect(pairs[2]!.gap).toBeNull();
+  });
+
   it('flags small gaps with the domain thresholds, not new ones', () => {
     const session = makeSession({ id: 's', date: '2026-11-16' });
     const shots: Shot[] = [];

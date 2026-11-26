@@ -91,7 +91,7 @@ export default function Showcase() {
   const [window_, setWindow] = useState<'recent' | 'all'>('recent');
   const [clubSel, setClubSel] = useState('7i');
   const [slider, setSlider] = useState(60);
-  const [range, setRange] = useState<[number, number]>([40, 80]);
+  const [range, setRange] = useState<[number, number]>([100, 200]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // --- chart data from the shared domain functions ---

@@ -16,6 +16,8 @@ import {
   type SegmentedOption,
 } from './ds';
 import {
+  axisTick,
+  bandPercent,
   ChartContainer,
   ChartSummary,
   ChartTooltipContent,
@@ -84,16 +86,16 @@ function axisStep(span: number): number {
 }
 
 /**
- * Shared distance axis under the distribution rows. Tick positions use the
- * same mapping as the stretched plot SVGs (4px pad inside a 300-unit
- * viewBox), expressed as percentages so they stay aligned at any width.
+ * Shared distance axis under the distribution rows. Tick positions come from
+ * the plot's own scale mapping (`bandPercent`), so the axis can never disagree
+ * with the stretched band SVGs it labels.
  */
 function axisTicks(min: number, max: number): { value: number; pct: number }[] {
   const span = max - min || 1;
   const step = axisStep(span);
   const ticks: { value: number; pct: number }[] = [];
   for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) {
-    ticks.push({ value: v, pct: ((4 + ((v - min) / span) * 292) / 300) * 100 });
+    ticks.push({ value: v, pct: bandPercent(v, min, max) });
   }
   return ticks;
 }
@@ -115,7 +117,10 @@ function rowLabel(row: GappingRow): string {
     `Median ${fmt(row.band.median)} m`,
     row.band.p10 !== null && row.band.p90 !== null
       ? `middle 80% ${fmt(row.band.p10)}–${fmt(row.band.p90)} m`
-      : 'spread needs 10 shots',
+      : 'P10–P90 needs 10 shots',
+    row.band.q1 !== null && row.band.q3 !== null
+      ? `IQR ${fmt(row.band.q3 - row.band.q1)} m`
+      : 'IQR needs 4 shots',
     row.potential !== null
       ? `strong-strike potential ${fmt(row.potential)} m`
       : null,
@@ -175,7 +180,10 @@ export function GappingChart({
             `${row.club}: median ${fmt(row.band.median)} m` +
             (row.band.p10 !== null && row.band.p90 !== null
               ? `, middle 80% ${fmt(row.band.p10)}–${fmt(row.band.p90)} m`
-              : ', spread needs 10 shots') +
+              : ', P10–P90 needs 10 shots') +
+            (row.band.q1 !== null && row.band.q3 !== null
+              ? `, IQR ${fmt(row.band.q3 - row.band.q1)} m`
+              : '') +
             (row.potential !== null
               ? `, strong-strike potential ${fmt(row.potential)} m`
               : '') +
@@ -191,12 +199,18 @@ export function GappingChart({
       : chartView === 'potential'
         ? 'Median carry vs strong-strike potential by club'
         : 'Median carry by club';
+  // The subtitle names the scale of the ACTIVE view: the distribution rows
+  // share the padded band scale, the bar views start at zero.
+  const scaleSub =
+    chartView === 'distribution'
+      ? `shared scale ${scale.min}–${scale.max} m`
+      : `scale 0–${barMax} m`;
 
   return (
     <Card className="gapping-chart">
       <SectionHeader
         title="Club distances"
-        sub={`${rows.length} ${rows.length === 1 ? 'club' : 'clubs'} · ${BASES[basis].label} · shared scale ${scale.min}–${scale.max} m`}
+        sub={`${rows.length} ${rows.length === 1 ? 'club' : 'clubs'} · ${BASES[basis].label} · ${scaleSub}`}
         aside={
           <div className="card-controls">
             <SegmentedControl
@@ -219,8 +233,10 @@ export function GappingChart({
                 from all full swings; it needs{' '}
                 {GAP_THRESHOLDS.minSamples}+ measured carries and stays a gap
                 below that. Fewer than {GAP_THRESHOLDS.minSamples} shots is
-                sample-limited: the spread then reads “Spread needs 10 shots”.
-                Missing measurements are never drawn as zero.
+                sample-limited: the P10–P90 band then reads “P10–P90 needs 10
+                shots”, while the IQR (middle half) is still shown whenever 4+
+                shots are measured. Missing measurements are never drawn as
+                zero.
               </p>
               <p>
                 Tap a club chip, a band or a bar to inspect that club's carry,
@@ -288,7 +304,7 @@ export function GappingChart({
                         ? row.potential !== null
                           ? `P80 ${fmt(row.potential)} m`
                           : 'median'
-                        : 'Spread needs 10 shots'}
+                        : 'P10–P90 needs 10 shots'}
                     </small>
                   </span>
                 </div>
@@ -307,11 +323,17 @@ export function GappingChart({
           </p>
         </>
       )}
-      {chartView === 'potential' && (
+      {chartView !== 'distribution' && (
         <>
+          {/* One bar-chart variant for both bar views; the potential view adds
+              the P80 series. Bars always start at zero on the shared 0–barMax
+              scale named in the section subtitle. */}
           <ChartContainer
             label={chartLabel}
-            height={Math.max(160, rows.length * 44 + 24)}
+            height={Math.max(
+              chartView === 'potential' ? 160 : 140,
+              rows.length * (chartView === 'potential' ? 44 : 36) + 24,
+            )}
           >
             <BarChart
               data={barData}
@@ -322,6 +344,7 @@ export function GappingChart({
               <XAxis
                 type="number"
                 domain={[0, barMax]}
+                tick={axisTick}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v: number) => String(v)}
@@ -329,6 +352,7 @@ export function GappingChart({
               <YAxis
                 type="category"
                 dataKey="club"
+                tick={axisTick}
                 width={48}
                 tickLine={false}
                 axisLine={false}
@@ -346,62 +370,27 @@ export function GappingChart({
                 isAnimationActive={!reduced}
                 onClick={(entry) => setClub(String((entry.payload as { club?: string } || {}).club ?? ""))}
               />
-              <Bar
-                dataKey="potential"
-                name="Strong-strike potential (P80)"
-                fill="var(--compare)"
-                radius={[0, 6, 6, 0]}
-                isAnimationActive={!reduced}
-                onClick={(entry) => setClub(String((entry.payload as { club?: string } || {}).club ?? ""))}
-              />
+              {chartView === 'potential' && (
+                <Bar
+                  dataKey="potential"
+                  name="Strong-strike potential (P80)"
+                  fill="var(--compare)"
+                  radius={[0, 6, 6, 0]}
+                  isAnimationActive={!reduced}
+                  onClick={(entry) => setClub(String((entry.payload as { club?: string } || {}).club ?? ""))}
+                />
+              )}
             </BarChart>
           </ChartContainer>
           <p className="chart-legend muted" aria-hidden="true">
             <span className="legend-dot primary" /> {medianLabel(settings.contact)}
-            <span className="legend-dot compare" /> Strong-strike potential (P80)
+            {chartView === 'potential' && (
+              <>
+                <span className="legend-dot compare" /> Strong-strike potential (P80)
+              </>
+            )}
           </p>
         </>
-      )}
-      {chartView === 'simple' && (
-        <ChartContainer
-          label={chartLabel}
-          height={Math.max(140, rows.length * 36 + 20)}
-        >
-          <BarChart
-            data={barData}
-            layout="vertical"
-            margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid horizontal={false} />
-            <XAxis
-              type="number"
-              domain={[0, barMax]}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(v: number) => String(v)}
-            />
-            <YAxis
-              type="category"
-              dataKey="club"
-              width={48}
-              tickLine={false}
-              axisLine={false}
-            />
-            <Tooltip
-              content={<ChartTooltipContent unit="m" />}
-              cursor={{ fill: 'var(--surface-2)' }}
-              isAnimationActive={!reduced}
-            />
-            <Bar
-              dataKey="median"
-              name={medianLabel(settings.contact)}
-              fill="var(--data)"
-              radius={[0, 6, 6, 0]}
-              isAnimationActive={!reduced}
-              onClick={(entry) => setClub(String((entry.payload as { club?: string } || {}).club ?? ""))}
-            />
-          </BarChart>
-        </ChartContainer>
       )}
       {selected && (
         <div
@@ -444,7 +433,7 @@ export function GappingChart({
                   : '—'
               }
               unit="m"
-              delta={selected.reliable ? undefined : 'Spread needs 10 shots'}
+              delta={selected.reliable ? undefined : 'P10–P90 needs 10 shots'}
             />
             <Metric
               label="IQR (middle half)"
@@ -454,6 +443,11 @@ export function GappingChart({
                   : '—'
               }
               unit="m"
+              delta={
+                selected.band.q1 !== null && selected.band.q3 !== null
+                  ? undefined
+                  : 'IQR needs 4 shots'
+              }
             />
             <Metric
               label={

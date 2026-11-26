@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { ProfileHistoryPoint } from '../domain/clubProfiles';
+import { firstLatestDelta } from '../domain/progress';
 import { sessionHref, visitLabel } from './SessionRecap';
 import { shortDate } from './PerformanceTrendCard';
 import {
   Metric,
   SegmentedControl,
+  Select,
   type SegmentedOption,
 } from './ds';
 import { ChartSummary, TrendChart, type ChartPoint } from './charts';
@@ -32,10 +34,12 @@ export function ClubHistoryChart({
   points: ProfileHistoryPoint[];
 }) {
   const [metric, setMetric] = useState<HistoryMetric>('median');
-  const [selected, setSelected] = useState<number | null>(null);
+  // Selection keyed by session id (not index) so it never silently re-points.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const chartPoints: ChartPoint[] = useMemo(
     () =>
       points.map((point, i) => ({
+        id: point.session.id,
         label: `S${i + 1} · ${shortDate(point.session.date)}`,
         value: metric === 'median' ? point.median : point.iqr,
         detail: `${visitLabel(point.session)} · ${point.n} measured · ${point.missing} missing`,
@@ -43,12 +47,15 @@ export function ClubHistoryChart({
     [points, metric],
   );
   const measured = chartPoints.filter((p) => p.value !== null);
-  const headline = measured.at(-1) ?? null;
-  const first = measured[0] ?? null;
-  const delta =
-    headline?.value != null && first?.value != null
-      ? headline.value - first.value
-      : null;
+  // Same first/latest/delta rule as the Progress page: no delta from a single
+  // measured visit, and none when the endpoint order is chronologically
+  // ambiguous (same-day visits with missing or equal times).
+  const { first, latest: headline, delta } = firstLatestDelta(
+    points.map((p) => ({
+      session: p.session,
+      value: metric === 'median' ? p.median : p.iqr,
+    })),
+  );
   const lowerIsBetter = metric === 'iqr';
   const deltaText =
     delta === null ? undefined : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1)} m`;
@@ -65,7 +72,11 @@ export function ClubHistoryChart({
             ? 'neg'
             : 'neutral';
   const chartLabel = `${club} ${metric === 'median' ? 'median carry' : 'carry spread'} per session`;
-  const selectedPoint = selected !== null ? points[selected] : null;
+  const selectedPoint =
+    selectedId !== null ? (points.find((p) => p.session.id === selectedId) ?? null) : null;
+  const selectedIndex = selectedPoint
+    ? chartPoints.findIndex((p) => p.id === selectedPoint.session.id)
+    : -1;
   return (
     <div className="club-history">
       <SegmentedControl
@@ -101,20 +112,28 @@ export function ClubHistoryChart({
         data={chartPoints}
         unit="m"
         label={chartLabel}
-        onSelect={(label) => {
-          const index = chartPoints.findIndex((p) => p.label === label);
-          setSelected(index >= 0 ? index : null);
-        }}
+        onSelect={(point) => setSelectedId(point.id ?? null)}
       />
+      <div className="trend-inspect">
+        <Select
+          label="Inspect session"
+          value={selectedPoint?.session.id ?? ''}
+          onChange={(id) => setSelectedId(id || null)}
+          options={[
+            { value: '', label: 'No session selected' },
+            ...chartPoints.map((p) => ({ value: p.id ?? p.label, label: p.label })),
+          ]}
+        />
+      </div>
       <p className="muted" style={{ margin: '10px 0 0' }}>
         {selectedPoint ? (
           <>
-            Selected S{selected! + 1} · {visitLabel(selectedPoint.session)} —{' '}
+            Selected S{selectedIndex + 1} · {visitLabel(selectedPoint.session)} —{' '}
             <a href={sessionHref(selectedPoint.session.id)}>open session recap</a>
           </>
         ) : (
           <>
-            Tap a point (or hover) to inspect that session.{' '}
+            Tap a point (or pick a session above) to inspect it.{' '}
             <TrendingUp size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} />
           </>
         )}

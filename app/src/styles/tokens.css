@@ -25,6 +25,11 @@
   --pos: #26966c;
   --warn: #9a8a45;      /* deepened #B6A055 for 3:1 on white */
   --neg: #c67c58;
+  /* text-weight variants of the semantic hues: 4.5:1 on surfaces for small
+     status text (deltas, badges), where the 3:1 graphic tokens are not enough */
+  --pos-text: #207d5a;
+  --warn-text: #7b6e37;
+  --neg-text: #9a6145;
   --focus: #237b65;
 
   /* shape */
@@ -82,6 +87,10 @@
   --pos: #43bd85;
   --warn: #cdb26c;
   --neg: #de9573;
+  /* on dark surfaces the semantic hues already exceed 4.5:1 */
+  --pos-text: #43bd85;
+  --warn-text: #cdb26c;
+  --neg-text: #de9573;
   --focus: #6fc7ac;
 
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);

@@ -108,7 +108,7 @@ export function Progress({
         </Card>
       ) : (
         <>
-          <PerformanceTrendCard data={data} settings={settings} />
+          <PerformanceTrendCard data={data} settings={settings} groups={groups} />
           <Card className="cross-club">
             <SectionHeader
               title="Carry trend across clubs"
