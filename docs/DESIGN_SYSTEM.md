@@ -32,7 +32,27 @@ carry comparison bars with the unverified-carry-reference caveat, per-group dist
 plots on a shared scale, an intent mix bar separating full swings from partial practice,
 per-group shot-level scatter, shot tables behind disclosures). Presentation consumes
 `clubGaps`/`wedgePractice` via `gappingView` (`ClubGap` gained `q1`/`q3` from the same
-band cohort); the legacy `.gap-*`/`wedge-*` styles were removed.
+band cohort); the legacy `.gap-*`/`wedge-*` styles were removed. D10 (Sessions and
+comparisons) is implemented on `feat/d10-sessions-comparisons`: the session history is a
+ds-card logbook of compact `.session-card`s (date/time + venue + filename, shot count as
+the main link, clubs/median-carry summary, Archived badge, unassessed pill, per-session
+compare icon-link, file facts behind a disclosure) beside a ds-rebuilt import panel; the
+session recap keeps its domain functions but renders headline carry, club-participation
+share bars, carry-vs-baseline and reliability/coverage metric grids, and per-club
+details behind ds disclosures with a baseline methodology popover; session comparison uses
+compact ds selectors (reference/comparison/intent), A/B side cards with a chip legend,
+a shared-scale `CarryCompareChart` (A/B bars on one 0-based axis, tap a bar or club chip
+for that club's accordion), and side-by-side tables with Reference (A) / Comparison (B) /
+Difference columns where absolute differences are metres and relative ones are labelled
+percentages (percentage-point differences for direction shares). Wedge practice metrics
+gained compact direction bars. Review fixes landed in the same branch: visible ds icon
+buttons, an upward-opening help popover near the viewport bottom, a Club Profile header
+that wraps badges below the name at 320 px, true-scale distribution bands with coincident
+endpoint ticks, honest zero-gap rendering, theme-token chart ticks with reserved label
+space, session-ID-keyed trend selection with a keyboard/touch picker, withheld deltas
+when chronology is unknown, per-series tooltip names/counts, P80-only clubs kept in the
+Potential view, distinct P10–P90 vs IQR sample labels, and Progress computed once and
+passed down with on-demand disclosure bodies. Screenshots: `docs/design-system/shots/sessions-*.png`.
 
 ## 0. Approval record — 2026-11-26
 
@@ -348,7 +368,8 @@ working regardless. Desktop sidebar mirrors the same grouping.
 | D7 | Club Profiles redesign on the ds — **merged as PR #101** | owner review |
 | D8 | Progress redesign on the ds — **implemented on `feat/progress-redesign`** (see status above) | owner review before D9 |
 | D9 | Gapping redesign on the ds — **implemented on `feat/gapping-redesign`** (see status above) | owner review before D10 |
-| D10–D11 | Remaining screens one PR each: Sessions (+recap/compare), Shot shape + Explorer + Review/Settings | per-screen review |
+| D10 | Sessions (+recap/compare) redesign on the ds — **implemented on `feat/d10-sessions-comparisons`** (see status above) | owner review before D11 |
+| D11 | Shot shape + Explorer + Review/Settings redesign on the ds | per-screen review |
 | D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) | final sign-off |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.

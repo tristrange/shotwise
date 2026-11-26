@@ -1415,3 +1415,71 @@ and sample coverage in the detail panel). Representative screenshots captured at
 via `npm run shots:gapping`, which also asserts no horizontal overflow and that all three
 views render). **Stopping after D9 for owner review before D10 (Sessions and
 comparisons).**
+
+## 13.13 D9 merged (PR #103); independent review reconciled, D10 Sessions + recap + comparison implemented on `feat/d10-sessions-comparisons`, holding for owner review (2026-11-26)
+
+D9 merged as PR #103. Before D10, the targeted independent frontend review of the D9
+implementation was reconciled in focused changes (no analytics, rating, classification or
+database changes; approved methodology untouched):
+
+- **P1 fixes:** ds icon buttons no longer inherit the legacy `button` horizontal padding
+  (the SVG was measured at 0 px, hiding every help entry point); the help popover opens
+  upward and scrolls within the available viewport near the bottom edge; the Club Profile
+  header is a grid with the club name + rating ring on row one and evidence badges /
+  basis label wrapping below, so the title keeps its width at 320 px; `DistributionPlot`
+  renders true scaled endpoints (coincident endpoints become a tick, close labels merge
+  into one "a–b" label) instead of 12/6-unit minimum bands; `AdjacentGaps` draws no bar
+  for a true zero or missing gap and reserves a fixed-width flag slot so tracks align;
+  `gapPairs` keeps `gap: number | null` instead of coercing `null` to 0.
+- **P2 fixes:** chart tick text uses theme tokens and the trend Y axis reserves room for
+  full numbers; wedge axis labels are compact with exact targets in tooltips; new
+  `--pos-text`/`--warn-text`/`--neg-text` tokens keep semantic status text at ≥4.5:1 in
+  both themes (guarded by `tokens.test.ts`); trend/profile selection is keyed by session
+  `id` (with a keyboard/touch "Inspect session" picker) so club/window changes can no
+  longer silently retarget the recap link; first/latest deltas are withheld for a single
+  visit or ambiguous same-day order via shared `firstLatestDelta`/`chronologyKnown`;
+  clubs with only broader-cohort P80 stay visible in the Potential view; tooltips give
+  each series its own name and count; gapping distinguishes "P10–P90 needs 10 shots" from
+  the four-shot IQR threshold.
+- **P3 fixes:** dead `RatingChip` and legacy `.rating-chip`/`.statstrip`/reveal-selector
+  remnants removed; the showcase range slider clamps its thumbs and seeds valid bounds.
+- **Performance:** Progress computes `clubProgress` once and passes groups to the trend
+  card, Overview work is skipped on the Progress route, and ds disclosures mount their
+  bodies only after first open.
+
+**D10 (Sessions and comparisons)** is then implemented from `DESIGN_SYSTEM.md` on
+`feat/d10-sessions-comparisons`:
+
+- **Session history:** ds-card logbook of compact session cards — date/time, venue and
+  filename with the shot count as the main link, a one-line summary (clubs, median
+  carry, included count), Archived badge and unassessed pill, a per-session compare
+  icon-link, and file facts behind a "File details" disclosure — next to a ds-rebuilt
+  import panel. All import, duplicate, archive and session-management behaviour is
+  unchanged.
+- **Session recap:** headline carry metric, club-participation share bars, concise
+  findings, reliability/coverage metric grids, carry-vs-baseline metrics with a
+  methodology HelpPopover, per-club details behind ds disclosures, and the optional shot
+  review — all from the existing recap domain functions, with sample-size, cohort,
+  baseline and uncertainty policies preserved and no new overall session score.
+- **Comparison:** compact ds selectors for reference/comparison session and shot intent,
+  A/B side cards with chip legend, a shared-scale `CarryCompareChart` (0-based common
+  axis, A/B colours, tap a bar or club chip to open that club), and side-by-side tables
+  with Reference (A) / Comparison (B) / Difference columns — absolute differences in
+  metres, relative changes labelled as percentages, direction shares as
+  percentage-point differences; missing-data and sample indicators plus a methodology
+  popover. Measurement-basis compatibility and eligibility rules are unchanged, and a
+  longer carry is never presented as automatically better.
+- **Visual consistency:** all three screens reuse the approved ds components and chart
+  kit; Wedge practice metrics gained compact direction bars beside the text lines.
+
+Verification on `feat/d10-sessions-comparisons`: `npm test` **377 passed** (new
+`firstLatestDelta`/P80-only-club and `gapPairs` null/zero/negative tests), typecheck and
+`oxlint --deny-warnings` clean, `npm run build` and `--base=/shotwise/` clean with
+`dist/` free of showcase code, `npm run test:e2e` **88/88** (desktop Chromium + iPhone-13
+WebKit; the five-tab navigation test now uses a context-level 390x844 viewport because
+WebKit cannot resize the layout viewport of a mobile-emulated page). Representative
+screenshots captured at 390 and 1280 px, light and dark — history, recap and compare —
+via `npm run shots:sessions` (`docs/design-system/shots/sessions-*.png`), which asserts
+the seeded data states (3 cards, 1 archived badge, only-in-reference/comparison clubs,
+open accordion row) and no horizontal overflow. **Stopping after D10 for owner review
+before D11 (Shot shape + Explorer + Review/Settings).**

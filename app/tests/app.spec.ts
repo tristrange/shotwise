@@ -1,6 +1,7 @@
 import {
   test as base,
   expect,
+  devices,
   type Locator,
   type Page,
   type TestInfo,
@@ -504,12 +505,27 @@ test('keeps theme controls in sync across desktop, tablet and phone', async ({
 });
 
 test('uses a five-tab bottom navigation on phones with every feature reachable', async ({
-  page,
+  page: projectPage,
+  browser,
   account,
-}) => {
+},
+testInfo,
+) => {
+  // WebKit cannot resize the layout viewport of a mobile-emulated page:
+  // setViewportSize only changes the visual viewport, which leaves the fixed
+  // bottom nav outside the hit-test area on pages shorter than the visual
+  // viewport. Give the phone project a context with a real 390x844 layout.
+  const phoneContext =
+    testInfo.project.name === 'phone-webkit'
+      ? await browser.newContext({
+          ...devices['iPhone 13'],
+          viewport: { width: 390, height: 844 },
+        })
+      : null;
+  const page = phoneContext ? await phoneContext.newPage() : projectPage;
   await seed(account);
   await login(page, account);
-  await page.setViewportSize({ width: 390, height: 844 });
+  if (!phoneContext) await page.setViewportSize({ width: 390, height: 844 });
   const bottomNav = page.locator('.bottom-nav');
   await expect(bottomNav).toBeVisible();
   await expect(bottomNav.getByRole('button')).toHaveCount(5);
@@ -582,6 +598,7 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
     );
   });
   expect(clearance).toBe(true);
+  await phoneContext?.close();
 });
 
 test('fits the overview hero on phone viewports without pinch zoom', async ({
