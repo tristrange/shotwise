@@ -6,7 +6,7 @@ export { ScoreBar } from './ScoreBar';
 export { RatingBreakdown } from './RatingBreakdown';
 export { Sparkline } from './Sparkline';
 export type { SparklinePoint } from './Sparkline';
-export { DistributionPlot } from './DistributionPlot';
+export { DistributionPlot, sharedBandScale } from './DistributionPlot';
 export type { DistributionBand } from './DistributionPlot';
 export { BenchmarkBar } from './BenchmarkBar';
 export { DispersionPlot } from './DispersionPlot';

@@ -9,6 +9,28 @@ export type DistributionBand = {
 };
 
 /**
+ * One shared scale for several distribution plots that are meant to be
+ * compared across clubs: the padded range of every band value, rounded
+ * outward to whole 10-unit steps so neighbouring clubs read on the same
+ * meaningful scale instead of each plot zooming to its own band.
+ */
+export function sharedBandScale(bands: readonly DistributionBand[]): {
+  min: number;
+  max: number;
+} {
+  const values = bands
+    .flatMap((band) => [band.p10, band.q1, band.median, band.q3, band.p90])
+    .filter((v): v is number => v !== null);
+  if (!values.length) return { min: 0, max: 1 };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pad = (max - min) * 0.12 || Math.max(1, max * 0.05);
+  const lo = Math.floor((min - pad) / 10) * 10;
+  const hi = Math.ceil((max + pad) / 10) * 10;
+  return hi > lo ? { min: lo, max: hi } : { min: lo, max: lo + 10 };
+}
+
+/**
  * Carry distribution band: outer band = P10–P90 (middle 80%), inner band =
  * IQR (Q1–Q3, the middle half), line = median. Percentile range and IQR stay
  * visually distinct. All values in the same unit; missing stats simply don't

@@ -3,8 +3,15 @@
 **Status:** Owner-approved 2026-11-26. D2–D5 (tokens, ds primitives, chart kit,
 ClubCard + dev showcase) are implemented on `feat/design-system-foundation` and the
 showcase direction was approved after owner inspection (badge/distribution-bar/score-bar
-refinements applied at the component level). D6 (Overview rebuild) is implemented on
-`feat/overview-redesign`; **holding for owner feedback on the Overview before D7+**.
+refinements applied at the component level). D6 (Overview rebuild) is implemented and
+merged (PR #100). D7 (Club Profiles) is implemented on `feat/club-profiles-redesign`:
+the full profile is a deeper ClubCard composition (rating ring + evidence badges in the
+header, headline carry metrics, category bars, shared-scale distribution band, benchmark
+bars vs the personal reference, directional graphics only where measured, interactive
+session-history chart, reference editing, facts, methodology behind disclosures), plus
+the Overview refinements — readable club names beside badges, measurement-coverage text
+moved into contextual popovers, a shorter mobile hero, and one shared distribution scale
+across club cards.
 
 ## 0. Approval record — 2026-11-26
 
@@ -316,8 +323,9 @@ working regardless. Desktop sidebar mirrors the same grouping.
 | D3 | ds primitives in `components/ds/` with render/a11y tests (roles, names, keyboard, 44px targets) | unit tests + showcase section |
 | D4 | Chart kit in `components/charts/`: ChartContainer/ChartTooltip (Recharts), ScoreRing, ScoreBar, RatingBreakdown (moved from ClubRating), Sparkline, DistributionPlot, BenchmarkBar, dispersion/scatter wrappers; shared axis/grid/missing-data/reduced-motion rules | chart rules review |
 | D5 | `ClubCard` + dev-only `#showcase` route with synthetic fixtures + Playwright screenshot script; screenshots committed under `docs/design-system/shots/` | **owner visual approval** |
-| D6 | Overview rebuild on the ds (compact hero, metric strip, controls, insight card, ClubCard list, disclosures) — **implemented on `feat/overview-redesign`, holding for owner feedback** | owner feedback before Phase 5 |
-| D7–D11 | Remaining screens one PR each: Clubs, Progress, Gapping, Sessions (+recap/compare), Shot shape + Explorer + Review/Settings | per-screen review |
+| D6 | Overview rebuild on the ds (compact hero, metric strip, controls, insight card, ClubCard list, disclosures) — **merged as PR #100** | owner feedback before Phase 5 |
+| D7 | Club Profiles redesign on the ds — **implemented on `feat/club-profiles-redesign`** (see status above) | owner review |
+| D8–D11 | Remaining screens one PR each: Progress, Gapping, Sessions (+recap/compare), Shot shape + Explorer + Review/Settings | per-screen review |
 | D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) | final sign-off |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.

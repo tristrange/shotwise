@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { clubProfiles, type ClubProfile } from '../domain/clubProfiles';
+import { Compass, Wrench } from 'lucide-react';
+import type { ClubProfile } from '../domain/clubProfiles';
 import { validateUserReferenceValue } from '../domain/benchmarks';
 import type { Repository } from '../data/contracts';
 import type {
@@ -18,22 +19,18 @@ import {
   REFERENCE_TYPE_LABEL,
   attributionFor,
   benchmarkReferencesForClub,
-  compareWithReference,
-  type ReferenceComparison,
-  type ReferenceComparisonRow,
 } from '../domain/benchmarks';
 import {
   CATEGORY_SCORES_VERSION,
   CATEGORY_SCORE_DEFINITIONS,
   CATEGORY_SCORE_ORDER,
-  categoryScores,
   type CategoryScore,
   type CategoryScores,
 } from '../domain/scores';
-import { clubRatings, RATINGS_VERSION, type ClubRating } from '../domain/ratings';
+import { RATING_BASIS, weakestEvidence } from '../domain/ratings';
 import type { AnalysisSettings } from '../domain/analytics';
 import { equipmentDisplayName } from '../domain/equipment';
-import { localToday, type Basis, type Dataset } from '../domain/model';
+import { BASES, type Basis, type Dataset } from '../domain/model';
 import {
   BasisButton,
   MishitToggle,
@@ -41,7 +38,32 @@ import {
   ViewToggle,
 } from './AnalysisControls';
 import { sessionHref, visitLabel } from './SessionRecap';
-import { RatingBreakdown, RatingChip } from './ClubRating';
+import { clubDisplayName } from './clubNames';
+import {
+  clubProfileViews,
+  type ClubProfileView,
+  type DirectionCounts,
+} from './clubProfileData';
+import { ClubHistoryChart } from './ClubHistoryChart';
+import {
+  Badge,
+  Button,
+  Card,
+  Disclosure,
+  EmptyState,
+  HelpPopover,
+  Metric,
+  MetricGrid,
+  SectionHeader,
+} from './ds';
+import {
+  BenchmarkBar,
+  DispersionPlot,
+  DistributionPlot,
+  RatingBreakdown,
+  ScoreRing,
+  sharedBandScale,
+} from './charts';
 
 const decimal = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat(undefined, { style: 'percent' });
@@ -71,6 +93,27 @@ function gapNote(gap: ClubProfile['gap']) {
   return `Gap to the next longer club: ${decimal.format(gap.gap)} m${flag}`;
 }
 
+/** Compact horizontal club selection — deep links to each profile. */
+function ClubPicker({ clubs, active }: { clubs: string[]; active?: string }) {
+  return (
+    <nav className="club-picker" aria-label="Select a club profile">
+      {clubs.map((club) => (
+        <a
+          key={club}
+          href={clubHref(club)}
+          className={club === active ? 'active' : ''}
+          aria-current={club === active ? 'true' : undefined}
+        >
+          <span className="club-badge" aria-hidden="true">
+            {club.toUpperCase()}
+          </span>
+          <span className="club-picker-name">{clubDisplayName(club)}</span>
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 /**
  * Optional link-out external references for a club. Hidden behind a
  * disclosure; nothing is embedded, every row carries full attribution, and
@@ -83,8 +126,7 @@ function BenchmarkReferences({ club, basis }: { club: string; basis: Basis }) {
   const references = benchmarkReferencesForClub(club, basis);
   if (references.length === 0) return null;
   return (
-    <details className="benchmark-refs">
-      <summary>External references ({references.length})</summary>
+    <Disclosure summary={`External references (${references.length})`} className="benchmark-refs">
       <ul>
         {references.map((ref) => {
           const source = BENCHMARK_SOURCES.find((s) => s.id === ref.sourceId);
@@ -111,7 +153,7 @@ function BenchmarkReferences({ club, basis }: { club: string; basis: Basis }) {
         Compare carry with carry and total with total: on-course totals are
         context for range carry, not a like-for-like target.
       </p>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -124,126 +166,110 @@ function formatScore(score: CategoryScore) {
 }
 
 /**
- * The four category measurements from ADR-0003 / `category-scores-1`, shown
- * as raw metrics from the golfer's own shots. The within-bag raw-metric
- * standings of ADR-0004 were removed with ADR-0005 (decision 2): raw carry
- * ranks the driver first by construction and absolute IQR favours short
- * clubs. Normalized 0–100 ratings live in `RatingBreakdown` above.
- * Insufficient categories show "not enough data" with the reason in a pill.
+ * Raw category measurements (ADR-0003 / `category-scores-1`) behind the
+ * normalized rating bars, kept on demand: each category's raw metric with
+ * its own sample size and sufficiency note. The four 0–100 ratings and the
+ * composite live in the `RatingBreakdown` above (ADR-0005).
  */
-function CategoryScoresSection({ scores }: { scores: CategoryScores }) {
+function CategoryScoresDisclosure({ scores }: { scores: CategoryScores }) {
   return (
     <div className="category-scores">
-      <ul className="profile-stats">
-        {CATEGORY_ORDER.map((id) => {
-          const score = scores[id];
-          return (
-            <li key={id}>
-              <strong>{score.label}</strong> {formatScore(score)} · from{' '}
-              {score.n}{' '}
-              {score.unit === 'm'
-                ? 'measured shots'
-                : score.unit === 'deg'
-                  ? 'shots with launch direction'
-                  : 'assessed full swings'}
-              {score.note && <span className="pill"> {score.note}</span>}
-              {score.aux
-                ?.filter((a) => a.value !== null)
-                .map((a) => (
-                  <span key={a.label}>
-                    {' '}
-                    · {a.label.toLowerCase()}{' '}
-                    {a.unit === 'share'
-                      ? percent.format(a.value!)
-                      : `${decimal.format(a.value!)} ${a.unit}`}{' '}
-                    (n = {a.n})
-                  </span>
-                ))}
-            </li>
-          );
-        })}
-      </ul>
-      <details>
-        <summary>How these are scored</summary>
+      <Disclosure summary="How these are scored">
         <ul>
           {CATEGORY_ORDER.map((id) => {
             const def = CATEGORY_SCORE_DEFINITIONS[id];
+            const score = scores[id];
             return (
               <li key={id}>
-                <strong>{def.label}.</strong> {def.description} Population:{' '}
-                {def.population} Estimator: {def.estimator}
+                <strong>{def.label}.</strong> {def.description} Population: {def.population}{' '}
+                Estimator: {def.estimator} Raw value: {formatScore(score)} · from {score.n}{' '}
+                {score.unit === 'm'
+                  ? 'measured shots'
+                  : score.unit === 'deg'
+                    ? 'shots with launch direction'
+                    : 'assessed full swings'}
+                {score.note && <span className="pill"> {score.note}</span>}
+                {score.aux
+                  ?.filter((a) => a.value !== null)
+                  .map((a) => (
+                    <span key={a.label}>
+                      {' '}
+                      · {a.label.toLowerCase()}{' '}
+                      {a.unit === 'share'
+                        ? percent.format(a.value!)
+                        : `${decimal.format(a.value!)} ${a.unit}`}{' '}
+                      (n = {a.n})
+                    </span>
+                  ))}
               </li>
             );
           })}
         </ul>
         <p className="context">
-          Scores are raw measurements from your own shots on the selected
-          basis, each with its sample size; categories with too little data show
-          “not enough data” rather than a guess. The normalized 0–100 category
-          ratings and overall composite live in the rating breakdown above
-          (ADR-0005, {RATINGS_VERSION}); these raw measurements are the
-          evidence behind them. Methodology version{' '}
-          {CATEGORY_SCORES_VERSION}.
+          Scores are raw measurements from your own shots on the selected basis, each with its
+          sample size; categories with too little data show “not enough data” rather than a
+          guess. The normalized 0–100 category ratings and overall composite live in the rating
+          breakdown above (ADR-0005, ratings-2); these raw measurements are the evidence behind
+          them. Methodology version {CATEGORY_SCORES_VERSION}.
         </p>
-      </details>
+      </Disclosure>
     </div>
   );
 }
 
-/** Compact comparison bars: measured value vs the personal reference. */
-function ReferenceComparisonBars({
-  comparison,
-}: {
-  comparison: ReferenceComparison;
-}) {
-  const rows: [string, ReferenceComparisonRow][] = [
-    ['Typical carry', comparison.typical],
-    ['Strong-strike (P80)', comparison.strong],
-  ];
+/** Left/straight/right shares of a measured directional metric, with counts. */
+function DirectionBar({ counts }: { counts: DirectionCounts }) {
+  const total = counts.left + counts.straight + counts.right;
+  if (total === 0) return null;
+  const seg = (n: number) => (n / total) * 100;
   return (
-    <div className="reference-compare">
-      {rows.map(([label, row]) => (
-        <p key={label} className="reference-compare-row">
-          <span className="reference-compare-label">{label}</span>
-          {row.value === null || row.pct === null ? (
-            <span className="context">no measured value on this basis</span>
-          ) : (
-            <>
-              <span
-                className="reference-compare-bar"
-                role="img"
-                aria-label={`${label} ${decimal.format(row.value)} m, ${percent.format(row.pct)} of reference, ${row.delta! >= 0 ? '+' : ''}${decimal.format(row.delta!)} m`}
-              >
-                <span
-                  className="reference-compare-fill"
-                  style={{ width: `${Math.min(100, row.pct * 100)}%` }}
-                />
-              </span>
-              <span>
-                {decimal.format(row.value)} m · {percent.format(row.pct)} of ref ·{' '}
-                {row.delta! >= 0 ? '+' : ''}
-                {decimal.format(row.delta!)} m
-              </span>
-            </>
-          )}
-        </p>
-      ))}
-    </div>
+    <span
+      className="direction-bar"
+      role="img"
+      aria-label={`${counts.n} measured: ${counts.left} left, ${counts.straight} straight, ${counts.right} right`}
+    >
+      <span className="seg left" style={{ width: `${seg(counts.left)}%` }} />
+      <span className="seg straight" style={{ width: `${seg(counts.straight)}%` }} />
+      <span className="seg right" style={{ width: `${seg(counts.right)}%` }} />
+    </span>
+  );
+}
+
+/** Dispersion plot where both carry and lateral finishing position are measured. */
+function DispersionSection({
+  view,
+}: {
+  view: ClubProfileView;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  if (!view.dispersion || view.corridorHalfWidth === null) return null;
+  return (
+    <Disclosure summary="Dispersion plot (carry vs lateral)">
+      <DispersionPlot
+        points={view.dispersion}
+        corridorHalfWidth={view.corridorHalfWidth}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
+      <p className="context">
+        Only shots with both carry and lateral finishing position measured are plotted — missing
+        lateral data is never drawn as zero. The dashed funnel is the ±
+        {Math.round(view.corridorHalfWidth * 100)}% × carry corridor for this club’s role.
+      </p>
+    </Disclosure>
   );
 }
 
 /**
  * The golfer's own user-entered reference for a club (e.g. from a fitting
  * session), labelled as such and never mixed into analytics cohorts or
- * compared across metrics. Shown for every basis — unlike external overlays,
- * it is the user's own number, not an external range-ball-incompatible one.
+ * compared across metrics. The carry comparison itself renders in the
+ * benchmarks section; total references are shown but never compared with
+ * carry. Shown for every basis — it is the user's own number.
  */
 function PersonalReference({
   club,
   values,
-  basis,
-  typicalCarry,
-  strongCarry,
   equipment,
   onSave,
   onDelete,
@@ -251,9 +277,6 @@ function PersonalReference({
 }: {
   club: string;
   values: UserReferenceValueRecord[];
-  basis: Basis;
-  typicalCarry: number | null;
-  strongCarry: number | null;
   equipment: Equipment[];
   onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDelete: (id: string, expectedRevision: number) => Promise<void>;
@@ -335,20 +358,11 @@ function PersonalReference({
   };
 
   return (
-    <div className="personal-reference">
+    <section className="profile-section personal-reference" aria-label="Personal reference">
+      <span className="ds-field-label">Personal reference</span>
       {own.length > 0 &&
         !editing &&
         own.map((v) => {
-          // A carry reference compares with carry stats on a compatible
-          // basis; a total reference is shown but never compared with carry.
-          const comparison =
-            v.metric === 'carry'
-              ? compareWithReference(
-                  v,
-                  { typical: typicalCarry, strong: strongCarry },
-                  basis,
-                )
-              : null;
           const equipmentName = v.equipmentId
             ? equipment.find((e) => e.id === v.equipmentId)
             : undefined;
@@ -367,20 +381,10 @@ function PersonalReference({
                   ? ` · ${equipmentName ? equipmentDisplayName(equipmentName) : 'unknown club'}`
                   : ''}{' '}
                 ·{' '}
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => startEdit(v.metric)}
-                >
+                <Button variant="secondary" small onClick={() => startEdit(v.metric)}>
                   Edit
-                </button>
+                </Button>
               </p>
-              {comparison && !comparison.compatible && (
-                <p className="context">Not compared: {comparison.reason}.</p>
-              )}
-              {comparison?.compatible && (
-                <ReferenceComparisonBars comparison={comparison} />
-              )}
               {v.metric === 'total' && (
                 <p className="context">
                   Total-distance reference — not compared with carry numbers.
@@ -392,13 +396,9 @@ function PersonalReference({
       {!editing && own.length === 0 && (
         <p>
           No personal reference for {club} yet.{' '}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => startEdit('carry')}
-          >
+          <Button variant="secondary" small onClick={() => startEdit('carry')}>
             Add personal reference
-          </button>
+          </Button>
         </p>
       )}
       {editing && (
@@ -512,71 +512,69 @@ function PersonalReference({
               onChange={(e) => setNote(e.target.value)}
             />
           </label>
-          <button
-            type="button"
-            className="pill-button"
-            disabled={busy}
-            onClick={() => void submit()}
-          >
-            Save
-          </button>
-          {baseline && (
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() =>
-                void onDelete(baseline.id, baseline.revision).then(() => {
-                  setEditing(null);
-                  setBaseline(null);
-                })
-              }
-            >
-              Delete
-            </button>
-          )}
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => setEditing(null)}
-          >
-            Cancel
-          </button>
+          <div className="reference-form-actions">
+            <Button small disabled={busy} onClick={() => void submit()}>
+              Save
+            </Button>
+            {baseline && (
+              <Button
+                variant="secondary"
+                small
+                disabled={busy}
+                onClick={() =>
+                  void onDelete(baseline.id, baseline.revision).then(() => {
+                    setEditing(null);
+                    setBaseline(null);
+                  })
+                }
+              >
+                Delete
+              </Button>
+            )}
+            <Button variant="secondary" small disabled={busy} onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+          </div>
           {(localError || error) && (
             <p className="error">{localError || error}</p>
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-function ProfileCard({
-  profile,
+/**
+ * One full club profile: a deeper version of the Overview ClubCard — header
+ * with badge, readable name and the overall rating ring, headline metrics,
+ * category ratings, distribution, benchmarks, direction, facts, personal
+ * reference editing and the interactive session history. Exported so the
+ * dev showcase can render it on synthetic data.
+ */
+export function ClubProfileCard({
+  view,
   focus,
   bagCount,
   basis,
-  scores,
-  rating,
+  scale,
   referenceValues,
   equipmentList,
   onSaveReference,
   onDeleteReference,
   referenceError,
 }: {
-  profile: ClubProfile;
+  view: ClubProfileView;
   focus: boolean;
   bagCount: number;
   basis: Basis;
-  scores: CategoryScores;
-  rating: ClubRating | null;
+  scale: { min: number; max: number };
   referenceValues: UserReferenceValueRecord[];
   equipmentList: Equipment[];
   onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDeleteReference: (id: string, expectedRevision: number) => Promise<void>;
   referenceError: string;
 }) {
+  const { profile, scores, rating, band } = view;
   const {
     club,
     window: range,
@@ -607,176 +605,345 @@ function ProfileCard({
   const latestSpread = latest ? latest.recap.reliability.spread : null;
   const contact = latest?.recap.reliability.contact;
   const gapText = gapNote(gap);
+  const composite = rating?.composite ?? null;
+  const compositeValue = composite?.value ?? null;
+  const weakest = rating
+    ? weakestEvidence(
+        [
+          rating.distancePotential,
+          rating.consistency,
+          rating.directionalControl,
+          rating.reliability,
+        ]
+          .filter((cat) => cat.score !== null)
+          .map((cat) => cat.evidence),
+      )
+    : null;
+  const headingId = `club-${club}`;
   return (
-    <section className="club-profile" aria-labelledby={`club-${club}`}>
-      <div className="club-profile-head">
-        <h3 id={`club-${club}`} tabIndex={-1} ref={heading}>
-          {club}
-        </h3>
-        <RatingChip rating={rating} />
-      </div>
-      <p className="context">
-        {basisLabel} · {windowText} · {range.sessions}{' '}
-        {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
-        {rangeText}
-      </p>
-      {bagCount > 0 && (
-        <p className="context">
-          Equipment · {equipment.assigned} of {equipment.shots} shots assigned ·{' '}
-          {equipment.coverage}
-          {equipment.needsReview > 0 && (
-            <>
-              {' '}
-              ·{' '}
-              <span className="pill">
-                Needs review: {equipment.needsReview}
-              </span>
-            </>
-          )}
-          {equipment.equipment.length > 0 && (
-            <>
-              {' '}
-              ·{' '}
-              {equipment.equipment
-                .map(equipmentDisplayName)
-                .join(', ')}
-            </>
-          )}
-        </p>
-      )}
-      <ul className="profile-stats">
-        <li>
-          <strong>
-            Typical carry {fmt(recent.typical.median)} m
-          </strong>{' '}
-          · {cohortLabel(recent.typical.cohort)} · {recent.typical.n} measured,{' '}
-          {recent.typical.missing} missing
-          {recent.typical.median === null && ' · no carry on this basis'}
-          {recent.typical.n < 10 && recent.typical.n > 0 && (
-            <span className="pill"> Sample limited</span>
-          )}
-        </li>
-        <li>
-          <strong>
-            Strong-strike carry (P80) {fmt(recent.potential.value)} m
-          </strong>{' '}
-          · distance potential when struck well, from {recent.potential.n}{' '}
-          measured full swings · not an overall shot-quality score
-          {recent.potential.value === null && recent.potential.n > 0 && (
-            <span className="pill"> Sample limited</span>
-          )}
-          {recent.potential.value !== null && !recent.potential.reliable && (
-            <span className="pill"> Sample limited</span>
-          )}
-        </li>
-        <li>
-          <strong>Carry spread (IQR) {fmt(recent.spread.iqr)} m</strong> · middle
-          half of {recent.spread.n} measured carries, mishits and flagged shots
-          included · {recent.spread.missing} missing
-          {recent.spread.iqr === null && recent.spread.n > 0 && (
-            <span className="pill"> Needs 4 measured shots</span>
-          )}
-          {recent.spread.n > 0 && recent.spread.n < 10 && (
-            <span className="pill"> Sample limited</span>
-          )}
-        </li>
-        {recent.lowerTail.p10 !== null && (
-          <li>
-            <strong>Lower carry tail (P10) {fmt(recent.lowerTail.p10)} m</strong>{' '}
-            · from {recent.lowerTail.n} measured carries
-          </li>
+    <section className="club-profile ds-card" aria-labelledby={headingId}>
+      <header className="club-profile-head">
+        <span className="club-badge lg" aria-hidden="true">
+          {club.toUpperCase()}
+        </span>
+        <div className="club-profile-title">
+          <h3 id={headingId} tabIndex={-1} ref={heading}>
+            <span className="sr-only">{club}</span>
+            <span aria-hidden="true">{clubDisplayName(club)}</span>
+          </h3>
+          <p className="context">
+            {basisLabel} · {windowText} · {range.sessions}{' '}
+            {range.sessions === 1 ? 'session' : 'sessions'} · {range.shots} shots ·{' '}
+            {rangeText}
+          </p>
+        </div>
+        <div className="club-profile-ring">
+          <ScoreRing
+            value={compositeValue}
+            provisional={composite?.provisional ?? false}
+            early={weakest === 'early'}
+            size={64}
+            stroke={6}
+            label={
+              compositeValue === null
+                ? `${club}: no rating yet`
+                : `${club} overall rating ${Math.round(compositeValue)} of 100${composite?.provisional ? `, provisional, ${composite.coverage} of 4 categories` : ''}${weakest === 'early' ? ', early estimate' : ''}`
+            }
+          />
+          <div className="club-profile-badges">
+            {composite?.provisional && (
+              <Badge provisional>provisional {composite.coverage}/4</Badge>
+            )}
+            {weakest === 'early' && <Badge early>early estimate</Badge>}
+          </div>
+        </div>
+      </header>
+
+      <MetricGrid>
+        <Metric
+          label="Typical carry"
+          value={fmt(recent.typical.median)}
+          unit={recent.typical.median === null ? undefined : 'm'}
+        />
+        <Metric
+          label="Strong-strike carry (P80)"
+          value={fmt(recent.potential.value)}
+          unit={recent.potential.value === null ? undefined : 'm'}
+        />
+        <Metric
+          small
+          label="Ball speed"
+          value={view.speed.median === null ? '—' : view.speed.median.toFixed(0)}
+          unit={view.speed.median === null ? undefined : 'kph'}
+        />
+        <Metric
+          small
+          label="Launch"
+          value={view.launch.median === null ? '—' : view.launch.median.toFixed(1)}
+          unit={view.launch.median === null ? undefined : '°'}
+        />
+        <Metric
+          small
+          label="Apex"
+          value={view.apex.median === null ? '—' : view.apex.median.toFixed(0)}
+          unit={view.apex.median === null ? undefined : 'm'}
+        />
+      </MetricGrid>
+      <div className="profile-extras">
+        {recent.typical.n < 10 && recent.typical.n > 0 && (
+          <Badge tone="warn">Sample limited</Badge>
         )}
-      </ul>
-      {latest && latestCarry && latestSpread && (
-        <p>
-          Latest session{' '}
-          <a href={sessionHref(latest.session.id)}>
-            {visitLabel(latest.session)}
-          </a>
-          : typical carry {fmt(latestCarry.current.value)} m from{' '}
-          {latestCarry.current.measured} measured shots, spread{' '}
-          {fmt(latestSpread.current.value)} m — the same numbers as the{' '}
-          <a href={sessionHref(latest.session.id)}>session recap</a>
-          {contact &&
-            contact.full > 0 &&
-            ` (contact reviewed for ${contact.reviewed} of ${contact.full} full swings${
-              contact.reviewedShare !== null
-                ? `, ${percent.format(contact.reviewedShare)}`
-                : ''
-            })`}
-          .
+        {(recent.potential.value === null && recent.potential.n > 0) ||
+          (recent.potential.value !== null && !recent.potential.reliable) ? (
+          <Badge tone="warn">Sample limited</Badge>
+        ) : null}
+        {recent.spread.iqr === null && recent.spread.n > 0 && (
+          <Badge tone="warn">Needs 4 measured shots</Badge>
+        )}
+        {recent.spread.n > 0 && recent.spread.n < 10 && (
+          <Badge tone="warn">Sample limited</Badge>
+        )}
+        <HelpPopover label="Measurement coverage and cohorts">
+          <p>
+            Typical carry: {cohortLabel(recent.typical.cohort)} · {recent.typical.n} measured,{' '}
+            {recent.typical.missing} missing
+            {recent.typical.median === null ? ' · no carry on this basis' : ''}.
+          </p>
+          <p>
+            Strong-strike carry (P80): distance potential when struck well, from{' '}
+            {recent.potential.n} measured full swings · not an overall shot-quality score.
+          </p>
+          <p>
+            Carry spread (IQR): middle half of {recent.spread.n} measured carries, mishits and
+            flagged shots included · {recent.spread.missing} missing.
+          </p>
+          <p>
+            Launch monitor on the selected cohort: speed {view.speed.n}/{view.total} · launch{' '}
+            {view.launch.n}/{view.total} · apex {view.apex.n}/{view.total} · carry{' '}
+            {view.carryMeasured.n}/{view.total} measured.
+          </p>
+          <p>
+            Missing measurements stay missing on the {basisLabel} basis — profiles never fall
+            back to another basis.
+          </p>
+        </HelpPopover>
+      </div>
+
+      <section className="profile-section">
+        <span className="ds-field-label">
+          Overall rating
+          <HelpPopover label="Rating basis and evidence">
+            <p>
+              Ratings use the fixed {BASES[RATING_BASIS].label} rating basis — independent of the{' '}
+              {basisLabel} view. Weakest category evidence:{' '}
+              {weakest ?? 'none'}. Sample sizes, visits, uncertainty intervals and reference
+              metadata are in the breakdown below.
+            </p>
+          </HelpPopover>
+        </span>
+        {rating ? (
+          <RatingBreakdown rating={rating} />
+        ) : (
+          <p className="context">
+            No rating yet — fewer than 10 measured shots on the rating basis.
+          </p>
+        )}
+        <p className="context">
+          Ratings use the fixed {BASES[RATING_BASIS].label} basis — independent of the{' '}
+          {basisLabel} view.
         </p>
-      )}
-      {best ? (
-        <p>
-          Longest carry <strong>{fmt(best.value)} m</strong> ·{' '}
-          {visitLabel(best.session)} · that session had {best.n} measured,{' '}
-          {best.missing} missing for {club}
-          {best.n < 10 && <span className="pill"> Sample limited</span>}
-          {best.reviewedShare !== null &&
-            ` · ${percent.format(best.reviewedShare)} of full swings contact-reviewed`}
-          {best.mishit &&
-            ` · ${best.mishit === 'confirmed' ? 'confirmed' : 'auto-flagged'} mishit, treat with care`}
-          .
+        <CategoryScoresDisclosure scores={scores} />
+      </section>
+
+      <section className="profile-section">
+        <span className="ds-field-label">
+          Carry distribution
+          <HelpPopover label="How to read this distribution">
+            <p>
+              The wide band is the middle 80% of carries (P10–P90); the darker band is the middle
+              half (IQR, Q1–Q3); the line is the median. Spread comes from all eligible shots, not
+              just the selected performance mode. The scale is shared across every club on this
+              page, so bands compare across clubs.
+            </p>
+          </HelpPopover>
+        </span>
+        <DistributionPlot
+          band={band}
+          min={scale.min}
+          max={scale.max}
+          label={`${club} carry distribution`}
+        />
+        <p className="context">
+          Carry spread (IQR) {fmt(recent.spread.iqr)} m · middle half of {recent.spread.n}{' '}
+          measured carries · {recent.spread.missing} missing
+          {recent.lowerTail.p10 !== null && (
+            <> · Lower carry tail (P10) {fmt(recent.lowerTail.p10)} m from {recent.lowerTail.n} measured carries</>
+          )}
         </p>
-      ) : (
-        <p>No measured carry on this basis for {club} yet.</p>
-      )}
-      {gapText && <p>{gapText}.</p>}
-      {rating && <RatingBreakdown rating={rating} />}
-      <CategoryScoresSection scores={scores} />
-      <BenchmarkReferences club={club} basis={basis} />
+      </section>
+
+      <section className="profile-section">
+        <span className="ds-field-label">
+          Distance benchmarks
+          <HelpPopover label="How benchmarks compare">
+            <p>
+              Your personal reference is compared on the current {basisLabel} basis only — a
+              range-ball reference never compares with premium-ball measurements and vice versa.
+              External references below are link-outs only, never embedded numbers.
+            </p>
+          </HelpPopover>
+        </span>
+        {view.benchmark?.comparison.compatible ? (
+          <div className="profile-benchmark-bars">
+            <BenchmarkBar
+              label={`Typical carry vs personal reference (${REFERENCE_TYPE_LABEL[view.benchmark.referenceType].toLowerCase()}${view.benchmark.referenceStatistic !== 'other' ? ` · ${REFERENCE_STATISTIC_LABEL[view.benchmark.referenceStatistic].toLowerCase()}` : ''})`}
+              value={view.benchmark.comparison.typical.value}
+              reference={view.benchmark.referenceValueM}
+            />
+            <BenchmarkBar
+              label="Strong-strike carry (P80) vs personal reference"
+              value={view.benchmark.comparison.strong.value}
+              reference={view.benchmark.referenceValueM}
+            />
+          </div>
+        ) : view.benchmark ? (
+          <p className="context">Not compared: {view.benchmark.comparison.reason}.</p>
+        ) : (
+          <p className="context">
+            No personal carry reference for {club} yet — add one below to benchmark this club.
+          </p>
+        )}
+        <BenchmarkReferences club={club} basis={basis} />
+      </section>
+
+      <section className="profile-section">
+        <span className="ds-field-label">Direction</span>
+        {view.direction ? (
+          <>
+            <p className="club-direction">
+              <Compass size={13} aria-hidden="true" /> {view.direction.label}:{' '}
+              {view.direction.detail}
+            </p>
+            {view.direction.counts && <DirectionBar counts={view.direction.counts} />}
+            {view.direction.launchOnly && (
+              <p className="context">
+                Launch direction only — no finishing-position data, so landing dispersion is not
+                measured.
+              </p>
+            )}
+            <DispersionSection view={view} />
+          </>
+        ) : (
+          <p className="context">Direction not measured on this basis.</p>
+        )}
+      </section>
+
+      <section className="profile-section">
+        <span className="ds-field-label">Facts</span>
+        {best ? (
+          <p>
+            Longest carry <strong>{fmt(best.value)} m</strong> ·{' '}
+            <a href={sessionHref(best.session.id)}>{visitLabel(best.session)}</a> · that
+            session had {best.n} measured, {best.missing} missing for {club}
+            {best.n < 10 && <Badge tone="warn"> Sample limited</Badge>}
+            {best.reviewedShare !== null &&
+              ` · ${percent.format(best.reviewedShare)} of full swings contact-reviewed`}
+            {best.mishit &&
+              ` · ${best.mishit === 'confirmed' ? 'confirmed' : 'auto-flagged'} mishit, treat with care`}
+            .
+          </p>
+        ) : (
+          <p>No measured carry on this basis for {club} yet.</p>
+        )}
+        {gapText && <p>{gapText}.</p>}
+        {latest && latestCarry && latestSpread && (
+          <p>
+            Latest session{' '}
+            <a href={sessionHref(latest.session.id)}>{visitLabel(latest.session)}</a>:
+            typical carry {fmt(latestCarry.current.value)} m from{' '}
+            {latestCarry.current.measured} measured shots, spread{' '}
+            {fmt(latestSpread.current.value)} m — the same numbers as the{' '}
+            <a href={sessionHref(latest.session.id)}>session recap</a>
+            {contact &&
+              contact.full > 0 &&
+              ` (contact reviewed for ${contact.reviewed} of ${contact.full} full swings${
+                contact.reviewedShare !== null
+                  ? `, ${percent.format(contact.reviewedShare)}`
+                  : ''
+              })`}
+            .
+          </p>
+        )}
+        {bagCount > 0 && (
+          <p className="context">
+            <Wrench size={13} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Equipment ·{' '}
+            {equipment.assigned} of {equipment.shots} shots assigned · {equipment.coverage}
+            {equipment.needsReview > 0 && (
+              <>
+                {' '}
+                · <Badge tone="warn">Needs review: {equipment.needsReview}</Badge>
+              </>
+            )}
+            {equipment.equipment.length > 0 && (
+              <> · {equipment.equipment.map(equipmentDisplayName).join(', ')}</>
+            )}
+          </p>
+        )}
+      </section>
+
       <PersonalReference
         club={club}
         values={referenceValues}
-        basis={basis}
-        typicalCarry={recent.typical.median}
-        strongCarry={recent.potential.value}
         equipment={equipmentList}
         onSave={onSaveReference}
         onDelete={onDeleteReference}
         error={referenceError}
       />
-      <div className="table-wrap">
-        <table aria-label={`${club} history across sessions`}>
-          <caption>
-            {history.length} {history.length === 1 ? 'session' : 'sessions'} on
-            the Progress cohort ·{' '}
-            <a href="#progress">Open carry charts in Progress</a>
-          </caption>
-          <thead>
-            <tr>
-              <th>Session</th>
-              <th>Median carry</th>
-              <th>Carry spread (IQR)</th>
-              <th>Measured / missing</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((point) => (
-              <tr key={point.session.id}>
-                <td>
-                  <a href={sessionHref(point.session.id)}>
-                    {visitLabel(point.session)}
-                  </a>
-                </td>
-                <td>
-                  {point.median === null ? 'No carry' : `${fmt(point.median)} m`}
-                </td>
-                <td>
-                  {point.iqr === null ? 'Needs 4 measured' : `${fmt(point.iqr)} m`}
-                </td>
-                <td>
-                  {point.n} / {point.missing}{' '}
-                  {point.n < 10 && point.n > 0 && (
-                    <span className="pill">Sample limited</span>
-                  )}
-                </td>
+
+      <section className="profile-section">
+        <span className="ds-field-label">Session history</span>
+        <ClubHistoryChart club={club} points={history} />
+        <div className="table-wrap">
+          <table aria-label={`${club} history across sessions`}>
+            <caption>
+              {history.length} {history.length === 1 ? 'session' : 'sessions'} on
+              the Progress cohort ·{' '}
+              <a href="#progress">Open carry charts in Progress</a>
+            </caption>
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Median carry</th>
+                <th>Carry spread (IQR)</th>
+                <th>Measured / missing</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {history.map((point) => (
+                <tr key={point.session.id}>
+                  <td>
+                    <a href={sessionHref(point.session.id)}>
+                      {visitLabel(point.session)}
+                    </a>
+                  </td>
+                  <td>
+                    {point.median === null ? 'No carry' : `${fmt(point.median)} m`}
+                  </td>
+                  <td>
+                    {point.iqr === null ? 'Needs 4 measured' : `${fmt(point.iqr)} m`}
+                  </td>
+                  <td>
+                    {point.n} / {point.missing}{' '}
+                    {point.n < 10 && point.n > 0 && (
+                      <Badge tone="warn">Sample limited</Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
   );
 }
@@ -799,17 +966,18 @@ export function ClubProfiles({
   refresh: () => Promise<void>;
 }) {
   const { basis } = settings;
-  const query = useMemo(
-    () => ({
-      mode: settings.mode,
-      intent: settings.intent,
-      contact: settings.contact,
-      hideLikelyMishits: settings.hideLikelyMishits,
-      today: localToday(),
-    }),
-    [settings],
+  // All figures come from the shared domain functions via clubProfileViews;
+  // ratings stay on the fixed premium-flat rating basis (ADR-0005).
+  const views = useMemo(
+    () => clubProfileViews(data, basis, settings),
+    [data, basis, settings],
   );
-  const profiles = clubProfiles(data, basis, query);
+  // One shared scale for every profile's distribution band, so the plots
+  // compare across clubs.
+  const bandScale = useMemo(
+    () => sharedBandScale(views.map((view) => view.band)),
+    [views],
+  );
   const [referenceError, setReferenceError] = useState('');
   const saveReference = async (input: UserReferenceValueSaveInput) => {
     try {
@@ -839,78 +1007,68 @@ export function ClubProfiles({
       throw e;
     }
   };
-  // Scores reuse the profiles computed above; ratings come from the shared
-  // ratings-2 module on the fixed premium-flat rating basis (ADR-0005),
-  // memoized so unrelated re-renders do not recompute them.
-  const ratingsByClub = useMemo(
-    () => new Map(clubRatings(data, query).map((r) => [r.club, r])),
-    [data, query],
-  );
-  const scoresByClub = profiles.map((profile) => ({
-    profile,
-    scores: categoryScores(data, basis, query, profile.club, profile),
-  }));
   return (
     <>
       <div className="section-heading">
         <h1>Club profiles</h1>
       </div>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Derived · read-only</span>
-            <h2>One profile per club</h2>
-            <p className="context">
-              {settings.mode === 'recent' ? 'Last 60 days' : 'All-time'} ·{' '}
-              {settings.hideLikelyMishits && 'Unusual-shot filter on · '}
-              {profiles.length} {profiles.length === 1 ? 'club' : 'clubs'}
-            </p>
-          </div>
-          <div className="card-controls">
-            <button type="button" className="secondary" onClick={onManageBag}>
-              Manage bag
-            </button>
-            <PerformanceToggle settings={settings} onChange={onSettingsChange} />
-            {settings.contact !== 'strong' && (
-              <MishitToggle settings={settings} onChange={onSettingsChange} />
-            )}
-            <ViewToggle
-              mode={settings.mode}
-              onChange={(mode) => onSettingsChange({ ...settings, mode })}
-            />
-            <BasisButton
-              basis={basis}
-              onChange={(next) => onSettingsChange({ ...settings, basis: next })}
-            />
-          </div>
-        </div>
-        <p>
-          Profiles are derived from your sessions and never change saved data.
-          Archived sessions and excluded shots are left out, and a corrected
-          club label counts as the club. Typical carry uses reviewed full swings
-          with typical contact when at least 10 are measured, otherwise the
-          broader estimate; wedges need an explicit full intent. Carry spread is
-          the middle half (IQR) of measured carries and includes mishits and
-          flagged shots, even when Hide likely mishits is on. Missing measurements
-          stay missing on the chosen basis — profiles never fall back to another
-          basis. The latest-session line matches that session’s recap; the
-          history below matches Progress.
-        </p>
-        {profiles.length === 0 && (
-          <p>
-            No club profiles yet. Import a session with club labels to build
-            them.
-          </p>
+      <Card className="club-profiles-head">
+        <SectionHeader
+          title="One profile per club"
+          sub={`${settings.mode === 'recent' ? 'Last 60 days' : 'All-time'} · ${
+            settings.hideLikelyMishits ? 'Unusual-shot filter on · ' : ''
+          }${views.length} ${views.length === 1 ? 'club' : 'clubs'}`}
+          aside={
+            <div className="card-controls">
+              <Button variant="secondary" small onClick={onManageBag}>
+                Manage bag
+              </Button>
+              <PerformanceToggle settings={settings} onChange={onSettingsChange} />
+              {settings.contact !== 'strong' && (
+                <MishitToggle settings={settings} onChange={onSettingsChange} />
+              )}
+              <ViewToggle
+                mode={settings.mode}
+                onChange={(mode) => onSettingsChange({ ...settings, mode })}
+              />
+              <BasisButton
+                basis={basis}
+                onChange={(next) => onSettingsChange({ ...settings, basis: next })}
+              />
+            </div>
+          }
+        />
+        {views.length > 0 && (
+          <ClubPicker clubs={views.map((view) => view.profile.club)} active={focusClub} />
         )}
-        {scoresByClub.map(({ profile, scores }) => (
-          <ProfileCard
-            key={profile.club}
-            profile={profile}
-            focus={focusClub === profile.club}
+        <Disclosure summary="How these profiles are derived">
+          <p>
+            Profiles are derived from your sessions and never change saved data. Archived
+            sessions and excluded shots are left out, and a corrected club label counts as the
+            club. Typical carry uses reviewed full swings with typical contact when at least 10
+            are measured, otherwise the broader estimate; wedges need an explicit full intent.
+            Carry spread is the middle half (IQR) of measured carries and includes mishits and
+            flagged shots, even when Hide likely mishits is on. Missing measurements stay
+            missing on the chosen basis — profiles never fall back to another basis. The
+            latest-session line matches that session’s recap; the history below matches
+            Progress.
+          </p>
+        </Disclosure>
+        {views.length === 0 && (
+          <EmptyState title="No club profiles yet">
+            Import a session with club labels to build them.
+          </EmptyState>
+        )}
+      </Card>
+      <div className="club-profile-list">
+        {views.map((view) => (
+          <ClubProfileCard
+            key={view.profile.club}
+            view={view}
+            focus={focusClub === view.profile.club}
             bagCount={data.equipment.length}
             basis={basis}
-            scores={scores}
-            rating={ratingsByClub.get(profile.club) ?? null}
+            scale={bandScale}
             referenceValues={data.userReferenceValues}
             equipmentList={data.equipment}
             onSaveReference={saveReference}
@@ -918,7 +1076,7 @@ export function ClubProfiles({
             referenceError={referenceError}
           />
         ))}
-      </section>
+      </div>
     </>
   );
 }

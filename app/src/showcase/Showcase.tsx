@@ -10,7 +10,9 @@ import {
 import { BASES, localToday, type Basis } from '../domain/model';
 import { explorerPlot } from '../domain/explorer';
 import { clubCardRows } from '../components/clubCardData';
+import { clubProfileViews } from '../components/clubProfileData';
 import { ClubCard } from '../components/ClubCard';
+import { ClubProfileCard } from '../components/ClubProfiles';
 import { PerformanceTrendCard } from '../components/PerformanceTrendCard';
 import { ThemeToggle, useTheme } from '../components/ThemeToggle';
 import {
@@ -39,6 +41,7 @@ import {
   ScoreRing,
   Sparkline,
   DispersionPlot,
+  sharedBandScale,
   type ScatterDatum,
   type ScatterTick,
 } from '../components/charts';
@@ -168,6 +171,26 @@ export default function Showcase() {
   }, [data]);
 
   const row7i = rows.find((r) => r.club === '7i');
+
+  // D7 full club profiles on the same synthetic data (read-only showcase:
+  // reference edits are no-ops here).
+  const profileViews = useMemo(
+    () =>
+      clubProfileViews(data, basis, {
+        mode: 'all',
+        intent: 'all',
+        contact: 'all',
+        hideLikelyMishits: false,
+      }),
+    [data, basis],
+  );
+  const profileScale = useMemo(
+    () => sharedBandScale(profileViews.map((view) => view.band)),
+    [profileViews],
+  );
+  const showcaseProfiles = profileViews.filter(
+    (view) => view.profile.club === '7i' || view.profile.club === 'PW',
+  );
 
   return (
     <div className="showcase">
@@ -366,6 +389,36 @@ export default function Showcase() {
               href={`#clubs/${encodeURIComponent(row.club)}`}
               basisLabel={BASES[basis].label}
               defaultOpen={i === 1}
+              scaleMin={profileScale.min}
+              scaleMax={profileScale.max}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="sc-profile">
+        <h2 id="sc-profile">Club profile (full page card)</h2>
+        <p className="section-note">
+          The full <code>#clubs/&lt;club&gt;</code> profile is a deeper version of the card above: rating
+          ring with evidence indicators, headline carry metrics, category bars, a shared-scale
+          distribution band, benchmark bars against the personal reference, directional graphics where
+          measured, and an interactive session history. Distribution bands use one shared scale across
+          clubs. Reference editing is a no-op in this dev-only fixture.
+        </p>
+        <div className="club-profile-list">
+          {showcaseProfiles.map((view) => (
+            <ClubProfileCard
+              key={view.profile.club}
+              view={view}
+              focus={false}
+              bagCount={data.equipment.length}
+              basis={basis}
+              scale={profileScale}
+              referenceValues={data.userReferenceValues}
+              equipmentList={data.equipment}
+              onSaveReference={async () => {}}
+              onDeleteReference={async () => {}}
+              referenceError=""
             />
           ))}
         </div>

@@ -2925,19 +2925,60 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
     .filter({ has: page.getByRole('heading', { name: '7i', exact: true }) });
   await expect(card).toContainText('Premium · flat (estimate)');
   await expect(card).toContainText('2 sessions · 26 shots');
-  await expect(card).toContainText('Typical carry 122 m');
-  await expect(card).toContainText(
+  // Compact club selection: the picker deep-links to every profile.
+  const picker = page.getByRole('navigation', { name: 'Select a club profile' });
+  await expect(picker.getByRole('link', { name: '7 iron' })).toHaveAttribute(
+    'href',
+    '#clubs/7i',
+  );
+  // Prominent overall rating ring in the header, with the readable club name
+  // alongside the abbreviated badge.
+  await expect(
+    card.getByRole('img', { name: /7i overall rating \d+ of 100/ }),
+  ).toBeVisible();
+  await expect(card.locator('.club-profile-title')).toContainText('7 iron');
+  await expect(card.locator('.club-badge').first()).toHaveText('7I');
+  // Headline metrics: typical carry and strong-strike potential as metric tiles.
+  const typical = card.locator('.ds-metric', { hasText: 'Typical carry' });
+  await expect(typical).toContainText('122');
+  await expect(typical).toContainText('m');
+  const potential = card.locator('.ds-metric', { hasText: 'Strong-strike carry (P80)' });
+  await expect(potential).toContainText('m');
+  // Repetitive coverage explanations live in a contextual popover; the
+  // evidence indicators (badges) stay visible.
+  const coverage = card.getByRole('button', {
+    name: 'Measurement coverage and cohorts',
+  });
+  await coverage.click();
+  const coveragePopover = card.locator('.ds-help-popover');
+  await expect(coveragePopover).toContainText(
     'reviewed full swings with typical contact · 13 measured, 1 missing',
   );
-  await expect(card).toContainText('Strong-strike carry (P80)');
-  await expect(card).toContainText('distance potential when struck well');
+  await expect(coveragePopover).toContainText('distance potential when struck well');
+  await expect(coveragePopover).toContainText('middle half of 25 measured carries');
+  await coverage.click();
+  // Distribution plot + spread line stay visible.
+  await expect(card.locator('.ds-distribution svg')).toBeVisible();
   await expect(card).toContainText('Carry spread (IQR) 10 m');
   await expect(card).toContainText('middle half of 25 measured carries');
   await expect(card).toContainText('Lower carry tail (P10) 110.4 m');
+  // The fixture has no directional measurements: no fabricated direction.
+  await expect(card).toContainText('Direction not measured on this basis');
+  // Interactive history chart on the Progress cohort, above the table.
+  await expect(
+    card.getByRole('group', { name: /7i median carry per session/ }),
+  ).toBeVisible();
+  await expect(
+    card.getByRole('group', { name: 'History metric' }).getByRole('button', { name: 'Spread' }),
+  ).toBeVisible();
   await expect(card).toContainText('Longest carry 150 m');
   await expect(card).toContainText('13 measured, 1 missing for 7i');
   await expect(card).toContainText('100% of full swings contact-reviewed');
   await expect(card).toContainText('Gap to the next longer club: 20 m');
+  // No personal reference yet: the benchmark section says so instead of a bar.
+  await expect(card).toContainText(
+    'No personal carry reference for 7i yet — add one below to benchmark this club',
+  );
 
   // Optional external references: collapsed by default, link-out only, with
   // attribution, comparability caveat and a pro badge — never embedded numbers.
@@ -2958,21 +2999,21 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(refs).toContainText('Linked sources only');
   await expect(refs).toContainText('TrackMan');
 
-  // Category scores (ADR-0003): four raw-metric categories with sample sizes,
-  // plus the methodology disclosure. The fixture has no launch direction, so
+  // Category scores (ADR-0003): four raw-metric categories with sample sizes
+  // behind the methodology disclosure. The fixture has no launch direction, so
   // directional control must say not enough data rather than invent a number.
   const scores = card.locator('.category-scores');
-  await expect(scores).toContainText('Distance potential');
-  await expect(scores).toContainText('Consistency');
-  await expect(scores).toContainText('Directional control');
-  await expect(scores).toContainText('Reliability');
-  await expect(scores).toContainText('from 25 measured shots');
-  await expect(
-    scores.locator('ul.profile-stats li').filter({ hasText: 'Directional control' }),
-  ).toContainText('not enough data');
   const methodology = scores.locator('details');
   await expect(methodology.locator('summary')).toHaveText('How these are scored');
   await methodology.locator('summary').click();
+  await expect(methodology).toContainText('Distance potential');
+  await expect(methodology).toContainText('Consistency');
+  await expect(methodology).toContainText('Directional control');
+  await expect(methodology).toContainText('Reliability');
+  await expect(methodology).toContainText('from 25 measured shots');
+  await expect(
+    methodology.locator('ul li').filter({ hasText: 'Directional control' }),
+  ).toContainText('not enough data');
   await expect(methodology).toContainText('category-scores-1');
   // Raw category metrics stay, but the composite now lives in the ADR-0005
   // rating breakdown — the disclosure points there instead of denying it.
@@ -3022,6 +3063,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(personal).toContainText('P80 statistic');
   await expect(personal).toContainText('recorded 2026-11-20');
   await expect(personal).toContainText('Fitted 7i');
+  // A reference with an unknown basis is never silently compared — the
+  // benchmark section shows the reason instead of a bar.
+  await expect(card).toContainText('Not compared:');
 
   // The latest-session line links to the same numbers as the session recap.
   const latestLine = card.locator('p').filter({ hasText: 'Latest session' });
@@ -3044,7 +3088,9 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   const five = page
     .locator('.club-profile')
     .filter({ has: page.getByRole('heading', { name: '5i', exact: true }) });
-  await expect(five).toContainText('Typical carry 140 m');
+  await expect(
+    five.locator('.ds-metric', { hasText: 'Typical carry' }),
+  ).toContainText('140');
   await expect(five).toContainText('Sample limited');
   const history = card.getByRole('table', { name: '7i history across sessions' });
   await expect(history.getByRole('row')).toHaveCount(4);
@@ -3057,13 +3103,27 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
       .getByRole('link', { name: new RegExp(`^${today}`) })
       .getAttribute('href'),
   ).toBe(`#sessions/${todayResult.sessionId}`);
+  // The history chart's metric selector swaps the series.
+  await card
+    .getByRole('group', { name: 'History metric' })
+    .getByRole('button', { name: 'Spread' })
+    .click();
+  await expect(
+    card.getByRole('group', { name: /7i carry spread per session/ }),
+  ).toBeVisible();
+  await card
+    .getByRole('group', { name: 'History metric' })
+    .getByRole('button', { name: 'Median carry' })
+    .click();
 
   // Basis selection changes the numbers without falling back across bases.
   await page
     .getByRole('button', { name: 'Premium · flat (estimate)', exact: true })
     .click();
   await expect(card).toContainText('Range · flat');
-  await expect(card).toContainText('Typical carry 132 m');
+  await expect(
+    card.locator('.ds-metric', { hasText: 'Typical carry' }),
+  ).toContainText('132');
 
   // Range-ball bases never get an external benchmark overlay (no external
   // source measures limited-flight range balls); premium bases do.
