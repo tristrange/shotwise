@@ -298,7 +298,7 @@ test('toggles automatic mishits across stats without changing reviews', async ({
     page.getByText(/No recurring practice patterns yet/),
   ).toBeVisible();
   await expect(
-    page.getByRole('list', { name: 'Club carry distances' }),
+    page.getByRole('list', { name: 'Adjacent club gaps' }),
   ).toContainText('small median gap');
   await nav(page, 'Progress');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -953,12 +953,12 @@ test('shares the analysis window and measurement basis across pages', async ({
   await expect(overview7i).toContainText('120 m carry');
   await nav(page, 'Gapping');
   const gapping = page.getByRole('list', { name: 'Club carry distances' });
-  await expect(gapping).toContainText('Median 120 m');
+  await expect(gapping).toContainText('120 m');
   await expect(
     page.getByText(/No recurring practice patterns yet/),
   ).toBeVisible();
   await window.getByRole('button', { name: 'All-time' }).click();
-  await expect(gapping).toContainText('Median 70 m');
+  await expect(gapping).toContainText('70 m');
   await expect(
     page.getByText(/No recurring practice patterns yet/),
   ).toBeVisible();
@@ -974,7 +974,7 @@ test('shares the analysis window and measurement basis across pages', async ({
 
   await nav(page, 'Gapping');
   await expect(basis).toHaveText('Range · flat');
-  await expect(gapping).toContainText('Median 80 m');
+  await expect(gapping).toContainText('80 m');
 
   await nav(page, 'Progress');
   await expect(
@@ -1004,7 +1004,7 @@ test('shares the analysis window and measurement basis across pages', async ({
   );
   await expect(overview7i).toContainText('130 m carry');
   await nav(page, 'Gapping');
-  await expect(gapping).toContainText('Median 130 m');
+  await expect(gapping).toContainText('130 m');
 });
 
 test('explores progress through one interactive chart with sparse and missing data', async ({
@@ -1174,11 +1174,20 @@ test('shows readable carry bands without recommending practice from overlap alon
     .getByRole('list', { name: 'Club carry distances' })
     .getByRole('listitem');
   await expect(rows).toHaveCount(3);
-  await expect(rows.nth(1)).toContainText('Median 123 m');
-  await expect(rows.nth(1)).toContainText('Middle 80%: 110–136 m');
-  await expect(rows.nth(1)).toContainText('Gap: 25 m');
+  await expect(rows.nth(1)).toContainText('123 m');
   await expect(rows.nth(1)).not.toContainText('bands overlap');
   await expect(rows.nth(2)).toContainText('Spread needs 10 shots');
+  // Tapping a club's band selects it and surfaces carry, spread, potential
+  // and the adjacent gap in the detail panel below the shared-scale chart.
+  await rows.nth(1).getByRole('button', { name: /Median 123 m/ }).click();
+  const detail = page.getByRole('region', { name: 'Gapping details for 7i' });
+  await expect(detail).toContainText(/123\s*m/);
+  await expect(detail).toContainText(/110–136\s*m/);
+  await expect(detail).toContainText(/\+25\s*m/);
+  await expect(detail).toContainText('10 shots');
+  await expect(
+    page.getByRole('list', { name: 'Adjacent club gaps' }),
+  ).toContainText('+25 m');
   await expect(
     page.getByText(/No recurring practice patterns yet/),
   ).toBeVisible();
@@ -2501,7 +2510,16 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
       }),
     ).toContainText('1 shot');
   }
-  await expect(benchmark).toContainText('Median 65 m');
+  await expect(benchmark).toContainText('65 m');
+
+  // The shot-level scatter opens per group and plots the measured carries
+  // (the shot with a missing carry is not plotted, never as zero).
+  await target.getByRole('button', { name: 'Shot scatter: hidden' }).click();
+  const scatter = target.getByRole('group', {
+    name: 'SW · 30 m target carry per shot',
+  });
+  await expect(scatter).toBeVisible();
+  await expect(scatter.locator('circle')).toHaveCount(4);
 
   await page.getByTitle('Change measurement basis').click();
   await expect(section).toContainText('Range · flat');
@@ -2563,7 +2581,7 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
     page.getByText('full · uncertain · included', { exact: true }),
   ).toHaveCount(2);
   await page.goBack();
-  await expect(benchmark).toContainText('Median 44 m');
+  await expect(benchmark).toContainText('44 m');
   await expect(target).toContainText('1 full, 1 partial, 3 unknown intent');
 });
 

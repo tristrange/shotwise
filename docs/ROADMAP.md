@@ -1369,3 +1369,49 @@ Verification on `feat/overview-redesign`: `npm test` 355 passed, typecheck/lint 
 `npm run build` and `--base=/shotwise/` clean, production `dist/` verified free of showcase
 code, `npm run test:e2e` **88 passed**. **Stopping after Overview (D6) for owner feedback**
 before redesigning the remaining pages (D7+).
+
+## 13.12 D7–D8 merged; D9 Gapping redesign implemented on `feat/gapping-redesign`, holding for owner review (2026-11-26)
+
+D7 (Club Profiles, PR #101) and D8 (Progress, PR #102) are merged. The obsolete remote
+branch `feat/design-system-foundation` was verified patch-equivalent to main
+(`git cherry` marks its only extra commit `ac37a59` as contained) and removed.
+
+**D9 (Gapping redesign)** is implemented on `feat/gapping-redesign` from current `main`:
+
+- **Unified shared-scale chart** (`GappingChart`) with selectable views — carry
+  distribution (P10–P90 band + IQR + median + dashed strong-strike P80 marker per club,
+  one common distance axis per view), distance potential (selected-cohort median vs P80
+  bars on a shared axis), and simple median carry bars — built on the shared chart kit
+  (`ChartContainer`/`ChartTooltipContent` for the Recharts views, `DistributionPlot`
+  extended with a `compare` marker and full-width `stretch` mode for the band rows).
+  Touch-friendly club chips plus tappable rows/bars select a club and open a concise
+  detail panel: median carry (cohort-labelled), P80 potential, P10–P90, IQR, sample
+  coverage and the adjacent gap with its flag. Limited samples and missing measurements
+  stay distinguishable ("Spread needs 10 shots", `—` never zero, sample-limited badges).
+- **Adjacent-club gaps** as a compact bar list using the approved `clubGaps` flags
+  (reversed / small ≤ 10 m / large > 30 m, only with 10+ band shots per club); thresholds
+  are exported from the domain (`GAP_THRESHOLDS`) and surfaced only in the contextual
+  help. No new thresholds, no equipment-removal recommendations from overlap.
+- **Wedge practice** rebuilt on the ds: target-vs-median-carry comparison bars (with the
+  unverified carry-reference caveat kept), per-group distribution plots on a shared
+  scale, an intent mix bar distinguishing full swings from intentional partial practice,
+  per-group shot-level scatter plots, and the shot tables behind disclosures. Grouping,
+  intent and classification policies are unchanged (`wedgePractice` untouched).
+- **Hierarchy:** controls card → shared-scale chart → adjacent gaps → wedge practice →
+  practice insights; methodology behind HelpPopovers, details behind disclosures. The
+  legacy `.gap-*`/`wedge-*` text-table styles were removed.
+- **Domain:** `clubGaps` additionally exposes `q1`/`q3` from the same mode-invariant band
+  cohort (additive; existing tests untouched and green). No analytics, classification,
+  rating, measurement-basis or database changes.
+
+Verification on `feat/gapping-redesign`: `npm test` **369 passed** (new `gappingData`
+tests + `ClubGap` quartile test), typecheck/lint clean, `npm run build` and
+`--base=/shotwise/` clean with `dist/` free of showcase code, `verify:performance`
+unchanged (ratings ≈15.8 ms warm at 12k shots), `npm run test:e2e` **88/88** (desktop
+Chromium + iPhone-13 WebKit) with deliberate selector updates for the new chart structure
+(stronger assertions: selecting a club row is asserted to surface the carry band, gap
+and sample coverage in the detail panel). Representative screenshots captured at 390 and
+1280 px, light and dark, plus the potential view (`docs/design-system/shots/gapping-*`,
+via `npm run shots:gapping`, which also asserts no horizontal overflow and that all three
+views render). **Stopping after D9 for owner review before D10 (Sessions and
+comparisons).**

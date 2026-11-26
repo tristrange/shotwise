@@ -89,6 +89,35 @@ describe('gapping analysis windows', () => {
     expect(strong.potential).toBe(all.potential);
   });
 
+  it('exposes IQR quartiles from the same mode-invariant band cohort', () => {
+    const session = makeSession({ date: '2026-11-16' });
+    const shots = Array.from({ length: 12 }, (_, i) =>
+      makeShot({
+        sessionId: session.id,
+        rowIndex: i + 1,
+        recordedClub: '7i',
+        measurements: { flatCarryPremium: 100 + i * 5 },
+      }),
+    );
+    const data = { ...emptyDataset, sessions: [session], shots };
+    const row = clubGaps(data, 'premium-flat', allTimeQuery)[0]!;
+    // Linear-interpolated quartiles of the 12 band carries 100..155 step 5.
+    expect(row.q1).toBe(113.75);
+    expect(row.q3).toBe(141.25);
+    expect(row.low).toBe(105.5); // P10, same cohort
+    expect(row.high).toBe(149.5); // P90, same cohort
+    // Below 4 measured band shots the quartiles stay null (same guard as iqr).
+    const few = {
+      ...emptyDataset,
+      sessions: [session],
+      shots: shots.slice(0, 3),
+    };
+    const fewRow = clubGaps(few, 'premium-flat', allTimeQuery)[0]!;
+    expect(fewRow.q1).toBeNull();
+    expect(fewRow.q3).toBeNull();
+    expect(fewRow.low).toBeNull();
+  });
+
   it('applies review filters after the cutoff date without backfilling older shots', () => {
     const sessions = ['2026-11-16', '2026-11-10', '2026-10-01'].map((date) =>
       makeSession({ date }),
