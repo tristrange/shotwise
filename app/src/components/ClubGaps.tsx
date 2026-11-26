@@ -105,9 +105,12 @@ export function ClubGaps({
                 </p>
                 <p>
                   A negative adjacent gap means this club carried farther than
-                  the one above. Gap flags use medians from comparable visits on
-                  multiple dates and the approved thresholds — overlap alone
-                  never triggers a recommendation.
+                  the one above. Flags use the approved thresholds on the
+                  selected cohort's medians and appear only with enough band
+                  samples per club — overlap alone never triggers a
+                  recommendation. (Comparable visits on multiple dates are
+                  required for the practice recommendations below, not for
+                  gap flags.)
                 </p>
               </HelpPopover>
             </div>

@@ -42,16 +42,20 @@ export function AdjacentGaps({ rows }: { rows: readonly GappingRow[] }) {
           <HelpPopover label="How gaps and flags are calculated">
             <p>
               The gap is the median carry of the club above minus this club's
-              median, using the selected cohort on the selected measurement
-              basis. Medians come from comparable visits on multiple dates, so
-              a single session cannot flag a gap on its own.
+              median, from the selected cohort on the selected measurement
+              basis. Flags appear only when both clubs have at least{' '}
+              {GAP_THRESHOLDS.minSamples} measured band shots in the window: a
+              negative gap means the medians are reversed, up to{' '}
+              {GAP_THRESHOLDS.smallM} m is a small median gap, and above{' '}
+              {GAP_THRESHOLDS.largeM} m a large gap. Sample-limited pairs show
+              the gap without a flag.
             </p>
             <p>
-              Flags appear only when both clubs have at least{' '}
-              {GAP_THRESHOLDS.minSamples} measured band shots: a negative gap
-              means the medians are reversed, up to {GAP_THRESHOLDS.smallM} m
-              is a small median gap, and above {GAP_THRESHOLDS.largeM} m a
-              large gap. Sample-limited pairs show the gap without a flag.
+              Note that a single large session can still flag a pair — the
+              flags need sample size, not multiple dates. The
+              comparable-visits-on-multiple-dates guarantee applies to the
+              practice recommendations in Practice insights, not to these
+              gap flags.
             </p>
             <p>
               Overlap is information, not a verdict: Shotwise never recommends

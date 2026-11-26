@@ -2512,6 +2512,15 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
   }
   await expect(benchmark).toContainText('65 m');
 
+  // The shot-level scatter opens per group and plots the measured carries
+  // (the shot with a missing carry is not plotted, never as zero).
+  await target.getByRole('button', { name: 'Shot scatter: hidden' }).click();
+  const scatter = target.getByRole('group', {
+    name: 'SW · 30 m target carry per shot',
+  });
+  await expect(scatter).toBeVisible();
+  await expect(scatter.locator('circle')).toHaveCount(4);
+
   await page.getByTitle('Change measurement basis').click();
   await expect(section).toContainText('Range · flat');
   await expect(target).toContainText('Median carry 27 m');

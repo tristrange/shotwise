@@ -52,6 +52,16 @@ function ticksOf([lo, hi]: [number, number]): ScatterTick[] {
   return [lo, mid, hi].map((value) => ({ value, text: value.toFixed(1) }));
 }
 
+/**
+ * Scatter x domain for a wedge group: every shot keeps its original position
+ * (x = index + 1) even when its carry is missing and therefore not plotted,
+ * so the axis must span the whole group — sizing it from the measured subset
+ * would push later points outside the plot viewport.
+ */
+export function wedgeScatterXDomain(totalShots: number): [number, number] {
+  return [0.5, Math.max(1, totalShots) + 0.5];
+}
+
 /** Intent mix bar: full swings vs intentional partial practice, never by colour alone (the counts are in the text line). */
 function IntentBar({ group }: { group: WedgeGroup }) {
   if (group.kind !== 'target') return null;
@@ -123,6 +133,10 @@ function GroupScatter({
   const yMax = Math.max(...ys);
   const yPad = (yMax - yMin) * 0.2 || 1;
   const selectedPoint = points.find((p) => p.id === selected);
+  // The x axis spans every shot in the group — points keep their original
+  // positions (missing carries are simply not plotted), so the domain must
+  // come from group.shots.length, not from the measured subset.
+  const [xLo, xHi] = wedgeScatterXDomain(group.shots.length);
   return (
     <div className="wedge-scatter">
       <PerformanceScatterPlot
@@ -130,9 +144,9 @@ function GroupScatter({
         caption={`Basis ${BASES[basis].label}`}
         xLabel="Shot (group order)"
         yLabel="Carry (m)"
-        xTicks={ticksOf([1, points.length])}
+        xTicks={ticksOf([1, group.shots.length])}
         yTicks={ticksOf([yMin - yPad, yMax + yPad])}
-        xDomain={[0.5, points.length + 0.5]}
+        xDomain={[xLo, xHi]}
         yDomain={[yMin - yPad, yMax + yPad]}
         points={points}
         selectedId={selected}
