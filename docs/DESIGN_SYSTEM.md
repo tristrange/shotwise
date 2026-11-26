@@ -19,7 +19,20 @@ Recharts trend with an optional P80 comparison series and session-recap links), 
 concise cross-club carry-trend comparison with the no-proof caveat, and the detailed
 per-club session tables behind disclosures; Club Profiles refinements — a deep-linked
 `#clubs/<club>` shows that one profile (picker gains an "All clubs" link), the history
-table sits behind a disclosure, and facts render as compact metric rows.
+table sits behind a disclosure, and facts render as compact metric rows. D9 (Gapping) is
+implemented on `feat/gapping-redesign`: the gapping screen is now controls card + one
+unified shared-scale chart (`GappingChart`) with selectable views — carry distribution
+(P10–P90 + IQR + median + dashed P80 marker per club on one axis), distance potential
+(selected-cohort median vs strong-strike P80 bars), and simple median carry bars — with
+touch-friendly club chips and tappable rows/bars driving a concise detail panel (carry,
+potential, spread, sample coverage), a compact adjacent-club gap card using the approved
+`clubGaps` flags (small/large/reversed, methodology behind a HelpPopover, no equipment
+recommendations from overlap), and a ds-rebuilt Wedge practice section (target-vs-median
+carry comparison bars with the unverified-carry-reference caveat, per-group distribution
+plots on a shared scale, an intent mix bar separating full swings from partial practice,
+per-group shot-level scatter, shot tables behind disclosures). Presentation consumes
+`clubGaps`/`wedgePractice` via `gappingView` (`ClubGap` gained `q1`/`q3` from the same
+band cohort); the legacy `.gap-*`/`wedge-*` styles were removed.
 
 ## 0. Approval record — 2026-11-26
 
@@ -334,7 +347,8 @@ working regardless. Desktop sidebar mirrors the same grouping.
 | D6 | Overview rebuild on the ds (compact hero, metric strip, controls, insight card, ClubCard list, disclosures) — **merged as PR #100** | owner feedback before Phase 5 |
 | D7 | Club Profiles redesign on the ds — **merged as PR #101** | owner review |
 | D8 | Progress redesign on the ds — **implemented on `feat/progress-redesign`** (see status above) | owner review before D9 |
-| D9–D11 | Remaining screens one PR each: Gapping, Sessions (+recap/compare), Shot shape + Explorer + Review/Settings | per-screen review |
+| D9 | Gapping redesign on the ds — **implemented on `feat/gapping-redesign`** (see status above) | owner review before D10 |
+| D10–D11 | Remaining screens one PR each: Sessions (+recap/compare), Shot shape + Explorer + Review/Settings | per-screen review |
 | D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) | final sign-off |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.

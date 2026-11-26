@@ -80,7 +80,8 @@ export type ClubProfileView = {
   } | null;
 };
 
-function carryBandOf(shots: Shot[], carryKey: MetricKey): DistributionBand {
+/** Carry distribution band (P10–P90 + IQR + median) of a shot set, missing-safe. Shared by profile and wedge-practice views. */
+export function carryBandOf(shots: Shot[], carryKey: MetricKey): DistributionBand {
   const stats = metricStats(shots, carryKey);
   const values = shots.flatMap((s) =>
     s.measurements[carryKey] === null ? [] : [s.measurements[carryKey]],

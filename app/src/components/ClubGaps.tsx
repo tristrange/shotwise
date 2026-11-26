@@ -1,16 +1,27 @@
-import { useEffect, useRef } from 'react';
-import { clubGaps, type AnalysisSettings } from '../domain/analytics';
-import { localToday, type Dataset } from '../domain/model';
+import { useEffect, useMemo, useRef } from 'react';
+import { GAP_THRESHOLDS, type AnalysisSettings } from '../domain/analytics';
+import { BASES, localToday, type Dataset } from '../domain/model';
 import {
   BasisButton,
   MishitToggle,
   PerformanceToggle,
   ViewToggle,
 } from './AnalysisControls';
-import { clubHref } from './ClubProfiles';
+import { AdjacentGaps } from './AdjacentGaps';
+import { GappingChart } from './GappingChart';
+import { gappingView } from './gappingData';
 import { PracticeInsights } from './PracticeInsights';
 import { WedgePractice } from './WedgePractice';
+import { Card, EmptyState, HelpPopover, SectionHeader } from './ds';
 
+/**
+ * The Gapping page (D9): compact analysis controls up top, then one unified
+ * shared-scale chart of club distances with selectable views (distribution /
+ * potential / simple), the concise adjacent-club gap comparison, wedge
+ * practice graphics, and practice insights. Detailed measurements and
+ * methodology live behind contextual help and disclosures; all figures come
+ * from the tested domain functions via `gappingView` / `wedgePractice`.
+ */
 export function ClubGaps({
   data,
   settings,
@@ -20,15 +31,30 @@ export function ClubGaps({
   settings: AnalysisSettings;
   onSettingsChange: (settings: AnalysisSettings) => void;
 }) {
-  const { basis, ...filters } = settings;
-  const query = { ...filters, today: localToday() };
-  const rows = clubGaps(data, basis, query);
-  const scale = Math.max(...rows.map((row) => row.high ?? row.median), 1) * 1.1;
+  const { basis } = settings;
+  const query = useMemo(
+    () => ({
+      mode: settings.mode,
+      intent: settings.intent,
+      contact: settings.contact,
+      hideLikelyMishits: settings.hideLikelyMishits,
+      today: localToday(),
+    }),
+    [settings],
+  );
+  const view = useMemo(() => gappingView(data, basis, query), [data, basis, query]);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
     heading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
   }, []);
+
+  const cohort =
+    settings.contact === 'strong'
+      ? 'Strong-strike'
+      : settings.contact === 'typical'
+        ? 'Typical'
+        : 'All shots';
 
   return (
     <>
@@ -37,113 +63,70 @@ export function ClubGaps({
           Club gapping
         </h1>
       </div>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Carry by club</span>
-            <h2>Typical carry and the gap to the next club</h2>
-          </div>
-          <div className="card-controls">
-            <PerformanceToggle settings={settings} onChange={onSettingsChange} />
-            {settings.contact !== 'strong' && (
-              <MishitToggle settings={settings} onChange={onSettingsChange} />
-            )}
-            <ViewToggle
-              mode={settings.mode}
-              onChange={(mode) => onSettingsChange({ ...settings, mode })}
-            />
-            <BasisButton
-              basis={basis}
-              onChange={(next) =>
-                onSettingsChange({ ...settings, basis: next })
-              }
-            />
-          </div>
-        </div>
-        <p>
-          Unreviewed non-wedge shots can count, and so can unreviewed
-          pitching-wedge shots. Other wedges need explicit full intent.
-          Partial and mishit shots are excluded. The dot is median carry
-          and the bar is the middle 80%. Grey rows have fewer than ten shots. A
-          negative gap means this club carried farther than the one above. Gap
-          recommendations use medians from comparable visits on multiple dates.
-        </p>
-        {rows.length === 0 ? (
-          <p>
-            No comparable shots for these filters. Shots need a readable club
-            and carry, and must not be marked partial or mishit.
-          </p>
-        ) : (
-          <div className="gap-list">
-            <div className="gap-head">
-              <span>Club</span>
-              <span>
-                {settings.contact === 'strong'
-                  ? 'Strong-strike median · broader spread'
-                  : settings.contact === 'typical'
-                    ? 'Typical carry · spread'
-                    : 'Median carry · spread'}
-              </span>
-              <span>Shots</span>
-              <span>Gap</span>
+      <Card className="gapping-head">
+        <SectionHeader
+          title="Carry by club"
+          sub={`${settings.mode === 'recent' ? 'Recent' : 'All-time'} · ${BASES[basis].label} · ${cohort}${settings.hideLikelyMishits && settings.contact !== 'strong' ? ' · likely mishits hidden' : ''}`}
+          aside={
+            <div className="card-controls">
+              <PerformanceToggle
+                settings={settings}
+                onChange={onSettingsChange}
+              />
+              {settings.contact !== 'strong' && (
+                <MishitToggle
+                  settings={settings}
+                  onChange={onSettingsChange}
+                />
+              )}
+              <ViewToggle
+                mode={settings.mode}
+                onChange={(mode) => onSettingsChange({ ...settings, mode })}
+              />
+              <BasisButton
+                basis={basis}
+                onChange={(next) =>
+                  onSettingsChange({ ...settings, basis: next })
+                }
+              />
+              <HelpPopover label="How gapping is calculated">
+                <p>
+                  Unreviewed non-wedge shots can count, and so can unreviewed
+                  pitching-wedge shots. Other wedges need explicit full intent.
+                  Partial and mishit shots are excluded.
+                </p>
+                <p>
+                  Each club's band is the middle 80% of measured carries from
+                  the broader all-shots cohort; the line is the selected
+                  cohort's median. Fewer than {GAP_THRESHOLDS.minSamples} shots
+                  is sample-limited and the spread is not shown. The dashed
+                  marker is the strong-strike potential (P80), which needs{' '}
+                  {GAP_THRESHOLDS.minSamples}+ measured carries.
+                </p>
+                <p>
+                  A negative adjacent gap means this club carried farther than
+                  the one above. Gap flags use medians from comparable visits on
+                  multiple dates and the approved thresholds — overlap alone
+                  never triggers a recommendation.
+                </p>
+              </HelpPopover>
             </div>
-            <div role="list" aria-label="Club carry distances">
-              {rows.map((row) => {
-                const low = row.low ?? row.median;
-                const high = row.high ?? row.median;
-                return (
-                  <div
-                    className={`gap-row${row.reliable ? '' : ' low'}`}
-                    key={row.club}
-                    role="listitem"
-                  >
-                    <span className="gap-club">
-                      <a href={clubHref(row.club)}>{row.club}</a>
-                    </span>
-                    <div className="gap-carry">
-                      <div className="gap-stats">
-                        <strong>Median {row.median.toFixed(0)} m</strong>
-                        <small>
-                          {row.low !== null && row.high !== null
-                            ? `Middle 80%: ${row.low.toFixed(0)}–${row.high.toFixed(0)} m`
-                            : 'Spread needs 10 shots'}
-                        </small>
-                      </div>
-                      <div className="gap-track" aria-hidden="true">
-                        <span
-                          className="gap-band"
-                          style={{
-                            left: `${(low / scale) * 100}%`,
-                            width: `${((high - low) / scale) * 100}%`,
-                          }}
-                        />
-                        <span
-                          className="gap-dot"
-                          style={{ left: `${(row.median / scale) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                    <span className="gap-n">
-                      {row.n}
-                      <small>{row.n === 1 ? 'shot' : 'shots'}</small>
-                    </span>
-                    <span
-                      className={`gap-value${row.flag === 'large' ? ' big' : ''}`}
-                    >
-                      {row.gap === null ? '—' : `Gap: ${row.gap.toFixed(0)} m`}
-                      {row.flag === 'small' && <small>small median gap</small>}
-                      {row.flag === 'reversed' && (
-                        <small>medians reversed</small>
-                      )}
-                      {row.flag === 'large' && <small>large gap</small>}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
+          }
+        />
+      </Card>
+      {view.rows.length === 0 ? (
+        <Card>
+          <EmptyState title="No comparable shots for these filters.">
+            Shots need a readable club and carry, and must not be marked
+            partial or mishit.
+          </EmptyState>
+        </Card>
+      ) : (
+        <>
+          <GappingChart view={view} basis={basis} settings={settings} />
+          <AdjacentGaps rows={view.rows} />
+        </>
+      )}
       <WedgePractice data={data} basis={basis} query={query} />
       <PracticeInsights data={data} settings={settings} />
     </>

@@ -584,6 +584,9 @@ export type ClubGap = {
   median: number;
   low: number | null;
   high: number | null;
+  /** IQR quartiles of the mode-invariant band cohort (null below 4 measured). */
+  q1: number | null;
+  q3: number | null;
   /** P80 carry — the strong-strike ("distance potential") estimate (ADR-0002). */
   potential: number | null;
   reliable: boolean;
@@ -594,6 +597,13 @@ export type ClubGap = {
 const MIN_GAP_SAMPLES = 10;
 const LARGE_GAP_M = 30;
 const SMALL_GAP_M = 10;
+
+/** Approved adjacent-gap rule thresholds — surfaced verbatim in UI help text, never re-derived there. */
+export const GAP_THRESHOLDS = {
+  minSamples: MIN_GAP_SAMPLES,
+  smallM: SMALL_GAP_M,
+  largeM: LARGE_GAP_M,
+} as const;
 
 /** Carry bands and median gaps against the next club down. */
 export function clubGaps(
@@ -633,13 +643,21 @@ export function clubGaps(
   const rows: ClubGap[] = [...groups]
     .map(([club, shots]) => {
       const stats = metricStats(shots, key);
-      const band = metricStats(bandGroups.get(club) ?? [], key);
+      const bandShots = bandGroups.get(club) ?? [];
+      const band = metricStats(bandShots, key);
+      // IQR quartiles come from the same band cohort as low/high (P10–P90),
+      // guarded like `iqr` by the 4-measured minimum.
+      const bandValues = bandShots.flatMap((s) =>
+        s.measurements[key] === null ? [] : [s.measurements[key]],
+      );
       return {
         club,
         n: stats.n,
         median: stats.median ?? 0,
         low: band.p10,
         high: band.p90,
+        q1: band.n >= 4 ? quantile(bandValues, 0.25) : null,
+        q3: band.n >= 4 ? quantile(bandValues, 0.75) : null,
         potential: potentialCarry(potentialCarries.get(club) ?? []),
         reliable: band.n >= MIN_GAP_SAMPLES,
         gap: null,
