@@ -58,6 +58,7 @@ export type ClubProfileView = {
   apex: { median: number | null; n: number; missing: number };
   /** Benchmark-eligible selected shots for the club (the card's population). */
   total: number;
+  /** Carry measured/missing within the selected cohort — same population as `total`. */
   carryMeasured: { n: number; missing: number };
   /** Carry distribution band from the reliability cohort (agrees with the profile spread). */
   band: DistributionBand;
@@ -79,19 +80,18 @@ export type ClubProfileView = {
   } | null;
 };
 
-function carryBandOf(shots: Shot[], carryKey: MetricKey) {
+function carryBandOf(shots: Shot[], carryKey: MetricKey): DistributionBand {
   const stats = metricStats(shots, carryKey);
   const values = shots.flatMap((s) =>
     s.measurements[carryKey] === null ? [] : [s.measurements[carryKey]],
   );
-  const band: DistributionBand = {
+  return {
     p10: stats.p10,
     q1: values.length >= 4 ? quantile(values, 0.25) : null,
     median: stats.median,
     q3: values.length >= 4 ? quantile(values, 0.75) : null,
     p90: stats.p90,
   };
-  return { band, stats };
 }
 
 export function clubProfileViews(
@@ -125,7 +125,12 @@ export function clubProfileViews(
       resolved,
       'reliability',
     );
-    const { band, stats: reliabilityStats } = carryBandOf(reliability, fields.carry);
+    // The band (and the profile's spread) come from the reliability cohort;
+    // the measured/missing counts shown next to the selected-cohort launch
+    // metrics must come from the selected cohort itself, so the coverage
+    // popover never pairs a broad numerator with a narrow denominator.
+    const band = carryBandOf(reliability, fields.carry);
+    const selectedCarry = metricStats(clubShots, fields.carry);
 
     const lateral = directionStats(reliability, 'fromCentre');
     const launchDir = directionStats(reliability, 'launchDirection');
@@ -177,7 +182,7 @@ export function clubProfileViews(
       launch: metricStats(clubShots, fields.launch),
       apex: metricStats(clubShots, fields.apex),
       total: clubShots.length,
-      carryMeasured: { n: reliabilityStats.n, missing: reliabilityStats.missing },
+      carryMeasured: { n: selectedCarry.n, missing: selectedCarry.missing },
       band,
       direction,
       dispersion: dispersion.length ? dispersion : null,
