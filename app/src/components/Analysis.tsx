@@ -19,6 +19,7 @@ import { Hero } from './Hero';
 import { PracticeInsights } from './PracticeInsights';
 import { ClubProgress } from './ClubProgress';
 import { Disclosure, EmptyState, Metric } from './ds';
+import { sharedBandScale } from './charts';
 
 const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1));
 
@@ -66,6 +67,12 @@ export function Analysis({
   const cardRows = useMemo(
     () => clubCardRows(data, basis, settings),
     [data, basis, settings],
+  );
+  // One shared scale for every club's distribution band, so the plots are
+  // comparable across clubs instead of each zooming to its own range.
+  const bandScale = useMemo(
+    () => sharedBandScale(cardRows.map((row) => row.band)),
+    [cardRows],
   );
   const clubs = [...new Set(cardRows.map((r) => r.club))].sort(
     (a, b) => clubOrder(a) - clubOrder(b) || a.localeCompare(b),
@@ -170,6 +177,8 @@ export function Analysis({
                       href={clubHref(row.club)}
                       basisLabel={BASES[basis].label}
                       carryLabel={carryLabel}
+                      scaleMin={bandScale.min}
+                      scaleMax={bandScale.max}
                     />
                   </div>
                 ))}

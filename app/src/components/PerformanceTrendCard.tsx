@@ -43,7 +43,7 @@ const METRIC_UNIT: Record<TrendMetric, string> = {
 
 // Parse the date-only value as a local calendar date — parsing at UTC midnight
 // would label every session one day early for users west of UTC.
-const shortDate = (iso: string) => {
+export const shortDate = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y ?? 2000, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, {
     day: 'numeric',

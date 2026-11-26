@@ -190,10 +190,7 @@ td { color: var(--ink); }
 tbody tr:hover { background: var(--panel); }
 details { margin-top: 18px; font-size: .9rem; color: var(--ink2); }
 summary { cursor: pointer; font-weight: 600; font-family: var(--font-sans); }
-.category-scores { margin-top: 18px; }
-.benchmark-refs ul { margin: 8px 0; padding-left: 18px; }
-.benchmark-refs li { margin-block: 8px; }
-.benchmark-refs li p { margin: 4px 0 0; }
+/* Club-profile styles live in styles/ds.css (D7 redesign). */
 .preview { border: 1px solid var(--line); padding: 18px; margin: 20px 0; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .muted { margin-top: 24px; font: 400 12px/1.6 var(--font-sans); color: var(--mute); }
@@ -259,13 +256,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 .suggestion-meta { display: grid; gap: 4px; }
 .suggestion-meta span { font: 400 11px/1.4 var(--mono); color: var(--mute); }
 .suggestion-hint { font: 400 13px/1.5 var(--font-sans); color: var(--ink2); }
-
-/* ---------- club profiles ---------- */
-.club-profile { padding: 18px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-.club-profile h3[tabindex] { scroll-margin-top: 64px; }
-.profile-stats { list-style: none; margin: 12px 0; padding: 0; }
-.profile-stats li { padding: 8px 0; border-bottom: 1px solid var(--line); }
-.club-profile table caption { text-align: left; font: 400 12px/1.5 var(--mono); color: var(--mute); padding-bottom: 8px; }
 
 /* ---------- manage bag ---------- */
 .bag-list { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -462,11 +452,11 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
     min-height: clamp(340px, 60svh, 470px);
   }
   .hero.compact {
-    min-height: 250px;
-    min-height: clamp(230px, 38svh, 330px);
+    min-height: 208px;
+    min-height: clamp(190px, 32svh, 280px);
   }
-  .hero.compact .hero-copy { padding-bottom: 26px; }
-  .hero.compact .hero-meta { margin-top: 14px; }
+  .hero.compact .hero-copy { padding-bottom: 20px; }
+  .hero.compact .hero-meta { margin-top: 10px; }
   .hero-copy { width: 100%; padding: 0 20px 34px; }
   .hero h1, .hero h2 { font-size: clamp(1.9rem, 8.5vw, 2.5rem); margin: 12px 0 14px; }
   .hero-dek { font-size: 1rem; }
@@ -497,16 +487,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 
 /* Scroll-entry motion is applied with the Web Animations API in reveal.ts.
    No hidden-by-default CSS: content stays visible if JavaScript is unavailable. */
-.personal-reference { margin-top: 18px; font-size: .9rem; color: var(--ink2); }
-.reference-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
-.reference-form label { display: flex; gap: 6px; align-items: center; }
-.reference-form input[type='number'] { width: 90px; }
-.reference-form input[type='text'] { width: 180px; }
-.reference-compare { margin: 6px 0 10px; display: grid; gap: 4px; }
-.reference-compare-row { display: flex; align-items: center; gap: 8px; margin: 0; }
-.reference-compare-label { min-width: 130px; }
-.reference-compare-bar { flex: 1; max-width: 220px; height: 8px; border-radius: 4px; background: var(--line, #ddd); overflow: hidden; display: inline-block; }
-.reference-compare-fill { display: block; height: 100%; background: var(--accent, #3a7); border-radius: 4px; }
+/* Personal-reference form styles live in styles/ds.css (D7 redesign). */
 
 /* ADR-0005 ratings (ratings-2) — compact chip + breakdown bars */
 .rating-chip { display: inline-flex; align-items: baseline; gap: 4px; font: 600 13px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -521,8 +502,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
 @media (min-width: 701px) {
   .gap-head, .gap-row { grid-template-columns: 56px minmax(0, 1fr) 64px 70px 100px; }
 }
-.club-profile-head { display: flex; align-items: center; gap: 8px; }
-.club-profile-head h3 { margin: 0; }
 
 /* ---------- overview (D6) ---------- */
 .overview-metrics {

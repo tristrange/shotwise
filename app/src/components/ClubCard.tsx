@@ -3,6 +3,7 @@ import { ArrowUpRight, ChevronDown, Compass } from 'lucide-react';
 import { RATING_BASIS, weakestEvidence } from '../domain/ratings';
 import { BASES } from '../domain/model';
 import type { ClubCardData } from './clubCardData';
+import { clubDisplayName } from './clubNames';
 import { Badge, HelpPopover, Metric, MetricGrid } from './ds';
 import {
   BenchmarkBar,
@@ -32,6 +33,8 @@ export function ClubCard({
   basisLabel,
   carryLabel = 'carry',
   defaultOpen = false,
+  scaleMin,
+  scaleMax,
 }: {
   data: ClubCardData;
   href: string;
@@ -39,6 +42,9 @@ export function ClubCard({
   /** Word after the median: 'carry', 'typical carry', 'strong-strike median'. */
   carryLabel?: string;
   defaultOpen?: boolean;
+  /** Shared distribution scale across clubs so plots compare; falls back to this card's own band. */
+  scaleMin?: number;
+  scaleMax?: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const detailId = useId();
@@ -59,9 +65,11 @@ export function ClubCard({
     data.band.q3,
     data.band.p90,
   ].filter((v): v is number => v !== null);
-  const scaleMin = bandValues.length ? Math.min(...bandValues) : 0;
-  const scaleMax = bandValues.length ? Math.max(...bandValues) : 1;
-  const pad = (scaleMax - scaleMin) * 0.12 || 1;
+  const ownMin = bandValues.length ? Math.min(...bandValues) : 0;
+  const ownMax = bandValues.length ? Math.max(...bandValues) : 1;
+  const pad = (ownMax - ownMin) * 0.12 || 1;
+  const plotMin = scaleMin ?? ownMin - pad;
+  const plotMax = scaleMax ?? ownMax + pad;
   return (
     <article className={`club-card${open ? ' open' : ''}`}>
       <div className="club-card-top">
@@ -76,7 +84,7 @@ export function ClubCard({
             {data.club.toUpperCase()}
           </span>
           <span className="club-id">
-            <strong>{data.club}</strong>
+            <strong>{clubDisplayName(data.club)}</strong>
             <small>
               <span className="club-shots">{data.total}</span> shots ·{' '}
               {fmtM(data.median)} {carryLabel} · {fmtM(data.potential)} potential
@@ -119,6 +127,22 @@ export function ClubCard({
         inert={!open}
       >
         <div className="club-card-detail-inner">
+          <div className="club-card-row" style={{ marginTop: 0 }}>
+            <span className="ds-field-label">
+              Launch monitor
+              <HelpPopover label="Measurement coverage for this club">
+                <p>
+                  measured: speed {data.speed.n}/{data.total} · launch {data.launch.n}/{data.total} ·
+                  apex {data.apex.n}/{data.total} · carry {data.n}/{data.total}
+                  {data.potential !== null && ` · P80 from ${data.potentialN} full swings`}
+                </p>
+                <p>
+                  Missing measurements stay missing on the {basisLabel} basis — they are shown as —,
+                  never as zero, and never fall back to another basis.
+                </p>
+              </HelpPopover>
+            </span>
+          </div>
           <MetricGrid>
             <Metric
               small
@@ -145,11 +169,6 @@ export function ClubCard({
               unit={data.potential === null ? undefined : 'm'}
             />
           </MetricGrid>
-          <p className="club-measured muted">
-            measured: speed {data.speed.n}/{data.total} · launch {data.launch.n}/{data.total} · apex{' '}
-            {data.apex.n}/{data.total} · carry {data.n}/{data.total}
-            {data.potential !== null && ` · P80 from ${data.potentialN} full swings`}
-          </p>
           {rating && <RatingBreakdown rating={rating} />}
           {!rating && (
             <p className="context">
@@ -169,8 +188,8 @@ export function ClubCard({
             </span>
             <DistributionPlot
               band={data.band}
-              min={scaleMin - pad}
-              max={scaleMax + pad}
+              min={plotMin}
+              max={plotMax}
               label={`${data.club} carry distribution`}
             />
           </div>
