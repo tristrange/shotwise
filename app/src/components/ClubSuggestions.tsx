@@ -25,11 +25,11 @@ export function ClubSuggestions({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const sequence = useMemo(
-    () => assessSequences(data.shots, data.sessions, 'premium-flat'),
-    [data.shots, data.sessions],
+    () => active ? assessSequences(data.shots, data.sessions, 'premium-flat') : undefined,
+    [active, data.shots, data.sessions],
   );
 
-  if (!active) return null;
+  if (!sequence) return null;
 
   const sessions = new Map(
     data.sessions
