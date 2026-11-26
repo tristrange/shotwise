@@ -41,9 +41,14 @@ const METRIC_UNIT: Record<TrendMetric, string> = {
   apex: 'm',
 };
 
+// Parse the date-only value as a local calendar date — parsing at UTC midnight
+// would label every session one day early for users west of UTC.
 const shortDate = (iso: string) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y ?? 2000, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  });
 };
 
 function metricKey(basis: Basis, metric: TrendMetric): MetricKey {

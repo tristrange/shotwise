@@ -13,7 +13,8 @@ type Theme = 'light' | 'dark';
 
 function parseTokens(css: string): Record<Theme, Record<string, string>> {
   const block = (selector: string) => {
-    const match = css.match(new RegExp(`${selector.replace(/[.*[\]]/g, '\\$&')} \\{([^}]*)\\}`));
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = css.match(new RegExp(`${escaped} \\{([^}]*)\\}`));
     if (!match?.[1]) throw new Error(`missing block ${selector}`);
     const vars: Record<string, string> = {};
     for (const entry of match[1].matchAll(/(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{6})/g)) {

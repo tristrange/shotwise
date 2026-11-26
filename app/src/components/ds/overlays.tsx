@@ -1,8 +1,10 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { HelpCircle } from 'lucide-react';
@@ -12,6 +14,8 @@ import { Button } from './primitives';
  * Contextual help: an icon button that opens a small popover with methodology
  * or sample details on demand — keeps dense evidence out of the main view.
  * Closes on outside click and Escape; the button carries aria-expanded.
+ * The popover is clamped to the viewport on open so left-edge triggers (e.g.
+ * next to a withheld composite on a phone) never push it off-screen.
  */
 export function HelpPopover({
   label,
@@ -21,8 +25,20 @@ export function HelpPopover({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<CSSProperties>({});
   const rootRef = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverId = useId();
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const width = Math.min(300, window.innerWidth - 16);
+    const left = Math.min(
+      Math.max(8, rect.right - width),
+      Math.max(8, window.innerWidth - width - 8),
+    );
+    setPlacement({ top: rect.bottom + 8, left, width });
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: MouseEvent) => {
@@ -42,6 +58,7 @@ export function HelpPopover({
   return (
     <span className="ds-help" ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         className="ds-icon-button small ds-help-button"
         aria-label={label}
@@ -57,6 +74,7 @@ export function HelpPopover({
           role="region"
           aria-label={label}
           className="ds-help-popover"
+          style={placement}
         >
           {children}
         </span>

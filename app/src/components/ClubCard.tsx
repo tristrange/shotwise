@@ -107,7 +107,13 @@ export function ClubCard({
           <ArrowUpRight size={16} aria-hidden="true" />
         </a>
       </div>
-      <div className={`club-card-detail${open ? ' open' : ''}`} id={detailId}>
+      <div
+        className={`club-card-detail${open ? ' open' : ''}`}
+        id={detailId}
+        // Collapsed content stays out of the tab order and a11y tree while the
+        // grid-rows animation plays (visibility handled in ds.css).
+        inert={!open}
+      >
         <div className="club-card-detail-inner">
           <MetricGrid>
             <Metric
