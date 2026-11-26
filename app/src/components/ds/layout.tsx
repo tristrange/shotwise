@@ -44,10 +44,10 @@ export function Metric({
   deltaTone = 'neutral',
   small = false,
 }: {
-  label: string;
+  label: ReactNode;
   value: ReactNode;
   unit?: string;
-  delta?: string;
+  delta?: ReactNode;
   deltaTone?: 'pos' | 'neg' | 'neutral';
   small?: boolean;
 }) {

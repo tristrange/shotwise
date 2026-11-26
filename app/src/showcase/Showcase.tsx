@@ -432,7 +432,16 @@ export default function Showcase() {
         </p>
         <div className="showcase-grid">
           <div style={{ gridColumn: '1 / -1' }}>
-            <PerformanceTrendCard data={data} basis={basis} mode="all" />
+            <PerformanceTrendCard
+              data={data}
+              settings={{
+                basis,
+                mode: 'all',
+                intent: 'all',
+                contact: 'all',
+                hideLikelyMishits: false,
+              }}
+            />
           </div>
           <Card>
             <SectionHeader title="Score rings" sub="full · provisional · early · none" />

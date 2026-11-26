@@ -96,6 +96,61 @@ export function strongStrikePopulation(
   );
 }
 
+export type SessionStrongStrike = {
+  /** Measured carries behind the P80 estimate. */
+  n: number;
+  /** Strong-swing base shots without a usable (positive) carry measurement. */
+  missing: number;
+  /** P80 carry of the session's strong-strike population — null below MIN_POTENTIAL_SAMPLES. */
+  potential: number | null;
+};
+
+/**
+ * Per-session strong-strike potential (P80) per club, keyed club → sessionId.
+ * Computed from the broader full-swing non-mishit population of the query —
+ * never from a strong-strike-filtered subset (ADR-0002) — so a per-session
+ * potential series stays comparable with the all-time P80. Callers that want
+ * that guarantee should pass `contact: 'all', hideLikelyMishits: false`.
+ */
+export function strongStrikePotentialBySession(
+  data: Dataset,
+  basis: Basis,
+  query: AnalysisQuery,
+): Map<string, Map<string, SessionStrongStrike>> {
+  const key = BASES[basis].carry;
+  const resolved = resolveShots(data.shots, data.sessions, basis);
+  const base = strongStrikeBase(data, basis, query);
+  const byClubSession = new Map<string, Map<string, Shot[]>>();
+  for (const shot of base) {
+    const r = resolved.get(shot.id);
+    if (!r) continue;
+    const club = resolvedClub(r);
+    const perSession = byClubSession.get(club) ?? new Map<string, Shot[]>();
+    const list = perSession.get(shot.sessionId) ?? [];
+    list.push(shot);
+    perSession.set(shot.sessionId, list);
+    byClubSession.set(club, perSession);
+  }
+  const out = new Map<string, Map<string, SessionStrongStrike>>();
+  for (const [club, perSession] of byClubSession) {
+    const row = new Map<string, SessionStrongStrike>();
+    for (const [sessionId, shots] of perSession) {
+      // Zero/negative carries are failed or placeholder measurements, not
+      // distances — excluded from the values, counted as missing.
+      const values = shots.flatMap((s) =>
+        (s.measurements[key] ?? 0) > 0 ? [s.measurements[key]!] : [],
+      );
+      row.set(sessionId, {
+        n: values.length,
+        missing: shots.length - values.length,
+        potential: potentialCarry(values),
+      });
+    }
+    out.set(club, row);
+  }
+  return out;
+}
+
 /**
  * Per-club strong-strike carry on the shared analysis cohort. Follows the
  * selected window (Recent/All), so early beginner history does not dominate

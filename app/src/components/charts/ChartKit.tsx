@@ -36,7 +36,16 @@ type TooltipEntry = {
   payload?: Record<string, unknown> & { detail?: string };
 };
 
-/** Shared tooltip surface for every Recharts chart in the app. */
+const formatValue = (value: TooltipEntry['value']) =>
+  typeof value === 'number'
+    ? value.toFixed(value % 1 === 0 ? 0 : 1)
+    : (value ?? null);
+
+/**
+ * Shared tooltip surface for every Recharts chart in the app. With a single
+ * series it shows the value only; with several series (e.g. median carry plus
+ * a strong-strike potential comparison) each series gets its own labelled row.
+ */
 export function ChartTooltipContent({
   active,
   payload,
@@ -49,24 +58,30 @@ export function ChartTooltipContent({
   unit?: string;
 }) {
   if (!active || !payload?.length) return null;
-  const entry = payload[0];
-  const value =
-    typeof entry?.value === 'number'
-      ? entry.value.toFixed(entry.value % 1 === 0 ? 0 : 1)
-      : (entry?.value ?? null);
+  const detail = payload.find((entry) => entry.payload?.detail)?.payload
+    ?.detail;
+  const multi = payload.length > 1;
   return (
     <div className="ds-chart-tooltip">
       {label !== undefined && (
         <div className="ds-chart-tooltip-label">{String(label)}</div>
       )}
-      <div className="ds-chart-tooltip-value">
-        {value === null || value === undefined || value === ''
-          ? 'not measured'
-          : `${value}${unit ? ` ${unit}` : ''}`}
-      </div>
-      {entry?.payload?.detail && (
-        <div className="ds-chart-tooltip-label">{entry.payload.detail}</div>
-      )}
+      {payload.map((entry, index) => {
+        const value = formatValue(entry.value);
+        return (
+          <div className="ds-chart-tooltip-row" key={entry.name ?? index}>
+            {multi && entry.name && (
+              <span className="ds-chart-tooltip-name">{entry.name}</span>
+            )}
+            <span className="ds-chart-tooltip-value">
+              {value === null || value === undefined || value === ''
+                ? 'not measured'
+                : `${value}${unit ? ` ${unit}` : ''}`}
+            </span>
+          </div>
+        );
+      })}
+      {detail && <div className="ds-chart-tooltip-label">{detail}</div>}
     </div>
   );
 }
@@ -74,6 +89,8 @@ export function ChartTooltipContent({
 export type ChartPoint = {
   label: string;
   value: number | null;
+  /** Optional comparison-series value for the same x position (null = gap). */
+  compare?: number | null;
   detail?: string;
 };
 

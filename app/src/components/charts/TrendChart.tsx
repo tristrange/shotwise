@@ -1,13 +1,23 @@
-import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { ChartContainer, ChartTooltipContent, type ChartPoint } from './ChartKit';
 import { clamp, usePrefersReducedMotion } from './hooks';
 
 /**
  * Interactive trend chart (reference: interactive-charts screenshot). One
- * series with visible points; hover or tap shows the shared tooltip, tapping
- * the chart selects the nearest point (reported through onSelect).
- * Missing values stay gaps — never zero. Animation is disabled for
- * reduced-motion users.
+ * primary series with visible points; hover or tap shows the shared tooltip,
+ * tapping the chart selects the nearest point (reported through onSelect).
+ * An optional comparison series (`compare`, e.g. strong-strike potential next
+ * to median carry) renders as a dashed `--compare` line so the two stay
+ * distinguishable. Missing values stay gaps — never zero. Animation is
+ * disabled for reduced-motion users.
  */
 export function TrendChart({
   data,
@@ -15,17 +25,25 @@ export function TrendChart({
   height = 220,
   label,
   onSelect,
+  compare,
+  name,
 }: {
   data: ChartPoint[];
   unit: string;
   height?: number;
   label: string;
   onSelect?: (label: string) => void;
+  /** Comparison series label; rendered only when at least one point carries a compare value. */
+  compare?: string;
+  /** Short primary-series name for multi-series tooltips (defaults to `label`). */
+  name?: string;
 }) {
   const reduced = usePrefersReducedMotion();
+  const hasCompare =
+    compare !== undefined && data.some((point) => point.compare !== undefined);
   const values = data
-    .map((point) => point.value)
-    .filter((v): v is number => v !== null);
+    .flatMap((point) => [point.value, hasCompare ? point.compare : null])
+    .filter((v): v is number => v !== null && v !== undefined);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   const pad = (max - min) * 0.15 || Math.max(1, max * 0.05);
@@ -62,7 +80,7 @@ export function TrendChart({
         <Area
           type="monotone"
           dataKey="value"
-          name={label}
+          name={name ?? label}
           stroke="var(--data)"
           strokeWidth={2.5}
           fill="var(--data)"
@@ -72,6 +90,21 @@ export function TrendChart({
           dot={{ r: 3.5, strokeWidth: 0, fill: 'var(--data)' }}
           activeDot={{ r: 6, strokeWidth: 0 }}
         />
+        {hasCompare && (
+          <Line
+            type="monotone"
+            dataKey="compare"
+            name={compare}
+            stroke="var(--compare)"
+            strokeWidth={2}
+            strokeDasharray="5 4"
+            fill="none"
+            connectNulls={false}
+            isAnimationActive={!reduced}
+            dot={{ r: 3, strokeWidth: 0, fill: 'var(--compare)' }}
+            activeDot={{ r: 5, strokeWidth: 0 }}
+          />
+        )}
       </AreaChart>
     </ChartContainer>
   );

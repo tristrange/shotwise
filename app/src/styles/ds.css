@@ -231,6 +231,8 @@
 }
 .ds-chart-tooltip .ds-chart-tooltip-label { font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .ds-chart-tooltip .ds-chart-tooltip-value { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+.ds-chart-tooltip .ds-chart-tooltip-row { display: flex; align-items: baseline; gap: var(--space-2); }
+.ds-chart-tooltip .ds-chart-tooltip-name { font-size: var(--text-xs); color: var(--text-2); }
 
 /* score ring */
 .ds-score-ring { display: inline-flex; flex: none; }
@@ -410,6 +412,10 @@
    which can exceed the track; pin wide children to the track so they scroll
    internally instead of growing the page. */
 .profile-section > .table-wrap { width: 100%; min-width: 0; }
+.profile-section > .ds-metric-grid { width: 100%; min-width: 0; }
+.profile-section > .ds-disclosure { width: 100%; min-width: 0; }
+.ds-disclosure > div { min-width: 0; }
+.ds-disclosure .table-wrap { width: 100%; min-width: 0; margin: 8px 0; }
 .profile-section .ds-field-label { font-size: var(--text-sm); }
 .profile-benchmark-bars { display: grid; gap: var(--space-3); width: 100%; }
 .club-direction {
@@ -463,6 +469,42 @@
 .benchmark-refs li p { margin: 4px 0 0; }
 .category-scores ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
 .personal-reference .error { margin: 0; }
+
+/* ---------- progress (D8) ---------- */
+.trend-controls {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.chart-legend {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-2) 0 0; font-size: var(--text-xs);
+}
+.legend-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-left: var(--space-2);
+}
+.legend-dot:first-child { margin-left: 0; }
+.legend-dot.primary { background: var(--data); }
+.legend-dot.compare { background: var(--compare); }
+.performance-trend .ds-metric-grid { margin-top: var(--space-3); }
+.ds-metric-label a, .ds-metric-delta a { color: var(--brand); }
+
+/* cross-club carry comparison rows */
+.cross-club-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--space-1);
+}
+.cross-club-list li {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border);
+}
+.cross-club-list li:last-child { border-bottom: 0; }
+.cross-club-list .club-badge { width: 32px; height: 32px; font-size: 11px; border-radius: var(--radius-s); }
+.cross-club-name { font: 600 var(--text-sm)/1.2 var(--font-sans); min-width: 72px; }
+.cross-club-values {
+  font-variant-numeric: tabular-nums; color: var(--text-2); font-size: var(--text-xs);
+}
+.cross-club-sessions { font-size: var(--text-xs); }
 
 @media (max-width: 480px) {
   .club-badge.lg { width: 40px; height: 40px; font-size: 13px; }
