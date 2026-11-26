@@ -1,8 +1,8 @@
 # Shotwise — Design System & Visual Experience Plan
 
-**Status:** Owner-approved 2026-11-26; the design-system roadmap D2–D12 is implemented
-(D12 on `feat/d12-navigation-final-polish`, PR #106, pending owner sign-off). D2–D5 (tokens, ds primitives, chart kit,
-ClubCard + dev showcase) are implemented on `feat/design-system-foundation` and the
+**Status** D1–D12 are merged on main through PR #106. This document records the design
+and milestone decisions. The baseline and branch-era verification details are historical.
+D2–D5 (tokens, ds primitives, chart kit, ClubCard + dev showcase) landed in PR #99 and the
 showcase direction was approved after owner inspection (badge/distribution-bar/score-bar
 refinements applied at the component level). D6 (Overview rebuild) is implemented and
 merged (PR #100). D7 (Club Profiles) is merged (PR #101): the full profile is a deeper
@@ -137,7 +137,7 @@ Visual references (supplied by the owner, copied into this repo):
 
 ---
 
-## 1. Current-state assessment
+## 1. Pre-redesign baseline
 
 Stack: React 19 + TypeScript + Vite + Supabase (`app/package.json`). Styling is a single
 hand-written stylesheet, `app/src/styles.css` (575 lines), with a light/dark theme driven by
@@ -392,7 +392,7 @@ hash routes and deep links keep working; the correct primary item stays active f
 (re-tapping Clubs preserves the current deep link); back/forward and PWA safe-area handling are
 unchanged. The desktop sidebar mirrors the same logical grouping.
 
-## 10. Proposed implementation PRs (small, independently reviewable)
+## 10. Merged milestones and original review gates
 
 | PR | Content | Gate |
 | --- | --- | --- |
@@ -403,11 +403,11 @@ unchanged. The desktop sidebar mirrors the same logical grouping.
 | D5 | `ClubCard` + dev-only `#showcase` route with synthetic fixtures + Playwright screenshot script; screenshots committed under `docs/design-system/shots/` | **owner visual approval** |
 | D6 | Overview rebuild on the ds (compact hero, metric strip, controls, insight card, ClubCard list, disclosures) — **merged as PR #100** | owner feedback before Phase 5 |
 | D7 | Club Profiles redesign on the ds — **merged as PR #101** | owner review |
-| D8 | Progress redesign on the ds — **implemented on `feat/progress-redesign`** (see status above) | owner review before D9 |
-| D9 | Gapping redesign on the ds — **implemented on `feat/gapping-redesign`** (see status above) | owner review before D10 |
-| D10 | Sessions (+recap/compare) redesign on the ds — **implemented on `feat/d10-sessions-comparisons`** (see status above) | owner review before D11 |
-| D11 | Shot shape + Explorer + Review/Settings redesign on the ds — **implemented on `feat/d11-explorer-review-settings`** (see status above) | owner review before D12 |
-| D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) — **implemented on `feat/d12-navigation-final-polish` (PR #106)** | final owner sign-off + independent Codex review |
+| D8 | Progress redesign on the ds — **merged as PR #102** | owner review before D9 |
+| D9 | Gapping redesign on the ds — **merged as PR #103** | owner review before D10 |
+| D10 | Sessions (+recap/compare) redesign on the ds — **merged as PR #104** | owner review before D11 |
+| D11 | Shot shape + Explorer + Review/Settings redesign on the ds — **merged as PR #105** | owner review before D12 |
+| D12 | Final polish: navigation decision applied, obsolete CSS removed, full verification (§11) — **merged as PR #106** | final owner sign-off + independent Codex review |
 
 Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4, D7–D12 ≈ Phases 5–6.
 
@@ -422,7 +422,7 @@ Phases map to the brief's Phase 1–6; D1–D5 ≈ Phases 1–3, D6 ≈ Phase 4,
 - Verification per AGENTS.md: `npm test` (do not weaken existing tests — components must keep
   the accessible names the e2e suite relies on, or tests are updated deliberately with equal
   or stronger assertions), `npm run typecheck`, `npm run lint`, `npm run build`
-  (incl. `--base=/shotwise/`), `npm run test:e2e` (88 tests, Chromium + WebKit phone),
+  (incl. `--base=/shotwise/`), `npm run test:e2e` (Chromium desktop and WebKit phone),
   plus Playwright screenshots at the required widths for changed screens.
 - Performance: `npm run verify:performance` unaffected (ratings already ≈14–16 ms warm at
   12k shots); new components memoized like `clubRatings` in `Analysis.tsx`.
