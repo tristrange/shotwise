@@ -14,6 +14,7 @@
     "typecheck": "tsc -b",
     "lint": "oxlint --deny-warnings",
     "test:e2e": "playwright test",
+    "shots:showcase": "node scripts/screenshot-showcase.mjs",
     "test:db": "node scripts/test-db.mjs",
     "verify:csv": "tsx scripts/verify-csv.ts",
     "verify:unusual": "tsx scripts/verify-unusual-shots.ts",

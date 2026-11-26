@@ -1,6 +1,47 @@
 # Shotwise — Design System & Visual Experience Plan
 
-**Status:** Phase 1 proposal. Awaiting owner approval before any broad redesign.
+**Status:** Owner-approved 2026-11-26. D2–D5 (tokens, ds primitives, chart kit,
+ClubCard + dev showcase) are implemented on `feat/design-system-foundation`;
+holding at the D5 visual approval gate before D6 (Overview).
+
+## 0. Approval record — 2026-11-26
+
+The owner approved the architecture, visual direction and phases, with these
+decisions:
+
+1. **Tokens/palette:** approved as provisional starting points; exact colours
+   refined through the showcase and the automated contrast test
+   (`app/src/tokens.test.ts`, WCAG AA guarded).
+2. **Navigation:** Home / Clubs / Progress / Sessions / More approved with the
+   grouping Home = overview + practice focus + club summaries; Clubs = profiles,
+   gapping, shot shape, ball-flight explorer; Progress = trends; Sessions =
+   import/history/recap/compare/optional review; More = equipment, settings,
+   backups, secondary Review. **Implementation deferred to Phase 5** — all
+   existing routes and deep links must keep working. Not part of D2–D5.
+3. **Typography:** Instrument Sans throughout, tabular numerals for statistics;
+   the expressive Newsreader wordmark may stay in the header; editorial serif
+   removed from headings/content (done in D2).
+4. **Hero:** keep the animated identity, much more compact on mobile; analytics
+   early in the first phone viewport (D6).
+5. **Motion:** CSS transitions first; Motion approved where it materially
+   improves an interaction.
+6. **Showcase:** unauthenticated dev-only showcase approved, but it must be
+   **excluded from production by a build-time guard**, not just hidden —
+   implemented as `import.meta.env.DEV` + lazy import in `App.tsx`, so the
+   production bundle contains no showcase code (verified: `grep -ri showcase
+   dist/` is empty after `npm run build`; guarded by
+   `app/src/showcase/fixtures.test.ts`).
+
+Additional requirements applied in D2–D5: dense information hierarchy (category
+ratings as labels/numbers/bars; sample counts, evidence, uncertainty and
+reference metadata behind contextual help/disclosure); interactive chart
+compositions (heading + club select + metric segmented control + headline value
++ delta + tappable chart — see `PerformanceTrendCard`); sliders with immediate
+feedback; benchmark bars with target markers; visual correctness (selected-cohort
+median vs typical carry distinguished, P80 labelled as strong-strike potential,
+percentile band vs IQR distinct, missing = `—` never zero, fixed premium-flat
+rating basis labelled next to selected-basis measurements, no fabricated
+historical rating series).
 **Scope guard:** This plan changes presentation only. Statistical formulas, classification
 methodology, club-rating weights/normalization (`ratings-2`, ADR-0005 v2), measurement-basis
 policies, database models and analytics eligibility rules are out of scope and untouched.
@@ -217,28 +258,39 @@ default: multiple open).
 
 Everything useful within the first phone viewport; desktop keeps the sidebar.
 
-## 8. Component showcase (Phase 3 approval surface)
+## 8. Component showcase (Phase 3 approval surface) — implemented in D5
 
 - **Route:** dev-only hash route `#showcase`, rendered before the Supabase auth gate in
-  `App.tsx` (and also when the backend is unconfigured), lazy-loaded via `React.lazy` so the
-  production bundle is unaffected. Not linked from any production navigation. No private
+  `App.tsx` (also when the backend is unconfigured). Build-time guard:
+  `const Showcase = import.meta.env.DEV ? lazy(() => import('./showcase/Showcase')) : null`
+  plus an `import.meta.env.DEV && location.hash.startsWith('#showcase')` render check, so
+  production builds drop the module, its CSS and its chunk entirely (verified against
+  `dist/`; guarded by a unit test). Not linked from any production navigation. No private
   data, no auth required.
-- **Data:** `app/src/showcase/fixtures.ts` — a deterministic synthetic dataset (fixed seed /
-  literal fixtures, no runtime randomness) covering: a full 4/4 rating, a provisional 3/4,
-  an early single-visit club, a club with missing direction measurements, a club with no
-  reference, limited-sample clubs, 8+ sessions for trend charts, and shot-level points for
-  scatter/dispersion. Values are plausible golf numbers, clearly labelled "synthetic".
-- **Sections:** theme toggle (light/dark), token wall (colour/type/spacing), all ds
-  primitives incl. slider/range-slider/dialog/disclosure/help-popover states, ClubCards in
-  all rating states, score rings/bars, distribution plots, benchmark bars, sparklines,
-  trend chart (Recharts), dispersion + scatter plots, empty/loading/missing states, and the
-  bottom navigation.
-- **Screenshots:** a Playwright script (`app/scripts/screenshot-showcase.mjs`, run against the
-  dev server) capturing 320 / 375 / 390 / 768 / 1280 px, light and dark, into
-  `docs/design-system/shots/` — committed so the owner can review visuals in the PR without
-  running anything. The same script doubles as a visual-regression baseline later.
+- **Run locally:** `cd app && npm run dev`, then open
+  `http://127.0.0.1:5173/#showcase` (any port Vite picks works — use the printed URL +
+  `#showcase`). Toggle light/dark with the header button. To re-capture screenshots:
+  `npm run shots:showcase`.
+- **Data:** `app/src/showcase/fixtures.ts` — a deterministic synthetic dataset (seeded
+  PRNG, no runtime randomness) shaped to show every rating state, verified by
+  `app/src/showcase/fixtures.test.ts`: full well-supported 4/4 composites (D, 7i — 7i with
+  seeded mishits), a full composite on early evidence (5i), a provisional 3/4 composite
+  with launch-only direction (PW), and no rating (<10 shots, 9i). Ratings are computed by
+  the real `ratings-2` domain module; nothing is mocked.
+- **Sections:** token wall (live values from `tokens.css` in the active theme), type scale,
+  spacing scale, all ds primitives (buttons, icon buttons, badges incl. provisional/early,
+  segmented controls, select, slider, range slider, help popover, disclosure, dialog), club
+  cards in all rating states (one expanded), `PerformanceTrendCard` (club select + metric
+  segmented control + headline + delta + tappable Recharts trend), score rings, distribution
+  plots, benchmark bars with target markers, sparklines, dispersion plot with corridor,
+  ball-flight scatter (via `explorerPlot`), empty/loading states, metric grid.
+- **Screenshots:** `app/scripts/screenshot-showcase.mjs` (`npm run shots:showcase`) captures
+  320 / 375 / 390 / 768 / 1280 px × light/dark full-page into
+  [docs/design-system/shots/](design-system/shots/) — committed for review:
+  `showcase-{320,375,390,768,1280}-{light,dark}.png`. Verified no horizontal overflow
+  (scrollWidth == viewport at every width).
 - **Gate:** owner reviews screenshots + live showcase and approves/refines the direction
-  before Overview (Phase 4) starts.
+  before Overview (Phase 4 / D6) starts.
 
 ## 9. Navigation proposal — owner decision required
 
