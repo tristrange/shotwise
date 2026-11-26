@@ -430,9 +430,13 @@ export function Sessions({
                     </span>
                     {s.archived && <Badge tone="warn">Archived</Badge>}
                     {card.unassessed > 0 && (
-                      <span className="pill" title="Shots still without a contact assessment; analytics already include the automatic assessments">
+                      <a
+                        className="pill pill-link"
+                        href="#review"
+                        title="Shots still without a contact assessment; analytics already include the automatic assessments. Open the review queue."
+                      >
                         {card.unassessed} unassessed
-                      </span>
+                      </a>
                     )}
                     <a
                       className="ds-icon-button small session-card-compare"

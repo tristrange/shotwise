@@ -23,7 +23,8 @@
     "verify:classifier": "tsx scripts/verify-classifier.ts",
     "verify:performance": "tsx scripts/verify-performance.ts",
     "verify:realworld": "tsx scripts/verify-realworld.ts",
-    "shots:d11": "tsx scripts/screenshot-d11.ts"
+    "shots:d11": "tsx scripts/screenshot-d11.ts",
+    "shots:d12": "tsx scripts/screenshot-d12.ts"
   },
   "keywords": [],
   "author": "",

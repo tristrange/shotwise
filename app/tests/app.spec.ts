@@ -58,11 +58,19 @@ async function login(page: Page, account: Account) {
     page.getByRole('heading', { name: 'Overview', exact: true }),
   ).toBeVisible();
 }
-// Phone layout uses five bottom tabs (Home/Analyse/Sessions/Review/More) with
-// analysis pages in the Analyse sub-nav; desktop keeps the full sidebar.
-const tabLabels: Record<string, string> = {
-  Overview: 'Home',
-  Settings: 'More',
+// Phone layout uses five bottom tabs (Home/Clubs/Progress/Sessions/More);
+// the Clubs and More tabs expose their screens through a sub-nav, and the
+// desktop sidebar mirrors the same grouping.
+const screenTargets: Record<string, { tab: string; buttons: string[] }> = {
+  Overview: { tab: 'Home', buttons: ['Overview', 'Home'] },
+  Clubs: { tab: 'Clubs', buttons: ['Club profiles', 'Clubs'] },
+  Gapping: { tab: 'Clubs', buttons: ['Gapping'] },
+  'Shot shape': { tab: 'Clubs', buttons: ['Shot shape'] },
+  Explorer: { tab: 'Clubs', buttons: ['Explorer', 'Ball-flight explorer'] },
+  Progress: { tab: 'Progress', buttons: ['Progress'] },
+  Sessions: { tab: 'Sessions', buttons: ['Sessions & import', 'Sessions'] },
+  Review: { tab: 'More', buttons: ['Shot review', 'Review'] },
+  Settings: { tab: 'More', buttons: ['Settings', 'More'] },
 };
 
 /** Opens a <details> by its summary text unless it is already open. */
@@ -72,28 +80,27 @@ async function openDisclosure(page: Page, summary: string) {
     await details.locator('summary').click();
   }
 }
-const analysePages = new Set(['Clubs', 'Gapping', 'Progress', 'Shot shape']);
-async function nav(page: Page, name: string) {
-  let target = page
-    .getByRole('button', { name, exact: true })
-    .filter({ visible: true });
-  if ((await target.count()) === 0) {
-    const alt = tabLabels[name];
-    if (alt) {
-      target = page
-        .getByRole('button', { name: alt, exact: true })
-        .filter({ visible: true });
-    } else if (analysePages.has(name)) {
-      await page
-        .getByRole('button', { name: 'Analyse', exact: true })
-        .filter({ visible: true })
-        .click();
-      target = page
-        .getByRole('button', { name, exact: true })
-        .filter({ visible: true });
+async function clickVisibleButton(page: Page, names: string[]) {
+  for (const name of names) {
+    const target = page
+      .getByRole('button', { name, exact: true })
+      .filter({ visible: true });
+    if ((await target.count()) > 0) {
+      await target.click();
+      return true;
     }
   }
-  await target.click();
+  return false;
+}
+async function nav(page: Page, name: string) {
+  const screen = screenTargets[name] ?? { tab: name, buttons: [name] };
+  if (await clickVisibleButton(page, screen.buttons)) return;
+  // The screen sits behind a primary tab: open the tab (which reveals the
+  // sub-nav on phones), then click the screen's own button.
+  if (!(await clickVisibleButton(page, [screen.tab])))
+    throw new Error(`No navigation tab for ${name}`);
+  if (!(await clickVisibleButton(page, screen.buttons)))
+    throw new Error(`No navigation button for ${name} after ${screen.tab}`);
 }
 const fixture = () =>
   csvFixture([
@@ -540,7 +547,7 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
   const bottomNav = page.locator('.bottom-nav');
   await expect(bottomNav).toBeVisible();
   await expect(bottomNav.getByRole('button')).toHaveCount(5);
-  for (const label of ['Home', 'Analyse', 'Sessions', 'Review', 'More']) {
+  for (const label of ['Home', 'Clubs', 'Progress', 'Sessions', 'More']) {
     await expect(
       bottomNav.getByRole('button', { name: label, exact: true }),
     ).toBeVisible();
@@ -548,16 +555,24 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
   // The old sideways-scrolling top nav is gone.
   await expect(page.locator('.mobile-nav')).toHaveCount(0);
 
-  // The Analyse tab exposes nested analysis screens through the sub-nav.
-  await bottomNav.getByRole('button', { name: 'Analyse', exact: true }).click();
+  // The Clubs tab opens club profiles directly and exposes the other club
+  // screens through the sub-nav.
+  await bottomNav.getByRole('button', { name: 'Clubs', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Club profiles', exact: true }),
+  ).toBeVisible();
   const subNav = page.locator('.sub-nav');
   await expect(subNav).toBeVisible();
+  await expect(subNav.getByRole('button')).toHaveCount(4);
   await subNav.getByRole('button', { name: 'Gapping', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Club gapping', exact: true }),
   ).toBeVisible();
   await expect(
-    bottomNav.getByRole('button', { name: 'Analyse', exact: true }),
+    bottomNav.getByRole('button', { name: 'Clubs', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(
+    subNav.getByRole('button', { name: 'Gapping', exact: true }),
   ).toHaveAttribute('aria-current', 'page');
   await expect
     .poll(() =>
@@ -567,22 +582,40 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
     )
     .toBeLessThanOrEqual(1);
 
-  // Every tab reaches its destination.
+  // Every tab opens its primary content directly.
+  await bottomNav
+    .getByRole('button', { name: 'Progress', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Progress', exact: true }),
+  ).toBeVisible();
+  await expect(
+    bottomNav.getByRole('button', { name: 'Progress', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await bottomNav
     .getByRole('button', { name: 'Sessions', exact: true })
     .click();
   await expect(
     page.getByRole('heading', { name: 'Sessions & import', exact: true }),
   ).toBeVisible();
-  await bottomNav.getByRole('button', { name: 'Review', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Review', exact: true }),
-  ).toBeVisible();
   await bottomNav.getByRole('button', { name: 'More', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Settings', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Manage bag' })).toBeVisible();
+  await expect(
+    bottomNav.getByRole('button', { name: 'More', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  // Review is secondary navigation under More.
+  await subNav
+    .getByRole('button', { name: 'Shot review', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Review', exact: true }),
+  ).toBeVisible();
+  await expect(
+    bottomNav.getByRole('button', { name: 'More', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await bottomNav.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Overview', exact: true }),
@@ -596,7 +629,10 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
     page.getByRole('region', { name: 'Ball-flight explorer', exact: true }),
   ).toBeVisible();
   await expect(
-    bottomNav.getByRole('button', { name: 'Analyse', exact: true }),
+    bottomNav.getByRole('button', { name: 'Clubs', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(
+    subNav.getByRole('button', { name: 'Explorer', exact: true }),
   ).toHaveAttribute('aria-current', 'page');
 
   // No content is hidden behind the fixed bottom bar.
@@ -610,6 +646,120 @@ test('uses a five-tab bottom navigation on phones with every feature reachable',
   });
   expect(clearance).toBe(true);
   await phoneContext?.close();
+});
+
+test('keeps the right primary item active for nested routes, deep links and back/forward', async ({
+  page,
+  account,
+}, testInfo) => {
+  await seed(account);
+  // A second visit so the compare route has content.
+  await account.repository.importCsv({
+    filename: 'synthetic-2.csv',
+    date: shiftDate(localToday(), -7),
+    time: null,
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(fixture())),
+  });
+  await login(page, account);
+  const isPhone = testInfo.project.name === 'phone-webkit';
+  const primary = isPhone ? page.locator('.bottom-nav') : page.locator('.sidebar nav');
+  const tab = (label: string) =>
+    primary.getByRole('button', { name: label, exact: true });
+  // On desktop the matching sidebar item carries aria-current; on phones the
+  // primary tab does.
+  const clubsItem = tab(isPhone ? 'Clubs' : 'Club profiles');
+  const explorerItem = tab(isPhone ? 'Clubs' : 'Ball-flight explorer');
+  const sessionsItem = tab(isPhone ? 'Sessions' : 'Sessions & import');
+  const moreItem = tab(isPhone ? 'More' : 'Shot review');
+  const progressItem = tab('Progress');
+  const data = await account.repository.load();
+  const session = data.sessions[0];
+  if (!session) throw new Error('seeded data missing session');
+  const shot = data.shots.find((s) => s.sessionId === session.id);
+  if (!shot) throw new Error('seeded data missing shot');
+
+  // Club-profile deep link highlights Clubs / Club profiles.
+  await page.evaluate((club) => {
+    window.location.hash = `clubs/${club}`;
+  }, '7i');
+  await expect(clubsItem).toHaveAttribute('aria-current', 'page');
+  if (isPhone) {
+    await expect(
+      page.locator('.sub-nav').getByRole('button', { name: 'Club profiles' }),
+    ).toHaveAttribute('aria-current', 'page');
+  }
+  // Re-tapping the Clubs tab keeps the deep link instead of resetting it.
+  if (isPhone) {
+    await tab('Clubs').click();
+    expect(new URL(page.url()).hash).toBe('#clubs/7i');
+  }
+
+  // Explorer deep link stays inside the Clubs group.
+  await page.evaluate(() => {
+    window.location.hash = 'shape/explorer';
+  });
+  await expect(
+    page.getByRole('region', { name: 'Ball-flight explorer', exact: true }),
+  ).toBeVisible();
+  await expect(explorerItem).toHaveAttribute('aria-current', 'page');
+
+  // Session recap, evidence and compare deep links highlight Sessions.
+  await page.evaluate(
+    (id) => {
+      window.location.hash = `sessions/${id}`;
+    },
+    session.id,
+  );
+  await expect(sessionsItem).toHaveAttribute('aria-current', 'page');
+  await page.evaluate(
+    ([id, shotId]) => {
+      window.location.hash = `sessions/${id}?shot=${shotId}`;
+    },
+    [session.id, shot.id] as const,
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Supporting shots' }),
+  ).toBeVisible();
+  await expect(sessionsItem).toHaveAttribute('aria-current', 'page');
+  await page.evaluate(() => {
+    window.location.hash = 'sessions/compare';
+  });
+  await expect(
+    page.getByRole('region', { name: 'Compare sessions' }),
+  ).toBeVisible();
+  await expect(sessionsItem).toHaveAttribute('aria-current', 'page');
+
+  // Review deep link highlights More (secondary access under More).
+  await page.evaluate(() => {
+    window.location.hash = 'review';
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Review', exact: true }),
+  ).toBeVisible();
+  await expect(moreItem).toHaveAttribute('aria-current', 'page');
+
+  // Back/forward restore both the hash route and the active primary item.
+  await page.evaluate(() => {
+    window.location.hash = 'progress';
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Progress', exact: true }),
+  ).toBeVisible();
+  await expect(progressItem).toHaveAttribute('aria-current', 'page');
+  await page.goBack();
+  await expect
+    .poll(() => new URL(page.url()).hash)
+    .toBe('#review');
+  await expect(moreItem).toHaveAttribute('aria-current', 'page');
+  await page.goForward();
+  await expect
+    .poll(() => new URL(page.url()).hash)
+    .toBe('#progress');
+  await expect(progressItem).toHaveAttribute('aria-current', 'page');
 });
 
 test('fits the overview hero on phone viewports without pinch zoom', async ({
@@ -4307,11 +4457,7 @@ async function seedExplorer(account: Account) {
 }
 
 async function openExplorer(page: Page) {
-  await nav(page, 'Shot shape');
-  await expect(
-    page.getByRole('heading', { name: 'Shot shape', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Explorer', exact: true }).click();
+  await nav(page, 'Explorer');
   return page.getByRole('region', {
     name: 'Ball-flight explorer',
     exact: true,
@@ -4342,9 +4488,13 @@ test('Explorer keeps axis choices across clubs and honours scope, basis and pair
   });
   const points = explorer.getByRole('button', { name: /^Plot / });
 
+  // The explorer is the active secondary destination (sub-nav on phones,
+  // sidebar item on desktop).
   await expect(
-    page.getByRole('button', { name: 'Shape', exact: true }),
-  ).toBeVisible();
+    page
+      .getByRole('button', { name: 'Explorer', exact: true })
+      .or(page.getByRole('button', { name: 'Ball-flight explorer', exact: true })),
+  ).toHaveAttribute('aria-current', 'page');
 
   await expect(xAxis.locator('option:checked')).toContainText('Ball speed');
   await expect(yAxis.locator('option:checked')).toContainText('Carry');

@@ -24,7 +24,6 @@ import {
 } from './ds';
 import type { SegmentedOption } from './ds';
 import { PerformanceScatterPlot, type ScatterTick } from './charts';
-import { ShapeViewTabs } from './ShotShapes';
 import { sessionOptionLabel } from './CompareSessions';
 
 const INTENT_OPTIONS: { value: ExplorerQuery['intent']; label: string }[] = [
@@ -183,7 +182,6 @@ export function BallFlightExplorer({
       <div className="section-heading">
         <h1>Ball-flight explorer</h1>
       </div>
-      <ShapeViewTabs view="explorer" />
       <Card
         className="explorer-card"
         role="region"

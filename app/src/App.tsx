@@ -1,4 +1,5 @@
 import {
+  Fragment,
   lazy,
   Suspense,
   useCallback,
@@ -15,9 +16,11 @@ import {
   Home,
   LogOut,
   MoreHorizontal,
+  Radar,
   Ruler,
   ScatterChart,
   Settings,
+  TrendingUp,
 } from 'lucide-react';
 import type { Session as AuthSession } from '@supabase/supabase-js';
 import { backend } from './data/repository';
@@ -63,44 +66,72 @@ type Page =
   | 'clubs'
   | 'shape'
   | 'settings';
-const nav: { id: Page; label: string; icon: typeof Flag }[] = [
-  { id: 'overview', label: 'Overview', icon: BarChart3 },
-  { id: 'sessions', label: 'Sessions & import', icon: FolderOpen },
-  { id: 'review', label: 'Review', icon: ClipboardCheck },
-  { id: 'gapping', label: 'Gapping', icon: Ruler },
-  { id: 'progress', label: 'Progress', icon: Flag },
-  { id: 'clubs', label: 'Clubs', icon: Club },
-  { id: 'shape', label: 'Shot shape', icon: ScatterChart },
-  { id: 'settings', label: 'Settings', icon: Settings },
+type ShapeView = 'shape' | 'explorer';
+type NavItem = {
+  label: string;
+  /** Compact label for the mobile sub-nav. */
+  shortLabel?: string;
+  hash: string;
+  page: Page;
+  icon: typeof Flag;
+  /** Secondary-nav key; distinguishes the two shot-shape views. */
+  key: string;
+};
+/** Screens reachable from the Clubs tab (secondary navigation). */
+const clubScreens: NavItem[] = [
+  { label: 'Club profiles', hash: 'clubs', page: 'clubs', icon: Club, key: 'clubs' },
+  { label: 'Gapping', hash: 'gapping', page: 'gapping', icon: Ruler, key: 'gapping' },
+  { label: 'Shot shape', hash: 'shape', page: 'shape', icon: ScatterChart, key: 'shape:shape' },
+  { label: 'Ball-flight explorer', shortLabel: 'Explorer', hash: 'shape/explorer', page: 'shape', icon: Radar, key: 'shape:explorer' },
 ];
-type Tab = 'home' | 'analyse' | 'sessions' | 'review' | 'more';
-/** Five primary mobile tabs; nested analysis screens live in the sub-nav. */
+/** Screens reachable from the More tab (secondary navigation). */
+const moreScreens: NavItem[] = [
+  { label: 'Settings', hash: 'settings', page: 'settings', icon: Settings, key: 'settings' },
+  { label: 'Shot review', hash: 'review', page: 'review', icon: ClipboardCheck, key: 'review' },
+];
+/** Desktop sidebar: the same logical grouping as the five mobile tabs. */
+const sidebarGroups: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: null,
+    items: [
+      { label: 'Overview', hash: 'overview', page: 'overview', icon: BarChart3, key: 'overview' },
+    ],
+  },
+  { label: 'Clubs', items: clubScreens },
+  {
+    label: null,
+    items: [
+      { label: 'Progress', hash: 'progress', page: 'progress', icon: TrendingUp, key: 'progress' },
+      { label: 'Sessions & import', hash: 'sessions', page: 'sessions', icon: FolderOpen, key: 'sessions' },
+    ],
+  },
+  { label: 'More', items: moreScreens },
+];
+type Tab = 'home' | 'clubs' | 'progress' | 'sessions' | 'more';
+/** Five primary mobile tabs; each opens its primary content directly. */
 const tabs: { id: Tab; label: string; icon: typeof Flag; page: Page }[] = [
   { id: 'home', label: 'Home', icon: Home, page: 'overview' },
-  { id: 'analyse', label: 'Analyse', icon: BarChart3, page: 'clubs' },
+  { id: 'clubs', label: 'Clubs', icon: Club, page: 'clubs' },
+  { id: 'progress', label: 'Progress', icon: TrendingUp, page: 'progress' },
   { id: 'sessions', label: 'Sessions', icon: FolderOpen, page: 'sessions' },
-  { id: 'review', label: 'Review', icon: ClipboardCheck, page: 'review' },
   { id: 'more', label: 'More', icon: MoreHorizontal, page: 'settings' },
 ];
-const analyseNav: { label: string; hash: string; page: Page }[] = [
-  { label: 'Clubs', hash: 'clubs', page: 'clubs' },
-  { label: 'Gapping', hash: 'gapping', page: 'gapping' },
-  { label: 'Progress', hash: 'progress', page: 'progress' },
-  { label: 'Shot shape', hash: 'shape', page: 'shape' },
-];
+function secondaryKey(page: Page, shapeView: ShapeView | undefined) {
+  return page === 'shape' ? `shape:${shapeView ?? 'shape'}` : page;
+}
 function tabForPage(page: Page): Tab {
   switch (page) {
     case 'overview':
       return 'home';
     case 'clubs':
     case 'gapping':
-    case 'progress':
     case 'shape':
-      return 'analyse';
+      return 'clubs';
+    case 'progress':
+      return 'progress';
     case 'sessions':
       return 'sessions';
     case 'review':
-      return 'review';
     case 'settings':
       return 'more';
   }
@@ -113,10 +144,20 @@ function decodeSegment(segment: string | undefined) {
     return segment;
   }
 }
+const pages: Page[] = [
+  'overview',
+  'sessions',
+  'review',
+  'gapping',
+  'progress',
+  'clubs',
+  'shape',
+  'settings',
+];
 function routeFromHash() {
   const [path, query] = window.location.hash.slice(1).split('?');
   const [name, id, extra] = (path ?? '').split('/');
-  const page = nav.find((item) => item.id === name)?.id ?? 'overview';
+  const page = pages.find((item) => item === name) ?? 'overview';
   const sessionsPath = page === 'sessions' && !extra;
   return {
     page,
@@ -268,18 +309,28 @@ export default function App() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Main navigation">
-          {nav.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={page === id ? 'active' : ''}
-              aria-current={page === id ? 'page' : undefined}
-              onClick={() => {
-                window.location.hash = id;
-              }}
-            >
-              <Icon size={18} />
-              {label}
-            </button>
+          {sidebarGroups.map((group) => (
+            <Fragment key={group.label ?? 'primary'}>
+              {group.label && (
+                <span className="nav-group-label">{group.label}</span>
+              )}
+              {group.items.map(({ label, hash, icon: Icon, key }) => {
+                const active = secondaryKey(page, shapeView) === key;
+                return (
+                  <button
+                    key={hash}
+                    className={active ? 'active' : ''}
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => {
+                      window.location.hash = hash;
+                    }}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </button>
+                );
+              })}
+            </Fragment>
           ))}
         </nav>
         <div className="side-footer">
@@ -309,30 +360,42 @@ export default function App() {
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </div>
         </header>
-        {tabForPage(page) === 'analyse' && (
-          <nav className="sub-nav" aria-label="Analysis sections">
-            {analyseNav.map(({ label, hash, page: target }) => (
-              <button
-                key={hash}
-                aria-current={page === target ? 'page' : undefined}
-                onClick={() => {
-                  window.location.hash = hash;
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-        )}
+        {(() => {
+          const tab = tabForPage(page);
+          const items = tab === 'clubs' ? clubScreens : tab === 'more' ? moreScreens : null;
+          if (!items) return null;
+          return (
+            <nav
+              className="sub-nav"
+              aria-label={tab === 'clubs' ? 'Clubs sections' : 'More sections'}
+            >
+              {items.map(({ label, shortLabel, hash, icon: Icon, key }) => (
+                <button
+                  key={hash}
+                  aria-current={
+                    secondaryKey(page, shapeView) === key ? 'page' : undefined
+                  }
+                  onClick={() => {
+                    window.location.hash = hash;
+                  }}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  {shortLabel ?? label}
+                </button>
+              ))}
+            </nav>
+          );
+        })()}
         <nav className="bottom-nav" aria-label="Primary navigation">
           {tabs.map(({ id, label, icon: Icon, page: target }) => (
             <button
               key={id}
               aria-current={tabForPage(page) === id ? 'page' : undefined}
               onClick={() => {
-                // Re-tapping Analyse keeps the current analysis screen (and
-                // any deep link such as #clubs/7i) instead of resetting it.
-                if (id === 'analyse' && tabForPage(page) === 'analyse') return;
+                // Re-tapping Clubs keeps the current club screen (and any
+                // deep link such as #clubs/7i or #shape/explorer) instead of
+                // resetting to club profiles.
+                if (id === 'clubs' && tabForPage(page) === 'clubs') return;
                 window.location.hash = target;
               }}
             >

@@ -11,37 +11,14 @@ import {
   EmptyState,
   HelpPopover,
   SectionHeader,
-  SegmentedControl,
   Select,
 } from './ds';
-import type { SegmentedOption } from './ds';
 import { PerformanceScatterPlot } from './charts';
 
 const direction = (value: number | null, unit: string) =>
   value === null
     ? 'Missing'
     : `${Math.abs(value).toFixed(1)}${unit} ${value < 0 ? 'left' : value > 0 ? 'right' : 'straight'}`;
-
-/** Shape and Explorer share the Shot shape destination; existing #shape links stay valid. */
-export function ShapeViewTabs({ view }: { view: 'shape' | 'explorer' }) {
-  const options: readonly SegmentedOption<'shape' | 'explorer'>[] = [
-    { value: 'shape', label: 'Shape' },
-    { value: 'explorer', label: 'Explorer' },
-  ];
-  return (
-    <div className="view-tabs">
-      <SegmentedControl
-        label="Shot shape views"
-        options={options}
-        value={view}
-        onChange={(next) => {
-          window.location.hash =
-            next === 'explorer' ? 'shape/explorer' : 'shape';
-        }}
-      />
-    </div>
-  );
-}
 
 /** Symmetric launch-direction / curve limits so zero sits at the plot centre. */
 function axisLimit(values: number[]): number {
@@ -104,7 +81,6 @@ export function ShotShapes({
       <div className="section-heading">
         <h1>Shot shape</h1>
       </div>
-      <ShapeViewTabs view="shape" />
       <Card className="shape-card">
         <SectionHeader
           title="Start direction and curve"
