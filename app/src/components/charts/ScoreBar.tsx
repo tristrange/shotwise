@@ -18,6 +18,9 @@ export function ScoreBar({
   return (
     <div className={`ds-score-bar rating-row${score === null ? ' withheld' : ''}`}>
       <span className="ds-score-bar-label rating-label">{label}</span>
+      <span className="ds-score-bar-score rating-score">
+        {score === null ? '—' : String(Math.round(score))}
+      </span>
       <span className="ds-score-bar-track rating-track" aria-hidden="true">
         {score !== null && (
           <span
@@ -25,9 +28,6 @@ export function ScoreBar({
             style={{ width: `${clamp(score, 0, 100)}%` }}
           />
         )}
-      </span>
-      <span className="ds-score-bar-score rating-score">
-        {score === null ? '—' : String(Math.round(score))}
       </span>
       {sub && <span className="rating-sub">{sub}</span>}
     </div>

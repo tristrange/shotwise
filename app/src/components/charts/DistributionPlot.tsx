@@ -29,7 +29,8 @@ export function DistributionPlot({
   label: string;
 }) {
   const span = max - min || 1;
-  const x = (v: number) => ((v - min) / span) * 300;
+  // 4px horizontal padding so the rounded band ends are never clipped.
+  const x = (v: number) => 4 + ((v - min) / span) * 292;
   const complete =
     band.p10 !== null && band.q1 !== null && band.median !== null &&
     band.q3 !== null && band.p90 !== null;
@@ -40,42 +41,44 @@ export function DistributionPlot({
         {label}: P10 {fmt(band.p10)}, first quartile {fmt(band.q1)}, median{' '}
         {fmt(band.median)}, third quartile {fmt(band.q3)}, P90 {fmt(band.p90)}.
       </SrOnly>
-      <svg viewBox="0 0 300 44" aria-hidden="true">
+      <svg viewBox="0 0 300 40" aria-hidden="true">
         {complete && (
           <>
+            {/* outer band P10–P90: 12px tall, fully rounded ends (rx = h/2) */}
             <rect
               className="band-p"
               x={x(band.p10!)}
-              y={10}
-              width={Math.max(1, x(band.p90!) - x(band.p10!))}
-              height={16}
-              rx={8}
+              y={6}
+              width={Math.max(12, x(band.p90!) - x(band.p10!))}
+              height={12}
+              rx={6}
             />
+            {/* inner band Q1–Q3 (IQR): 6px tall, fully rounded ends */}
             <rect
               className="band-iqr"
               x={x(band.q1!)}
-              y={10}
-              width={Math.max(1, x(band.q3!) - x(band.q1!))}
-              height={16}
-              rx={8}
+              y={9}
+              width={Math.max(6, x(band.q3!) - x(band.q1!))}
+              height={6}
+              rx={3}
             />
             <line
               className="median"
               x1={x(band.median!)}
               x2={x(band.median!)}
-              y1={6}
-              y2={30}
+              y1={3}
+              y2={21}
             />
-            <text x={x(band.p10!)} y={42} textAnchor="middle">
+            <text x={x(band.p10!)} y={37} textAnchor="middle">
               {band.p10!.toFixed(0)}
             </text>
-            <text x={x(band.p90!)} y={42} textAnchor="middle">
+            <text x={x(band.p90!)} y={37} textAnchor="middle">
               {band.p90!.toFixed(0)}
             </text>
           </>
         )}
         {!complete && (
-          <text x={150} y={24} textAnchor="middle">
+          <text x={150} y={22} textAnchor="middle">
             spread needs 10+ measured shots
           </text>
         )}

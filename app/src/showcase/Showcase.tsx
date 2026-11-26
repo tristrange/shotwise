@@ -70,7 +70,16 @@ export default function Showcase() {
   const { theme, toggle } = useTheme();
   const data = useMemo(() => syntheticDataset(), []);
   const basis: Basis = 'premium-flat';
-  const rows = useMemo(() => clubCardRows(data, basis, 'all'), [data]);
+  const rows = useMemo(
+    () =>
+      clubCardRows(data, basis, {
+        mode: 'all',
+        intent: 'all',
+        contact: 'all',
+        hideLikelyMishits: false,
+      }),
+    [data],
+  );
   const styles = getComputedStyle(document.documentElement);
   const tokenValue = (name: string) => styles.getPropertyValue(name).trim();
 

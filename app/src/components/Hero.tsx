@@ -1,14 +1,15 @@
-/** Editorial hero for the overview page. Pure presentation; takes already-computed figures. */
+/** Hero for the overview page. Pure presentation; takes already-computed figures. */
 export function Hero({
   shots,
   sessions,
-  clubs,
   dateRange,
+  compact = false,
 }: {
   shots: number;
   sessions: number;
-  clubs: number;
   dateRange: string;
+  /** Compact variant for the authenticated Overview: analytics appear early. */
+  compact?: boolean;
 }) {
   const paths = [
     ['#ff6fb5', 'M-40 70 C 380 70, 560 70, 700 150 S 980 210, 1640 210'],
@@ -24,7 +25,7 @@ export function Hero({
 
   return (
     <>
-      <div className="hero reveal" data-reveal>
+      <div className={`hero reveal${compact ? ' compact' : ''}`} data-reveal>
         <div className="hero-dots" aria-hidden="true" />
         <svg
           className="hero-lanes"
@@ -60,33 +61,17 @@ export function Hero({
         <div className="hero-copy">
           <span className="eyebrow night">Shotwise / Range log</span>
           <h2>Every shot, accounted for.</h2>
-          <p className="hero-dek">
-            Carry, speed and shape by club — and the shots that should never
-            have been counted. Session by session, without changing what was
-            recorded.
-          </p>
+          {!compact && (
+            <p className="hero-dek">
+              Carry, speed and shape by club — and the shots that should never
+              have been counted. Session by session, without changing what was
+              recorded.
+            </p>
+          )}
           <p className="hero-meta mono">
             {dateRange} <span>·</span> {shots} recorded shots across {sessions}{' '}
             {sessions === 1 ? 'session' : 'sessions'}
           </p>
-        </div>
-      </div>
-      <div className="statstrip reveal" data-reveal>
-        <div>
-          <div className="n">{shots}</div>
-          <div className="l">Shots in view</div>
-        </div>
-        <div>
-          <div className="n">{sessions}</div>
-          <div className="l">Sessions</div>
-        </div>
-        <div>
-          <div className="n">{clubs}</div>
-          <div className="l">Clubs</div>
-        </div>
-        <div>
-          <div className="n small">{dateRange}</div>
-          <div className="l">Date range</div>
         </div>
       </div>
     </>
