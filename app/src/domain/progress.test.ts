@@ -258,6 +258,54 @@ it('requires two measured sessions before reporting a cross-session delta', () =
   expect(summary?.first).toMatchObject({ value: 120 });
   expect(summary?.latest).toMatchObject({ value: 120 });
   expect(summary?.delta).toBeNull();
+  expect(summary?.deltaReason).toBe('insufficient');
+});
+
+it('withholds the 7i cross-session delta when the first date mixes an untimed and a timed visit', () => {
+  // Review A2 end-to-end: 7i medians 100 m (untimed) and 130 m (08:00) on the
+  // first date, 150 m the next day. The +50 m claim was ambiguous (+50 or
+  // +20), so the delta is withheld while every visit keeps its own measured
+  // value and session id (the UUID recap links hang off those ids).
+  const untimed = makeSession({ id: '11111111-1111-4111-8111-111111111111', date: '2026-11-10', time: null });
+  const morning = makeSession({ id: '22222222-2222-4222-8222-222222222222', date: '2026-11-10', time: '08:00' });
+  const nextDay = makeSession({ id: '33333333-3333-4333-8333-333333333333', date: '2026-11-11', time: null });
+  const shots = [
+    makeShot({ sessionId: untimed.id, measurements: { flatCarryPremium: 100 } }),
+    makeShot({ sessionId: morning.id, measurements: { flatCarryPremium: 130 } }),
+    makeShot({ sessionId: nextDay.id, measurements: { flatCarryPremium: 150 } }),
+  ];
+  const data = { ...emptyDataset, sessions: [untimed, morning, nextDay], shots };
+  const groups = clubProgress(data, 'premium-flat', query);
+  expect(groups).toHaveLength(1);
+  const points = groups[0]?.sessions ?? [];
+  // Every visit is present, in display order, keyed by its own UUID.
+  expect(points.map((p) => p.session.id)).toEqual([untimed.id, morning.id, nextDay.id]);
+  expect(points.map((p) => p.median)).toEqual([100, 130, 150]);
+  const [summary] = summarizeClubMetric(groups, 'median');
+  expect(summary?.measured).toBe(3);
+  expect(summary?.first).toMatchObject({ value: 100, session: untimed });
+  expect(summary?.latest).toMatchObject({ value: 150, session: nextDay });
+  expect(summary?.delta).toBeNull();
+  expect(summary?.deltaReason).toBe('ambiguous');
+  // Same-day visits with distinct times stay ordered: 08:00 then 17:00 on
+  // the first date plus the next day reports the 08:00 → next-day delta.
+  const evening = makeSession({ id: '44444444-4444-4444-8444-444444444444', date: '2026-11-10', time: '17:00' });
+  const timedData = {
+    ...emptyDataset,
+    sessions: [morning, evening, nextDay],
+    shots: [
+      makeShot({ sessionId: morning.id, measurements: { flatCarryPremium: 100 } }),
+      makeShot({ sessionId: evening.id, measurements: { flatCarryPremium: 130 } }),
+      makeShot({ sessionId: nextDay.id, measurements: { flatCarryPremium: 150 } }),
+    ],
+  };
+  const [timedSummary] = summarizeClubMetric(
+    clubProgress(timedData, 'premium-flat', query),
+    'median',
+  );
+  expect(timedSummary?.first).toMatchObject({ value: 100, session: morning });
+  expect(timedSummary?.delta).toBe(50);
+  expect(timedSummary?.deltaReason).toBeNull();
 });
 
 it('summarizes first, latest, best and delta per club for one metric', () => {
@@ -350,6 +398,67 @@ describe('firstLatestDelta', () => {
         { session: late, value: 90 },
       ]).delta,
     ).toBe(-10);
+  });
+  it('withholds the delta when the earliest date has another unordered visit, even though the endpoint dates differ', () => {
+    // Review A2: first date carries an untimed 100 m visit and an 08:00 130 m
+    // visit; the next day is 150 m. "First" could be either same-day value
+    // (+50 m or +20 m), so no directional delta is fair.
+    const untimed = s('u', '2026-11-10', null);
+    const morning = s('m', '2026-11-10', '08:00');
+    const nextDay = s('n', '2026-11-11', null);
+    const { first, latest, delta, deltaReason } = firstLatestDelta([
+      { session: untimed, value: 100 },
+      { session: morning, value: 130 },
+      { session: nextDay, value: 150 },
+    ]);
+    // The endpoint values themselves are preserved and identified…
+    expect(first).toMatchObject({ value: 100 });
+    expect(latest).toMatchObject({ value: 150 });
+    // …but the delta is withheld as ambiguous, never claimed as +50 m.
+    expect(delta).toBeNull();
+    expect(deltaReason).toBe('ambiguous');
+  });
+  it('withholds the delta when the latest date has another unordered visit', () => {
+    const early = s('e', '2026-11-10', '09:00');
+    const untimed = s('u', '2026-11-12', null);
+    const afternoon = s('a', '2026-11-12', '14:00');
+    const { delta, deltaReason } = firstLatestDelta([
+      { session: early, value: 100 },
+      { session: untimed, value: 120 },
+      { session: afternoon, value: 130 },
+    ]);
+    expect(delta).toBeNull();
+    expect(deltaReason).toBe('ambiguous');
+  });
+  it('keeps same-day visits with distinct times ordered and reports their delta', () => {
+    const morning = s('m', '2026-11-10', '08:00');
+    const evening = s('e', '2026-11-10', '17:00');
+    const nextDay = s('n', '2026-11-11', null);
+    const { first, latest, delta, deltaReason } = firstLatestDelta([
+      { session: morning, value: 100 },
+      { session: evening, value: 130 },
+      { session: nextDay, value: 150 },
+    ]);
+    expect(first).toMatchObject({ value: 100 });
+    expect(latest).toMatchObject({ value: 150 });
+    expect(delta).toBe(50);
+    expect(deltaReason).toBeNull();
+  });
+  it('marks a single measured visit as insufficient rather than ambiguous', () => {
+    const session = s('a', '2026-11-10');
+    const { delta, deltaReason } = firstLatestDelta([{ session, value: 120 }]);
+    expect(delta).toBeNull();
+    expect(deltaReason).toBe('insufficient');
+  });
+  it('marks same-day unordered endpoints as ambiguous', () => {
+    const morning = s('m', '2026-11-10', '08:00');
+    const untimed = s('u', '2026-11-10', null);
+    const { delta, deltaReason } = firstLatestDelta([
+      { session: untimed, value: 100 },
+      { session: morning, value: 150 },
+    ]);
+    expect(delta).toBeNull();
+    expect(deltaReason).toBe('ambiguous');
   });
 });
 

@@ -48,9 +48,11 @@ export function bandPercent(value: number, min: number, max: number): number {
 /**
  * Carry distribution band: outer band = P10–P90 (middle 80%), inner band =
  * IQR (Q1–Q3, the middle half), line = median. Percentile range and IQR stay
- * visually distinct. All values in the same unit; missing stats simply don't
- * render — never zero. The scale is [min, max] supplied by the caller so
- * several clubs can share one scale.
+ * visually distinct, and each mark renders independently of the others — a
+ * measured IQR (needs 4+ shots) is never hidden just because P10–P90 needs
+ * 10+ shots. All values in the same unit; missing stats simply don't render —
+ * never zero. The scale is [min, max] supplied by the caller so several clubs
+ * can share one scale.
  */
 export function DistributionPlot({
   band,
@@ -82,15 +84,17 @@ export function DistributionPlot({
   stretch?: boolean;
 }) {
   const x = (v: number) => bandX(v, min, max);
-  const complete =
-    band.p10 !== null && band.q1 !== null && band.median !== null &&
-    band.q3 !== null && band.p90 !== null;
+  // Each band renders on its own eligibility (P10–P90: 10+ measured, IQR:
+  // 4+ measured, median: any) — never gated on the outer band being complete.
+  const hasOuter = band.p10 !== null && band.p90 !== null;
+  const hasInner = band.q1 !== null && band.q3 !== null;
   const inScale =
     compare !== undefined && compare !== null && compare >= min && compare <= max;
   const fmt = (v: number | null) => (v === null ? '—' : `${v.toFixed(0)}${unit}`);
   // Bands render at their true scaled coordinates — a minimum pixel width
   // would overstate narrow ranges and shift the visual endpoint to the right.
-  // Coincident endpoints (zero-width band) draw as a tick instead.
+  // Coincident endpoints (zero-width band) draw as a tick instead, and marks
+  // that coincide across bands (e.g. Q1 = P10) share the same true x.
   const p10x = band.p10 === null ? null : x(band.p10);
   const p90x = band.p90 === null ? null : x(band.p90);
   const q1x = band.q1 === null ? null : x(band.q1);
@@ -100,12 +104,13 @@ export function DistributionPlot({
   // Endpoint labels overlap when the band is narrower than ~two label widths;
   // then one combined "a–b" label is drawn instead of two colliding texts.
   const closeLabels =
-    labels && p10x !== null && p90x !== null && outerWidth !== null && outerWidth < 26;
+    labels && outerWidth !== null && outerWidth < 26;
   return (
     <div className="ds-distribution">
       <SrOnly>
         {label}: P10 {fmt(band.p10)}, first quartile {fmt(band.q1)}, median{' '}
         {fmt(band.median)}, third quartile {fmt(band.q3)}, P90 {fmt(band.p90)}
+        {!hasOuter ? ' (P10–P90 needs 10+ measured shots)' : ''}
         {compare !== undefined && compare !== null
           ? `, comparison ${fmt(compare)}`
           : ''}.
@@ -115,52 +120,52 @@ export function DistributionPlot({
         preserveAspectRatio={stretch ? 'none' : undefined}
         aria-hidden="true"
       >
-        {complete && (
-          <>
-            {/* outer band P10–P90: 12px tall, fully rounded ends (rx = h/2) */}
-            {outerWidth! > 0.5 ? (
-              <rect
-                className="band-p"
-                x={p10x!}
-                y={6}
-                width={outerWidth!}
-                height={12}
-                rx={6}
-              />
-            ) : (
-              <line className="band-p band-tick" x1={p10x!} x2={p10x!} y1={6} y2={18} strokeWidth={12} />
-            )}
-            {/* inner band Q1–Q3 (IQR): 6px tall, fully rounded ends */}
-            {innerWidth! > 0.5 ? (
-              <rect
-                className="band-iqr"
-                x={q1x!}
-                y={9}
-                width={innerWidth!}
-                height={6}
-                rx={3}
-              />
-            ) : (
-              <line className="band-iqr band-tick" x1={q1x!} x2={q1x!} y1={9} y2={15} strokeWidth={6} />
-            )}
-            {labels &&
-              (closeLabels ? (
-                <text x={(p10x! + p90x!) / 2} y={37} textAnchor="middle">
-                  {band.p10!.toFixed(0)}–{band.p90!.toFixed(0)}
-                </text>
-              ) : (
-                <>
-                  <text x={p10x!} y={37} textAnchor="middle">
-                    {band.p10!.toFixed(0)}
-                  </text>
-                  <text x={p90x!} y={37} textAnchor="middle">
-                    {band.p90!.toFixed(0)}
-                  </text>
-                </>
-              ))}
-          </>
-        )}
-        {/* median and comparison markers render even when the full band is
+        {/* outer band P10–P90: 12px tall, fully rounded ends (rx = h/2) */}
+        {hasOuter &&
+          (outerWidth! > 0.5 ? (
+            <rect
+              className="band-p"
+              x={p10x!}
+              y={6}
+              width={outerWidth!}
+              height={12}
+              rx={6}
+            />
+          ) : (
+            <line className="band-p band-tick" x1={p10x!} x2={p10x!} y1={6} y2={18} strokeWidth={12} />
+          ))}
+        {/* inner band Q1–Q3 (IQR): 6px tall, fully rounded ends — rendered
+            independently of the outer band */}
+        {hasInner &&
+          (innerWidth! > 0.5 ? (
+            <rect
+              className="band-iqr"
+              x={q1x!}
+              y={9}
+              width={innerWidth!}
+              height={6}
+              rx={3}
+            />
+          ) : (
+            <line className="band-iqr band-tick" x1={q1x!} x2={q1x!} y1={9} y2={15} strokeWidth={6} />
+          ))}
+        {hasOuter &&
+          labels &&
+          (closeLabels ? (
+            <text x={(p10x! + p90x!) / 2} y={37} textAnchor="middle">
+              {band.p10!.toFixed(0)}–{band.p90!.toFixed(0)}
+            </text>
+          ) : (
+            <>
+              <text x={p10x!} y={37} textAnchor="middle">
+                {band.p10!.toFixed(0)}
+              </text>
+              <text x={p90x!} y={37} textAnchor="middle">
+                {band.p90!.toFixed(0)}
+              </text>
+            </>
+          ))}
+        {/* median and comparison markers render even when the bands are
             sample-limited — a measured median is never hidden, never zero */}
         {band.median !== null && band.median >= min && band.median <= max && (
           <line
@@ -180,7 +185,7 @@ export function DistributionPlot({
             y2={21}
           />
         )}
-        {!complete && !stretch && (
+        {!hasOuter && !stretch && (
           <text x={BAND_VIEWBOX.width / 2} y={22} textAnchor="middle">
             P10–P90 needs 10+ measured shots
           </text>

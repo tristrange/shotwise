@@ -521,6 +521,12 @@
 .ds-chart .recharts-tooltip-wrapper {
   outline: none;
 }
+/* Trend chart dots are focusable exact-selection controls (role="button");
+   give the keyboard focus a visible ring on the SVG circle. */
+.ds-chart .trend-dot:focus-visible {
+  stroke: var(--text);
+  stroke-width: 2;
+}
 .ds-chart-tooltip {
   background: var(--surface);
   border: 1px solid var(--border);

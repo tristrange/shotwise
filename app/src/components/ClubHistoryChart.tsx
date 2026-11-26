@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { ProfileHistoryPoint } from '../domain/clubProfiles';
-import { firstLatestDelta } from '../domain/progress';
+import { chronologyKnown, firstLatestDelta } from '../domain/progress';
 import { sessionHref, visitLabel } from './SessionRecap';
 import { shortDate } from './PerformanceTrendCard';
 import {
@@ -38,19 +38,34 @@ export function ClubHistoryChart({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const chartPoints: ChartPoint[] = useMemo(
     () =>
-      points.map((point, i) => ({
-        id: point.session.id,
-        label: `S${i + 1} · ${shortDate(point.session.date)}`,
-        value: metric === 'median' ? point.median : point.iqr,
-        detail: `${visitLabel(point.session)} · ${point.n} measured · ${point.missing} missing`,
-      })),
+      points.map((point, i) => {
+        const prev = i > 0 ? points[i - 1] : undefined;
+        return {
+          id: point.session.id,
+          label: `S${i + 1} · ${shortDate(point.session.date)}`,
+          value: metric === 'median' ? point.median : point.iqr,
+          detail: `${visitLabel(point.session)} · ${point.n} measured · ${point.missing} missing`,
+          // Same-day visits with unknown order get no connecting segment, so
+          // the chart never implies a within-day trajectory.
+          unordered:
+            prev !== undefined &&
+            prev.session.date === point.session.date &&
+            !chronologyKnown(prev.session, point.session),
+        };
+      }),
     [points, metric],
   );
   const measured = chartPoints.filter((p) => p.value !== null);
   // Same first/latest/delta rule as the Progress page: no delta from a single
   // measured visit, and none when the endpoint order is chronologically
-  // ambiguous (same-day visits with missing or equal times).
-  const { first, latest: headline, delta } = firstLatestDelta(
+  // ambiguous (same-day visits with missing or equal times, on either
+  // endpoint's own date).
+  const {
+    first,
+    latest: headline,
+    delta,
+    deltaReason,
+  } = firstLatestDelta(
     points.map((p) => ({
       session: p.session,
       value: metric === 'median' ? p.median : p.iqr,
@@ -59,6 +74,10 @@ export function ClubHistoryChart({
   const lowerIsBetter = metric === 'iqr';
   const deltaText =
     delta === null ? undefined : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1)} m`;
+  const withheldDeltaText =
+    delta === null && deltaReason === 'ambiguous'
+      ? 'Change not shown — same-day visits with no recorded order'
+      : undefined;
   const deltaTone =
     delta === null
       ? 'neutral'
@@ -90,7 +109,7 @@ export function ClubHistoryChart({
           label={metric === 'median' ? 'Latest median carry' : 'Latest carry spread (IQR)'}
           value={headline.value === null ? '—' : headline.value.toFixed(1)}
           unit="m"
-          delta={deltaText ? `${deltaText} vs first session` : undefined}
+          delta={deltaText ? `${deltaText} vs first session` : withheldDeltaText}
           deltaTone={deltaTone}
         />
       ) : (
@@ -105,7 +124,9 @@ export function ClubHistoryChart({
       </p>
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
-          ? `${metric === 'median' ? 'Median carry' : 'Carry spread'} from ${first?.value?.toFixed(1)} m to ${headline?.value?.toFixed(1)} m across ${measured.length} sessions.`
+          ? deltaReason === 'ambiguous'
+            ? `${metric === 'median' ? 'Median carry' : 'Carry spread'}: latest ${headline?.value?.toFixed(1)} m across ${measured.length} sessions; change vs the earliest measured session is not shown because same-day visits have no recorded order.`
+            : `${metric === 'median' ? 'Median carry' : 'Carry spread'} from ${first?.value?.toFixed(1)} m to ${headline?.value?.toFixed(1)} m across ${measured.length} sessions.`
           : 'No measured values in this history.'}
       </ChartSummary>
       <TrendChart

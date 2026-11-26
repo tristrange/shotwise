@@ -1335,6 +1335,93 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(details.getByRole('row').nth(1)).toContainText('0 / 4');
 });
 
+test('withholds an ambiguous same-day progress delta and selects chart points exactly', async ({
+  page,
+  account,
+}) => {
+  // Review A2: the first date carries a 7i visit with median 100 m and no
+  // recorded time plus an 08:00 visit with median 130 m; the next day is
+  // 150 m. "First" could be either same-day value, so no +50 m is fair.
+  const firstDay = shiftDate(localToday(), -2);
+  const nextDay = shiftDate(localToday(), -1);
+  const importVisit = async (filename: string, date: string, time: string | null, carry: string) =>
+    account.repository.importCsv({
+      filename,
+      date,
+      time,
+      venue: '',
+      notes: '',
+      confirmedFull: false,
+      allowSameDay: true,
+      preview: await parseCsv(
+        new TextEncoder().encode(
+          csvFixture([
+            { Club: '7i', 'Flat Carry Dist. Premium (m)': carry },
+          ]),
+        ),
+      ),
+    });
+  const untimed = await importVisit('a2-untimed.csv', firstDay, null, '100');
+  const morning = await importVisit('a2-morning.csv', firstDay, '08:00', '130');
+  const later = await importVisit('a2-next.csv', nextDay, null, '150');
+  const sessionIds = [untimed.sessionId, morning.sessionId, later.sessionId] as const;
+  await login(page, account);
+  await nav(page, 'Progress');
+  const trend = page.locator('.performance-trend');
+  const chart = page.getByRole('group', { name: /7i median carry per session/ });
+  await expect(chart).toBeVisible();
+  // The headline still shows the latest measured value, but the change vs the
+  // first session is explicitly withheld — not claimed as +50 m.
+  const headline = trend.locator('.ds-metric').first();
+  await expect(headline).toContainText('150.0');
+  await expect(headline).toContainText('Change not shown');
+  await expect(headline).not.toContainText('+50');
+  // The cross-club comparison names the withholding reason instead of a delta.
+  await expect(page.locator('.cross-club')).toContainText(
+    'same-day visits in no recorded order',
+  );
+  await expect(
+    page.getByRole('list', { name: 'Carry trend by club' }),
+  ).toHaveCount(0);
+  // Every visit keeps its own measured value in the session table.
+  await page.locator('summary', { hasText: '7 iron session details' }).click();
+  const details = page.getByRole('table', {
+    name: '7i session details',
+    exact: true,
+  });
+  await expect(details.getByRole('row')).toHaveCount(4);
+  await expect(details).toContainText('100.0 m');
+  await expect(details).toContainText('130.0 m');
+  await expect(details).toContainText('150.0 m');
+  // No connecting line between the unordered same-day visits: the series
+  // splits into two runs (S1 alone, S2–S3) instead of one implied trajectory.
+  await expect(chart.locator('path.recharts-area-curve')).toHaveCount(2);
+  // Review B3: a direct tap on a point selects exactly that visit — each dot
+  // is an accessible control (role=button, focusable, aria-label) keyed by
+  // the session UUID, which also works on phone WebKit.
+  const dots = chart.locator('circle.trend-dot[role="button"]');
+  await expect(dots).toHaveCount(3);
+  await expect(dots.nth(0)).toHaveAttribute('aria-label', /Select S1 ·/);
+  await dots.nth(2).click();
+  const inspect = page.getByLabel('Inspect session', { exact: true });
+  await expect(inspect).toHaveValue(sessionIds[2]);
+  await expect(trend).toContainText(/Selected S3 ·/);
+  await expect(
+    trend.getByRole('link', { name: 'open session recap' }),
+  ).toHaveAttribute('href', `#sessions/${sessionIds[2]}`);
+  // The native picker is retained and lists every visit by UUID.
+  await inspect.selectOption(sessionIds[0]);
+  await expect(trend).toContainText(/Selected S1 ·/);
+  await expect(
+    trend.getByRole('link', { name: 'open session recap' }),
+  ).toHaveAttribute('href', `#sessions/${sessionIds[0]}`);
+  // Keyboard route: focusing a dot and pressing Enter selects the exact point.
+  await dots.nth(1).focus();
+  await page.keyboard.press('Enter');
+  await expect(inspect).toHaveValue(sessionIds[1]);
+  await expect(trend).toContainText(/Selected S2 ·/);
+});
+
 test('shows readable carry bands without recommending practice from overlap alone', async ({
   page,
   account,
@@ -1405,6 +1492,58 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(
     page.getByText('No comparable shots for these filters.'),
   ).toBeVisible();
+});
+
+test('renders the IQR band at true scale for a four-shot club without the P10–P90 band', async ({
+  page,
+  account,
+}) => {
+  // Review A3: carries 120/124/128/132 give Q1 = 123, Q3 = 129 (IQR eligible
+  // with 4+ measured shots) but no P10–P90 (needs 10+). The shared
+  // DistributionPlot used to hide the IQR behind the outer gate.
+  await account.repository.importCsv({
+    filename: 'iqr-four.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture(
+          [120, 124, 128, 132].map((carry) => ({
+            Club: '6i',
+            'Flat Carry Dist. Premium (m)': String(carry),
+          })),
+        ),
+      ),
+    ),
+  });
+  await login(page, account);
+  await nav(page, 'Gapping');
+  const rows = page
+    .getByRole('list', { name: 'Club carry distances' })
+    .getByRole('listitem');
+  await expect(rows).toHaveCount(1);
+  const row = rows.nth(0);
+  // Median 126 m is shown; the missing outer band is named explicitly.
+  await expect(row).toContainText('126 m');
+  await expect(row).toContainText('P10–P90 needs 10 shots');
+  // No outer band, but the IQR band and the median line render.
+  await expect(row.locator('.band-p')).toHaveCount(0);
+  const iqr = row.locator('.band-iqr');
+  await expect(iqr).toHaveCount(1);
+  await expect(row.locator('line.median')).toHaveCount(1);
+  // True scale on the shared axis: the band cohort is 123–129, so the shared
+  // scale pads outward to [120, 130] and the band spans bandX(123)…bandX(129)
+  // of the 300-unit viewBox — no minimum pixel width, no shifted endpoint.
+  const x = Number(await iqr.evaluate((el) => el.getAttribute('x')));
+  const width = Number(await iqr.evaluate((el) => el.getAttribute('width')));
+  const bandX = (v: number, min: number, max: number) =>
+    4 + ((v - min) / (max - min)) * (300 - 8);
+  expect(x).toBeCloseTo(bandX(123, 120, 130), 5);
+  expect(width).toBeCloseTo(bandX(129, 120, 130) - bandX(123, 120, 130), 5);
 });
 
 test('explains unusual iron shots and keeps review decisions explicit and reversible', async ({

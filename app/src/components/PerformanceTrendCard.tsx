@@ -3,6 +3,7 @@ import { TrendingUp } from 'lucide-react';
 import { BASES, localToday, type Dataset } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
 import {
+  chronologyKnown,
   clubProgress,
   pointReading,
   summarizeClubMetric,
@@ -151,6 +152,7 @@ export function PerformanceTrendCard({
       sessions.map((point, i) => {
         const reading = pointReading(point, metric);
         const potential = pointReading(point, 'p80');
+        const prev = i > 0 ? sessions[i - 1] : undefined;
         return {
           id: point.session.id,
           label: `S${i + 1} · ${shortDate(point.session.date)}`,
@@ -164,6 +166,13 @@ export function PerformanceTrendCard({
             metric === 'median' && showPotential
               ? `${potential.n} measured full swings`
               : undefined,
+          // Same-day visits whose order is not chronologically known get no
+          // connecting segment: the chart must not imply a within-day
+          // trajectory. Distinct recorded times on the same day stay ordered.
+          unordered:
+            prev !== undefined &&
+            prev.session.date === point.session.date &&
+            !chronologyKnown(prev.session, point.session),
         };
       }),
     [sessions, metric, showPotential],
@@ -186,6 +195,13 @@ export function PerformanceTrendCard({
     delta === null
       ? undefined
       : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(decimals(metric))} ${METRIC_UNIT[metric]}`;
+  // An ambiguous endpoint date means the first (or latest) visit could be
+  // either of the same-day values: say so explicitly instead of silently
+  // showing no change or an arbitrary direction.
+  const withheldDeltaText =
+    delta === null && summary?.deltaReason === 'ambiguous'
+      ? 'Change not shown — same-day visits with no recorded order'
+      : undefined;
   const deltaTone = !directional
     ? 'neutral'
     : delta === null
@@ -246,7 +262,10 @@ export function PerformanceTrendCard({
               <p>
                 Each point is one session (S1, S2… in date order — sessions without a
                 recorded time are not ordered within a day). {seriesName} per session on
-                the {BASES[basis].label} basis.
+                the {BASES[basis].label} basis. Same-day visits with no recorded order
+                get no connecting line, and the change vs the first session is not
+                shown when the first or latest day has unordered visits. Tap a point
+                (or use the Inspect session picker) to select that exact visit.
               </p>
               {metric === 'median' && (
                 <p>
@@ -301,7 +320,7 @@ export function PerformanceTrendCard({
           delta={
             deltaText
               ? `${deltaText} vs first session${first ? ` · ${shortDate(first.session.date)}` : ''}`
-              : undefined
+              : withheldDeltaText
           }
           deltaTone={deltaTone}
         />
@@ -313,7 +332,9 @@ export function PerformanceTrendCard({
       </p>
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
-          ? `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
+          ? summary?.deltaReason === 'ambiguous'
+            ? `${seriesName}: latest ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions; change vs the earliest measured session is not shown because same-day visits have no recorded order.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
+            : `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
           : 'No measured values in this window.'}
       </ChartSummary>
       <TrendChart
