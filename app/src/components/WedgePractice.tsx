@@ -181,9 +181,7 @@ function WedgeGroupCard({
   const name = groupName(group);
   const carryKey = BASES[basis].carry;
   const band = carryBandOf(shots, carryKey);
-  const bandComplete =
-    band.p10 !== null && band.q1 !== null && band.median !== null &&
-    band.q3 !== null && band.p90 !== null;
+  const hasIqr = band.q1 !== null && band.q3 !== null;
   const flight = [
     { label: 'Median launch', metric: launch, unit: '°' },
     { label: 'Median ball speed', metric: speed, unit: ' kph' },
@@ -223,7 +221,7 @@ function WedgeGroupCard({
           ? ' · Carry spread needs 4 measured shots'
           : ` · Middle half spans ${metres(carry.iqr)}`}
       </p>
-      {bandComplete && (
+      {hasIqr && (
         <DistributionPlot
           band={band}
           min={bandScale.min}

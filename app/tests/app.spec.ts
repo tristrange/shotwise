@@ -2,6 +2,7 @@ import {
   test as base,
   expect,
   devices,
+  type BrowserContext,
   type Locator,
   type Page,
   type TestInfo,
@@ -762,6 +763,225 @@ test('keeps the right primary item active for nested routes, deep links and back
   await expect(progressItem).toHaveAttribute('aria-current', 'page');
 });
 
+/** True when the element's box sits inside the current viewport. */
+async function inFirstViewport(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+  if (!box) return false;
+  const height = await page.evaluate(() => window.innerHeight);
+  return box.y >= -1 && box.y + box.height <= height + 1;
+}
+
+test('starts deliberate primary navigation at the destination top and preserves history and evidence focus', async ({
+  page,
+  account,
+}, testInfo) => {
+  // A tall recap so scrolling deep is meaningful.
+  const rows = Array.from({ length: 40 }, (_, i) => ({
+    Club: i % 2 ? '7i' : '9i',
+    'Flat Carry Dist. Premium (m)': String(120 + (i % 5)),
+    'Flat Carry Dist. Range (m)': String(130 + (i % 5)),
+    'Ball Speed (kph)': '140',
+  }));
+  const tall = await account.repository.importCsv({
+    filename: 'tall-recap.csv',
+    date: localToday(),
+    time: '08:00',
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  await login(page, account);
+  // React key warnings surface as console errors in the dev build; the
+  // sidebar groups must render without duplicate-key errors.
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  const isPhone = testInfo.project.name === 'phone-webkit';
+  const primary = isPhone ? page.locator('.bottom-nav') : page.locator('.sidebar nav');
+  const data = await account.repository.load();
+  const session = data.sessions.find((s) => s.id === tall.sessionId);
+  const shot = data.shots.find((s) => s.sessionId === tall.sessionId);
+  if (!session || !shot) throw new Error('seeded data missing session or shot');
+
+  // Open the recap from the logbook, then scroll deep into it.
+  await nav(page, isPhone ? 'Sessions' : 'Sessions & import');
+  await page.getByRole('link', { name: /tall-recap\.csv/ }).click();
+  await expect(
+    page.getByRole('region', { name: 'Session recap' }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await expect
+    .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+    .toBeGreaterThan(400);
+
+  // Deliberate primary navigation starts at the destination top: Home and
+  // Progress open with their heading in the first viewport, not deep down.
+  for (const [button, heading] of [
+    [isPhone ? 'Home' : 'Overview', 'Overview'],
+    ['Progress', 'Progress'],
+  ] as const) {
+    await primary.getByRole('button', { name: button, exact: true }).click();
+    const target = page.getByRole('heading', { name: heading, exact: true });
+    await expect(target).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+      .toBe(0);
+    expect(await inFirstViewport(page, target)).toBe(true);
+  }
+
+  // Browser Back/Forward still restore the route and the original scroll:
+  // back to the Home entry (top), then to the deep-scrolled recap, then
+  // forward again.
+  await page.goBack();
+  await expect
+    .poll(() => new URL(page.url()).hash)
+    .toBe('#overview');
+  await expect
+    .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+    .toBe(0);
+  await page.goBack();
+  await expect
+    .poll(() => new URL(page.url()).hash)
+    .toBe(`#sessions/${session.id}`);
+  await expect(
+    page.getByRole('region', { name: 'Session recap' }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+    .toBeGreaterThan(400);
+  await page.goForward();
+  await expect
+    .poll(() => new URL(page.url()).hash)
+    .toBe('#overview');
+  await expect
+    .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+    .toBe(0);
+
+  // Theme change re-renders the navigation without duplicate-key errors and
+  // with every item rendered exactly once.
+  await page
+    .getByRole('button', { name: /Switch to (dark|light) theme/ })
+    .click();
+  if (!isPhone) {
+    await expect(page.locator('.sidebar nav').getByRole('button')).toHaveCount(9);
+  } else {
+    await expect(page.locator('.bottom-nav').getByRole('button')).toHaveCount(5);
+  }
+  expect(consoleErrors.filter((text) => /key/i.test(text))).toEqual([]);
+
+  // A direct evidence link still focuses and reveals its own destination.
+  await page.evaluate(
+    ([id, shotId]) => {
+      window.location.hash = `sessions/${id}?shot=${shotId}`;
+    },
+    [session.id, shot.id] as const,
+  );
+  const evidence = page.getByRole('heading', { name: 'Supporting shots' });
+  await expect(evidence).toBeVisible();
+  await expect(evidence).toBeFocused();
+  await expect.poll(() => inFirstViewport(page, evidence)).toBe(true);
+
+  // Re-tapping the active Clubs tab keeps a deep link instead of resetting.
+  if (isPhone) {
+    await page.evaluate(() => {
+      window.location.hash = 'clubs/7i';
+    });
+    await expect(page.locator('.club-profile').first()).toBeVisible();
+    await primary.getByRole('button', { name: 'Clubs', exact: true }).click();
+    expect(new URL(page.url()).hash).toBe('#clubs/7i');
+  }
+});
+
+test('keeps all four Clubs sub-nav entries visible at 320 and 390 px, including a direct Explorer deep link', async ({
+  page,
+  browser,
+  account,
+}, testInfo) => {
+  test.setTimeout(150000);
+  await seed(account);
+  const isPhone = testInfo.project.name === 'phone-webkit';
+  const contexts: BrowserContext[] = [];
+  let loggedIn = false;
+  try {
+    for (const width of [320, 390]) {
+      let target = page;
+      if (isPhone) {
+        // WebKit cannot resize the layout viewport of a mobile-emulated page:
+        // give each width a real context.
+        const context = await browser.newContext({
+          ...devices['iPhone 13'],
+          viewport: { width, height: 700 },
+        });
+        contexts.push(context);
+        target = await context.newPage();
+        await login(target, account);
+      } else {
+        await page.setViewportSize({ width, height: 700 });
+        if (!loggedIn) {
+          await login(page, account);
+          loggedIn = true;
+        }
+      }
+      await target.evaluate(() => {
+        window.location.hash = 'clubs';
+      });
+      await expect(
+        target.getByRole('heading', { name: 'Club profiles', exact: true }),
+      ).toBeVisible();
+      const subNav = target.locator('.sub-nav');
+      await expect(subNav.getByRole('button')).toHaveCount(4);
+      // Every entry — including Explorer — fits inside the viewport width.
+      for (const label of ['Club profiles', 'Gapping', 'Shot shape', 'Explorer']) {
+        const box = await subNav
+          .getByRole('button', { name: label, exact: true })
+          .boundingBox();
+        expect(box, `${label} box at ${width}px`).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(-1);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+      }
+      await expect
+        .poll(() =>
+          target.evaluate(
+            () => document.documentElement.scrollWidth - window.innerWidth,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      // A direct Explorer deep link keeps its entry active and in view.
+      await target.evaluate(() => {
+        window.location.hash = 'shape/explorer';
+      });
+      const explorer = subNav.getByRole('button', { name: 'Explorer', exact: true });
+      await expect(explorer).toHaveAttribute('aria-current', 'page');
+      const box = await explorer.boundingBox();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+      await expect(
+        target.getByRole('region', { name: 'Ball-flight explorer', exact: true }),
+      ).toBeVisible();
+      // Explorer stays reachable by tapping the sub-nav entry from Clubs.
+      await target.evaluate(() => {
+        window.location.hash = 'clubs';
+      });
+      await expect(
+        target.getByRole('heading', { name: 'Club profiles', exact: true }),
+      ).toBeVisible();
+      await explorer.click();
+      await expect(
+        target.getByRole('region', { name: 'Ball-flight explorer', exact: true }),
+      ).toBeVisible();
+      await expect(explorer).toHaveAttribute('aria-current', 'page');
+      if (isPhone) await contexts.pop()?.close();
+    }
+  } finally {
+    await Promise.all(contexts.map((context) => context.close().catch(() => {})));
+  }
+});
+
 test('fits the overview hero on phone viewports without pinch zoom', async ({
   page,
   account,
@@ -1335,6 +1555,104 @@ test('explores progress through one interactive chart with sparse and missing da
   await expect(details.getByRole('row').nth(1)).toContainText('0 / 4');
 });
 
+test('withholds an ambiguous same-day progress delta and selects chart points exactly', async ({
+  page,
+  account,
+  hasTouch,
+}) => {
+  // Review A2: the first date carries a 7i visit with median 100 m and no
+  // recorded time plus an 08:00 visit with median 130 m; the next day is
+  // 150 m. "First" could be either same-day value, so no +50 m is fair.
+  const firstDay = shiftDate(localToday(), -2);
+  const nextDay = shiftDate(localToday(), -1);
+  const importVisit = async (filename: string, date: string, time: string | null, carry: string) =>
+    account.repository.importCsv({
+      filename,
+      date,
+      time,
+      venue: '',
+      notes: '',
+      confirmedFull: false,
+      allowSameDay: true,
+      preview: await parseCsv(
+        new TextEncoder().encode(
+          csvFixture([
+            { Club: '7i', 'Flat Carry Dist. Premium (m)': carry },
+          ]),
+        ),
+      ),
+    });
+  const untimed = await importVisit('a2-untimed.csv', firstDay, null, '100');
+  const morning = await importVisit('a2-morning.csv', firstDay, '08:00', '130');
+  const later = await importVisit('a2-next.csv', nextDay, null, '150');
+  const sessionIds = [untimed.sessionId, morning.sessionId, later.sessionId] as const;
+  await login(page, account);
+  await nav(page, 'Progress');
+  const trend = page.locator('.performance-trend');
+  const chart = page.getByRole('group', { name: /7i median carry per session/ });
+  await expect(chart).toBeVisible();
+  // The headline still shows the latest measured value, but the change vs the
+  // first session is explicitly withheld — not claimed as +50 m.
+  const headline = trend.locator('.ds-metric').first();
+  await expect(headline).toContainText('150.0');
+  await expect(headline).toContainText('Change not shown');
+  await expect(headline).not.toContainText('+50');
+  // The cross-club comparison names the withholding reason instead of a delta.
+  await expect(page.locator('.cross-club')).toContainText(
+    'same-day visits in no recorded order',
+  );
+  await expect(
+    page.getByRole('list', { name: 'Carry trend by club' }),
+  ).toHaveCount(0);
+  // Every visit keeps its own measured value in the session table.
+  await page.locator('summary', { hasText: '7 iron session details' }).click();
+  const details = page.getByRole('table', {
+    name: '7i session details',
+    exact: true,
+  });
+  await expect(details.getByRole('row')).toHaveCount(4);
+  await expect(details).toContainText('100.0 m');
+  await expect(details).toContainText('130.0 m');
+  await expect(details).toContainText('150.0 m');
+  // One curve with two subpaths leaves a gap between the unordered visits.
+  const curve = await chart.locator('path.recharts-area-curve').getAttribute('d');
+  expect(curve?.match(/M/g)).toHaveLength(2);
+  // Review B3: a direct tap on a point selects exactly that visit — each dot
+  // is an accessible control (role=button, focusable, aria-label) keyed by
+  // the session UUID, which also works on phone WebKit.
+  const dots = chart.locator('circle.trend-dot[role="button"]');
+  await expect(dots).toHaveCount(3);
+  await expect(chart.locator('circle.trend-dot[tabindex="0"]')).toHaveCount(1);
+  await expect(dots.nth(0)).toHaveAttribute('aria-label', /Select S1 ·/);
+  if (hasTouch) await dots.nth(2).tap();
+  else await dots.nth(2).click();
+  const inspect = page.getByLabel('Inspect session', { exact: true });
+  await expect(inspect).toHaveValue(sessionIds[2]);
+  await expect(trend).toContainText(/Selected S3 ·/);
+  await expect(
+    trend.getByRole('link', { name: 'open session recap' }),
+  ).toHaveAttribute('href', `#sessions/${sessionIds[2]}`);
+  // The native picker is retained and lists every visit by UUID.
+  await inspect.selectOption(sessionIds[0]);
+  await expect(trend).toContainText(/Selected S1 ·/);
+  await expect(
+    trend.getByRole('link', { name: 'open session recap' }),
+  ).toHaveAttribute('href', `#sessions/${sessionIds[0]}`);
+  await inspect.selectOption(sessionIds[1]);
+  const selectedDot = chart.locator('circle.trend-dot[tabindex="0"]');
+  await expect(selectedDot).toHaveAttribute('aria-label', /Select S2 ·/);
+  await selectedDot.focus();
+  await page.keyboard.press('Enter');
+  await expect(inspect).toHaveValue(sessionIds[1]);
+  await expect(trend).toContainText(/Selected S2 ·/);
+  // A latest day with unknown ordering cannot name a latest measured visit.
+  await importVisit('a2-next-morning.csv', nextDay, '08:00', '140');
+  await page.reload();
+  await expect(trend.locator('.ds-metric').first()).toContainText('Change not shown');
+  await expect(trend.getByText(/Latest session ·/)).toHaveCount(0);
+  await expect(trend.getByText(/First session ·/)).toHaveCount(0);
+});
+
 test('shows readable carry bands without recommending practice from overlap alone', async ({
   page,
   account,
@@ -1405,6 +1723,58 @@ test('shows readable carry bands without recommending practice from overlap alon
   await expect(
     page.getByText('No comparable shots for these filters.'),
   ).toBeVisible();
+});
+
+test('renders the IQR band at true scale for a four-shot club without the P10–P90 band', async ({
+  page,
+  account,
+}) => {
+  // Review A3: carries 120/124/128/132 give Q1 = 123, Q3 = 129 (IQR eligible
+  // with 4+ measured shots) but no P10–P90 (needs 10+). The shared
+  // DistributionPlot used to hide the IQR behind the outer gate.
+  await account.repository.importCsv({
+    filename: 'iqr-four.csv',
+    date: localToday(),
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: false,
+    allowSameDay: false,
+    preview: await parseCsv(
+      new TextEncoder().encode(
+        csvFixture(
+          [120, 124, 128, 132].map((carry) => ({
+            Club: '6i',
+            'Flat Carry Dist. Premium (m)': String(carry),
+          })),
+        ),
+      ),
+    ),
+  });
+  await login(page, account);
+  await nav(page, 'Gapping');
+  const rows = page
+    .getByRole('list', { name: 'Club carry distances' })
+    .getByRole('listitem');
+  await expect(rows).toHaveCount(1);
+  const row = rows.nth(0);
+  // Median 126 m is shown; the missing outer band is named explicitly.
+  await expect(row).toContainText('126 m');
+  await expect(row).toContainText('P10–P90 needs 10 shots');
+  // No outer band, but the IQR band and the median line render.
+  await expect(row.locator('.band-p')).toHaveCount(0);
+  const iqr = row.locator('.band-iqr');
+  await expect(iqr).toHaveCount(1);
+  await expect(row.locator('line.median')).toHaveCount(1);
+  // True scale on the shared axis: the band cohort is 123–129, so the shared
+  // scale pads outward to [120, 130] and the band spans bandX(123)…bandX(129)
+  // of the 300-unit viewBox — no minimum pixel width, no shifted endpoint.
+  const x = Number(await iqr.evaluate((el) => el.getAttribute('x')));
+  const width = Number(await iqr.evaluate((el) => el.getAttribute('width')));
+  const bandX = (v: number, min: number, max: number) =>
+    4 + ((v - min) / (max - min)) * (300 - 8);
+  expect(x).toBeCloseTo(bandX(123, 120, 130), 5);
+  expect(width).toBeCloseTo(bandX(129, 120, 130) - bandX(123, 120, 130), 5);
 });
 
 test('explains unusual iron shots and keeps review decisions explicit and reversible', async ({
@@ -2735,6 +3105,8 @@ test('shows exact wedge target groups and keeps unknown swings out of full-swing
   await expect(target).toContainText(
     'Median carry 31 m · 4 of 5 measured · Middle half spans 3 m',
   );
+  await expect(target.locator('.band-iqr')).toHaveCount(1);
+  await expect(target.locator('.band-p')).toHaveCount(0);
   await expect(target).toContainText(
     'Median ball speed 70 kph · 1 of 5 measured',
   );
@@ -3514,6 +3886,98 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   });
 });
 
+test('wraps the club profile context on a full-width row at phone widths', async ({
+  page,
+  browser,
+  account,
+}, testInfo) => {
+  test.setTimeout(150000);
+  const rows = Array.from({ length: 12 }, (_, i) => ({
+    Club: '7i',
+    'Flat Carry Dist. Premium (m)': String(120 + (i % 4)),
+    'Flat Carry Dist. Range (m)': String(130 + (i % 4)),
+  }));
+  await account.repository.importCsv({
+    filename: 'profile-phone.csv',
+    date: localToday(),
+    time: null,
+    venue: 'Synthetic range',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture(rows))),
+  });
+  const isPhone = testInfo.project.name === 'phone-webkit';
+  const contexts: BrowserContext[] = [];
+  let loggedIn = false;
+  try {
+    for (const width of [320, 390]) {
+      let target = page;
+      if (isPhone) {
+        const context = await browser.newContext({
+          ...devices['iPhone 13'],
+          viewport: { width, height: 700 },
+        });
+        contexts.push(context);
+        target = await context.newPage();
+        await login(target, account);
+      } else {
+        await page.setViewportSize({ width, height: 700 });
+        if (!loggedIn) {
+          await login(page, account);
+          loggedIn = true;
+        }
+      }
+      await target.evaluate(() => {
+        window.location.hash = 'clubs/7i';
+      });
+      const card = target.locator('.club-profile').first();
+      await expect(card).toBeVisible();
+      // All-time gives the longest scope text.
+      const allTime = target.getByRole('button', { name: 'All-time', exact: true });
+      if (await allTime.count()) await allTime.click();
+      const head = card.locator('.club-profile-head');
+      const context = card.locator('.club-profile-title .context');
+      const heading = card.getByRole('heading', { name: '7i', exact: true });
+      await expect(context).toContainText('All-time');
+      const headBox = (await head.boundingBox())!;
+      const contextBox = (await context.boundingBox())!;
+      const headingBox = (await heading.boundingBox())!;
+      // The context wraps on a full-width row instead of a narrow sliver
+      // (the old fixed-basis layout squeezed it to ~47px wide and ~540px
+      // tall at 320px).
+      expect(contextBox.width).toBeGreaterThanOrEqual(headBox.width - 8);
+      expect(contextBox.width).toBeGreaterThan(200);
+      expect(contextBox.height).toBeLessThanOrEqual(160);
+      expect(contextBox.y).toBeGreaterThan(headingBox.y);
+      // The club name keeps a readable column.
+      expect(headingBox.width).toBeGreaterThan(60);
+      // Display and rating bases stay separately identifiable.
+      await expect(context).toContainText(/Premium|Range/);
+      await expect(card.locator('.club-profile-ring-basis')).toContainText(
+        /^rating ·/,
+      );
+      // The first metrics come right after the wrapped metadata, without a
+      // viewport full of it in between.
+      const metric = card
+        .locator('.ds-metric-label', { hasText: 'Typical carry' })
+        .locator('xpath=..');
+      const metricBox = (await metric.boundingBox())!;
+      expect(metricBox.y - contextBox.y).toBeLessThan(400);
+      await expect
+        .poll(() =>
+          target.evaluate(
+            () => document.documentElement.scrollWidth - window.innerWidth,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      if (isPhone) await contexts.pop()?.close();
+    }
+  } finally {
+    await Promise.all(contexts.map((context) => context.close().catch(() => {})));
+  }
+});
+
 test('compares two same-day visits from both entry points with stable, swappable selections', async ({
   page,
   account,
@@ -3681,6 +4145,111 @@ test('compares two same-day visits from both entry points with stable, swappable
     'data-logbook-row-refocused',
     'true',
   );
+});
+
+test('hides Compare on archived logbook cards and flags archived compare URLs immediately', async ({
+  page,
+  account,
+}, testInfo) => {
+  const today = localToday();
+  const rows = (carry: number) =>
+    Array.from({ length: 6 }, () => ({
+      Club: '7i',
+      'Flat Carry Dist. Premium (m)': String(carry),
+    }));
+  // Distinct carry values keep the exports distinct for import idempotency.
+  const importer = async (
+    filename: string,
+    date: string,
+    time: string | null,
+    carry: number,
+    allowSameDay: boolean,
+  ) =>
+    account.repository.importCsv({
+      filename,
+      date,
+      time,
+      venue: 'Synthetic range',
+      notes: '',
+      confirmedFull: true,
+      allowSameDay,
+      preview: await parseCsv(new TextEncoder().encode(csvFixture(rows(carry)))),
+    });
+  const first = await importer('first.csv', today, '08:00', 150, false);
+  const second = await importer('second.csv', today, '09:00', 148, true);
+  const archived = await importer('old.csv', shiftDate(today, -3), null, 140, false);
+  const loaded = await account.repository.load();
+  const old = loaded.sessions.find((s) => s.id === archived.sessionId);
+  if (!old) throw new Error('Missing seeded session');
+  await account.repository.updateSession({ ...old, archived: true });
+
+  await login(page, account);
+  await nav(page, testInfo.project.name === 'phone-webkit' ? 'Sessions' : 'Sessions & import');
+  const cards = page.locator('.session-card');
+  const archivedCard = cards.filter({ hasText: 'Archived' });
+  const activeCard = cards.filter({ hasText: 'first.csv' });
+  await expect(archivedCard).toHaveCount(1);
+  await expect(activeCard).toHaveCount(1);
+  // Archived cards offer no Compare action; active cards still do.
+  await expect(archivedCard.locator('.session-card-compare')).toHaveCount(0);
+  await expect(activeCard.locator('.session-card-compare')).toHaveCount(1);
+
+  // A valid entry point still prefills the reference selection.
+  await activeCard.locator('.session-card-compare').click();
+  await expect(page).toHaveURL(
+    new RegExp(`#sessions/compare\\?reference=${first.sessionId}`),
+  );
+  const reference = page.getByRole('combobox', { name: 'Reference session' });
+  const comparison = page.getByRole('combobox', { name: 'Comparison session' });
+  await expect(reference).toHaveValue(first.sessionId);
+
+  // A saved URL naming the archived visit shows its unavailable state
+  // immediately, before any second selection.
+  await page.evaluate(
+    (id) => {
+      window.location.hash = `sessions/compare?reference=${id}`;
+    },
+    archived.sessionId,
+  );
+  await expect(
+    page.getByText(
+      'The reference session is archived or unavailable. Choose another reference session.',
+    ),
+  ).toBeVisible();
+  await page.evaluate(
+    ([a, b]) => {
+      window.location.hash = `sessions/compare?reference=${a}&comparison=${b}`;
+    },
+    [archived.sessionId, second.sessionId] as const,
+  );
+  await expect(
+    page.getByText(
+      'The reference session is archived or unavailable. Choose another reference session.',
+    ),
+  ).toBeVisible();
+  await page.evaluate(
+    ([a, b]) => {
+      window.location.hash = `sessions/compare?reference=${a}&comparison=${b}`;
+    },
+    [first.sessionId, archived.sessionId] as const,
+  );
+  await expect(
+    page.getByText(
+      'The comparison session is archived or unavailable. Choose another comparison session.',
+    ),
+  ).toBeVisible();
+
+  // A saved URL naming two valid sessions still prefills both selections and
+  // never shows the unavailable state.
+  await page.evaluate(
+    ([a, b]) => {
+      window.location.hash = `sessions/compare?reference=${a}&comparison=${b}`;
+    },
+    [first.sessionId, second.sessionId] as const,
+  );
+  await expect(reference).toHaveValue(first.sessionId);
+  await expect(comparison).toHaveValue(second.sessionId);
+  await expect(page.getByText(/archived or unavailable/)).toHaveCount(0);
 });
 
 test('compares shared cohorts, flight and direction details with neutral deltas across bases', async ({

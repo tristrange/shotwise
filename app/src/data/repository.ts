@@ -30,6 +30,16 @@ export function createRepository(client: SupabaseClient<Database>): Repository {
       if (error.message.includes('JWT') || error.code === 'PGRST301')
         throw new Error('Your sign-in has expired. Sign in again and retry.');
       if (
+        error.code === '57014' ||
+        error.message.includes('statement timeout')
+      ) {
+        if (name === 'commit_import')
+          throw new Error('Import timed out before saving. Retry or choose a smaller export.');
+        if (name === 'restore_backup')
+          throw new Error('Restore timed out before saving. Keep your backup file and retry.');
+        throw new Error('Shotwise timed out waiting for the server. Try again.');
+      }
+      if (
         error.message.includes('Failed to fetch') ||
         error.message.includes('fetch failed')
       )

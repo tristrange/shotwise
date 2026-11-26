@@ -1541,7 +1541,7 @@ captured at 390 and 1280 px, light and dark — shape (point selected, disclosur
 (`docs/design-system/shots/d11-*.png`), which also asserts no horizontal overflow.
 **Stopping after D11 for owner review before D12 (navigation, final consistency and polish).**
 
-## 13.15 D12 navigation + final polish implemented on `feat/d12-navigation-final-polish` (PR #106), design-system roadmap complete pending owner sign-off (2026-11-26)
+## 13.15 D12 navigation and final polish merged (PR #106, 2026-11-26)
 
 PR #105 (D11) is merged and was approved as the basis for completing the roadmap. D12 — the final
 redesign milestone from `DESIGN_SYSTEM.md` — is implemented on `feat/d12-navigation-final-polish`
@@ -1580,4 +1580,4 @@ redesign milestone from `DESIGN_SYSTEM.md` — is implemented on `feat/d12-navig
   methodology and the external benchmark research in §7 (`docs/external-benchmark-sources.md`)
   remain open and are unaffected by D12.
 
-**Stopping after D12 for final owner inspection and an independent Codex review.**
+D1–D12 landed through PR #106. The post-merge release review prioritized large-backup recovery, historical chronology, correctly drawn sparse IQR, and navigation and profile behavior on phones.

@@ -3,6 +3,7 @@ import { TrendingUp } from 'lucide-react';
 import { BASES, localToday, type Dataset } from '../domain/model';
 import type { AnalysisSettings } from '../domain/analytics';
 import {
+  chronologyKnown,
   clubProgress,
   pointReading,
   summarizeClubMetric,
@@ -151,6 +152,7 @@ export function PerformanceTrendCard({
       sessions.map((point, i) => {
         const reading = pointReading(point, metric);
         const potential = pointReading(point, 'p80');
+        const prev = i > 0 ? sessions[i - 1] : undefined;
         return {
           id: point.session.id,
           label: `S${i + 1} · ${shortDate(point.session.date)}`,
@@ -164,6 +166,13 @@ export function PerformanceTrendCard({
             metric === 'median' && showPotential
               ? `${potential.n} measured full swings`
               : undefined,
+          // Same-day visits whose order is not chronologically known get no
+          // connecting segment: the chart must not imply a within-day
+          // trajectory. Distinct recorded times on the same day stay ordered.
+          unordered:
+            prev !== undefined &&
+            prev.session.date === point.session.date &&
+            !chronologyKnown(prev.session, point.session),
         };
       }),
     [sessions, metric, showPotential],
@@ -177,8 +186,8 @@ export function PerformanceTrendCard({
     [clubGroup, metric],
   );
   const measured = points.filter((p) => p.value !== null);
-  const headline = summary?.latest ?? null;
-  const first = summary?.first ?? null;
+  const headline = summary?.latestAmbiguous ? null : (summary?.latest ?? null);
+  const first = summary?.firstAmbiguous ? null : (summary?.first ?? null);
   const delta = summary?.delta ?? null;
   const lowerIsBetter = LOWER_IS_BETTER[metric];
   const directional = DELTA_IS_DIRECTIONAL[metric];
@@ -186,6 +195,13 @@ export function PerformanceTrendCard({
     delta === null
       ? undefined
       : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(decimals(metric))} ${METRIC_UNIT[metric]}`;
+  // An ambiguous endpoint date means the first (or latest) visit could be
+  // either of the same-day values: say so explicitly instead of silently
+  // showing no change or an arbitrary direction.
+  const withheldDeltaText =
+    delta === null && summary?.deltaReason === 'ambiguous'
+      ? 'Change not shown — same-day visits with no recorded order'
+      : undefined;
   const deltaTone = !directional
     ? 'neutral'
     : delta === null
@@ -246,7 +262,10 @@ export function PerformanceTrendCard({
               <p>
                 Each point is one session (S1, S2… in date order — sessions without a
                 recorded time are not ordered within a day). {seriesName} per session on
-                the {BASES[basis].label} basis.
+                the {BASES[basis].label} basis. Same-day visits with no recorded order
+                get no connecting line, and the change vs the first session is not
+                shown when the first or latest day has unordered visits. Tap a point
+                (or use the Inspect session picker) to select that exact visit.
               </p>
               {metric === 'median' && (
                 <p>
@@ -301,22 +320,25 @@ export function PerformanceTrendCard({
           delta={
             deltaText
               ? `${deltaText} vs first session${first ? ` · ${shortDate(first.session.date)}` : ''}`
-              : undefined
+              : withheldDeltaText
           }
           deltaTone={deltaTone}
         />
       ) : (
-        <Metric label={headlineLabel} value="—" unit={unit} />
+        <Metric label={headlineLabel} value="—" unit={unit} delta={withheldDeltaText} />
       )}
       <p className="muted" style={{ margin: '4px 0 12px' }}>
         Over {measured.length} of {points.length} sessions · {BASES[basis].label}
       </p>
       <ChartSummary label={`${chartLabel} summary`}>
         {measured.length
-          ? `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
+          ? summary?.deltaReason === 'ambiguous'
+            ? `${seriesName} across ${measured.length} of ${points.length} sessions. Same-day visits at one end of this window have no recorded order.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
+            : `${seriesName} from ${first ? fmt(first.value, metric) : '—'} to ${fmt(headline?.value ?? null, metric)} ${unit} across ${measured.length} of ${points.length} sessions.${compareActive ? ' Dashed line: strong-strike potential (P80) per session.' : ''}`
           : 'No measured values in this window.'}
       </ChartSummary>
       <TrendChart
+        selectedId={inspectedId}
         data={points}
         unit={unit}
         label={chartLabel}
@@ -361,22 +383,22 @@ export function PerformanceTrendCard({
       </p>
       {summary && summary.measured > 0 && (
         <MetricGrid>
-          {summary.first && (
+          {first && (
             <Metric
               small
-              label={`First session · ${shortDate(summary.first.session.date)}`}
-              value={fmt(summary.first.value, metric)}
+              label={`First session · ${shortDate(first.session.date)}`}
+              value={fmt(first.value, metric)}
               unit={unit}
-              delta={`${summary.first.n} measured`}
+              delta={`${first.n} measured`}
             />
           )}
-          {summary.latest && (
+          {headline && (
             <Metric
               small
-              label={`Latest session · ${shortDate(summary.latest.session.date)}`}
-              value={fmt(summary.latest.value, metric)}
+              label={`Latest session · ${shortDate(headline.session.date)}`}
+              value={fmt(headline.value, metric)}
               unit={unit}
-              delta={`${summary.latest.n} measured`}
+              delta={`${headline.n} measured`}
             />
           )}
           {summary.best && (

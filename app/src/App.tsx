@@ -90,22 +90,24 @@ const moreScreens: NavItem[] = [
   { label: 'Shot review', hash: 'review', page: 'review', icon: ClipboardCheck, key: 'review' },
 ];
 /** Desktop sidebar: the same logical grouping as the five mobile tabs. */
-const sidebarGroups: { label: string | null; items: NavItem[] }[] = [
+const sidebarGroups: { id: string; label: string | null; items: NavItem[] }[] = [
   {
+    id: 'primary-top',
     label: null,
     items: [
       { label: 'Overview', hash: 'overview', page: 'overview', icon: BarChart3, key: 'overview' },
     ],
   },
-  { label: 'Clubs', items: clubScreens },
+  { id: 'clubs', label: 'Clubs', items: clubScreens },
   {
+    id: 'primary-bottom',
     label: null,
     items: [
       { label: 'Progress', hash: 'progress', page: 'progress', icon: TrendingUp, key: 'progress' },
       { label: 'Sessions & import', hash: 'sessions', page: 'sessions', icon: FolderOpen, key: 'sessions' },
     ],
   },
-  { label: 'More', items: moreScreens },
+  { id: 'more', label: 'More', items: moreScreens },
 ];
 type Tab = 'home' | 'clubs' | 'progress' | 'sessions' | 'more';
 /** Five primary mobile tabs; each opens its primary content directly. */
@@ -155,11 +157,13 @@ const pages: Page[] = [
   'settings',
 ];
 function routeFromHash() {
-  const [path, query] = window.location.hash.slice(1).split('?');
+  const hash = window.location.hash;
+  const [path, query] = hash.slice(1).split('?');
   const [name, id, extra] = (path ?? '').split('/');
   const page = pages.find((item) => item === name) ?? 'overview';
   const sessionsPath = page === 'sessions' && !extra;
   return {
+    hash,
     page,
     sessionId:
       sessionsPath && id !== 'compare'
@@ -177,10 +181,28 @@ function routeFromHash() {
   };
 }
 
+function revealActiveSubNavEntry(entry: HTMLButtonElement | null) {
+  const strip = entry?.parentElement;
+  if (!entry || !strip || strip.scrollWidth <= strip.clientWidth) return;
+  const item = entry.getBoundingClientRect();
+  const bounds = strip.getBoundingClientRect();
+  const offset = item.left < bounds.left
+    ? item.left - bounds.left
+    : Math.max(0, item.right - bounds.right);
+  strip.scrollLeft += offset;
+}
+
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const manageBagHeading = useRef<HTMLHeadingElement>(null);
   const pendingBagFocus = useRef(false);
+  const pendingNavScroll = useRef<string | null>(null);
+  const navigate = useCallback((target: string) => {
+    const destination = `#${target}`;
+    if (window.location.hash === destination) return;
+    pendingNavScroll.current = destination;
+    window.location.hash = destination;
+  }, []);
   const [analysisSettings, setAnalysisSettings] = useState(
     initialAnalysisSettings,
   );
@@ -189,7 +211,7 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ page, sessionId, compare, club, shapeView, evidence }, setRoute] =
+  const [{ hash, page, sessionId, compare, club, shapeView, evidence }, setRoute] =
     useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
@@ -258,6 +280,16 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
   useEffect(() => {
+    const destination = pendingNavScroll.current;
+    pendingNavScroll.current = null;
+    if (destination !== hash) return;
+    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
+    scrollToTop();
+    // WebKit may restore its own scroll position after the hash change.
+    const frame = requestAnimationFrame(scrollToTop);
+    return () => cancelAnimationFrame(frame);
+  }, [hash]);
+  useEffect(() => {
     if (page === 'settings' && pendingBagFocus.current) {
       pendingBagFocus.current = false;
       manageBagHeading.current?.focus();
@@ -310,7 +342,7 @@ export default function App() {
         <Brand />
         <nav aria-label="Main navigation">
           {sidebarGroups.map((group) => (
-            <Fragment key={group.label ?? 'primary'}>
+            <Fragment key={group.id}>
               {group.label && (
                 <span className="nav-group-label">{group.label}</span>
               )}
@@ -321,9 +353,7 @@ export default function App() {
                     key={hash}
                     className={active ? 'active' : ''}
                     aria-current={active ? 'page' : undefined}
-                    onClick={() => {
-                      window.location.hash = hash;
-                    }}
+                    onClick={() => navigate(hash)}
                   >
                     <Icon size={18} />
                     {label}
@@ -375,9 +405,8 @@ export default function App() {
                   aria-current={
                     secondaryKey(page, shapeView) === key ? 'page' : undefined
                   }
-                  onClick={() => {
-                    window.location.hash = hash;
-                  }}
+                  ref={secondaryKey(page, shapeView) === key ? revealActiveSubNavEntry : undefined}
+                  onClick={() => navigate(hash)}
                 >
                   <Icon size={15} aria-hidden="true" />
                   {shortLabel ?? label}
@@ -396,7 +425,7 @@ export default function App() {
                 // deep link such as #clubs/7i or #shape/explorer) instead of
                 // resetting to club profiles.
                 if (id === 'clubs' && tabForPage(page) === 'clubs') return;
-                window.location.hash = target;
+                navigate(target);
               }}
             >
               <Icon size={20} />

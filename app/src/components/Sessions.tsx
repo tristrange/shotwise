@@ -438,14 +438,19 @@ export function Sessions({
                         {card.unassessed} unassessed
                       </a>
                     )}
-                    <a
-                      className="ds-icon-button small session-card-compare"
-                      href={compareHref(s.id)}
-                      aria-label={`Compare ${s.date}${s.time ? ` ${s.time.slice(0, 5)}` : ''}`}
-                      title="Compare this session with another"
-                    >
-                      <ArrowLeftRight size={15} aria-hidden="true" />
-                    </a>
+                    {/* Archived sessions are excluded from comparisons (the
+                        selector omits them), so the card offers no Compare
+                        action — matching the recap. */}
+                    {!s.archived && (
+                      <a
+                        className="ds-icon-button small session-card-compare"
+                        href={compareHref(s.id)}
+                        aria-label={`Compare ${s.date}${s.time ? ` ${s.time.slice(0, 5)}` : ''}`}
+                        title="Compare this session with another"
+                      >
+                        <ArrowLeftRight size={15} aria-hidden="true" />
+                      </a>
+                    )}
                   </div>
                   <details className="session-card-more">
                     <summary>File details</summary>

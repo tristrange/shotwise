@@ -56,14 +56,25 @@ export function Progress({
   );
   // Concise cross-club comparison on compatible session measurements: each
   // club's median carry in its first vs latest measured session of the window.
-  const crossClub = useMemo(() => {
-    const rows = summarizeClubMetric(groups, 'median').filter(
-      (row) => row.delta !== null,
-    );
-    return rows.sort(
-      (a, b) => (b.delta ?? 0) - (a.delta ?? 0) || a.club.localeCompare(b.club),
-    );
-  }, [groups]);
+  // Clubs whose delta is withheld stay out of the ranking but are named
+  // explicitly below, with the reason (too few measured sessions, or an
+  // endpoint day whose same-day visit order is unknown).
+  const crossClubRows = useMemo(() => summarizeClubMetric(groups, 'median'), [groups]);
+  const crossClub = useMemo(
+    () =>
+      crossClubRows
+        .filter((row) => row.delta !== null)
+        .sort(
+          (a, b) => (b.delta ?? 0) - (a.delta ?? 0) || a.club.localeCompare(b.club),
+        ),
+    [crossClubRows],
+  );
+  const withheldFew = crossClubRows.filter(
+    (row) => row.delta === null && row.deltaReason !== 'ambiguous',
+  ).length;
+  const withheldAmbiguous = crossClubRows.filter(
+    (row) => row.delta === null && row.deltaReason === 'ambiguous',
+  ).length;
   const notCompared = groups.length - crossClub.length;
 
   return (
@@ -159,13 +170,24 @@ export function Progress({
               </ul>
             ) : (
               <p className="context">
-                No club has two measured sessions in this window yet.
+                {withheldAmbiguous > 0
+                  ? 'No club has a comparable first and latest measured visit in this window.'
+                  : 'No club has two measured sessions in this window yet.'}
               </p>
             )}
             <p className="context">
               Sorted by change in median carry, largest first
               {notCompared > 0
-                ? ` · ${notCompared} ${notCompared === 1 ? 'club has' : 'clubs have'} fewer than two measured sessions and ${notCompared === 1 ? 'is' : 'are'} not compared`
+                ? ` · ${notCompared} not compared (${[
+                    withheldFew > 0
+                      ? `${withheldFew} fewer than two measured sessions`
+                      : '',
+                    withheldAmbiguous > 0
+                      ? `${withheldAmbiguous} same-day visits in no recorded order`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(', ')})`
                 : ''}
               . Session differences alone do not prove long-term improvement.
             </p>

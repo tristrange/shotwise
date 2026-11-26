@@ -4,7 +4,7 @@
 
 Private golf practice analytics for Inrange CSV exports. Import dated sessions, review shot intent and contact, correct club labels, and compare current performance with historical sessions.
 
-React, TypeScript and Vite run the interface and pure analytics. Supabase provides PostgreSQL and password authentication. The application has no Python service, AI interpretation, automatic contact classification or automatic club reassignment.
+React, TypeScript and Vite run the interface and analytics. Supabase provides PostgreSQL and password authentication. Shotwise derives provisional intent, contact and club assessments while preserving the original measurements and recorded labels. Analytics are available after import. Manual review is optional.
 
 ## Run locally
 
@@ -27,18 +27,26 @@ npm run dev
 
 Open the printed local URL and sign in. An unconfigured app shows setup instructions instead of storing data in a browser-only fallback. Saved history lives in PostgreSQL; authentication tokens are managed by Supabase in the browser.
 
+## Find your way around
+
+- **Home** shows the Overview and next-practice suggestions.
+- **Clubs** opens club profiles, with Gapping, Wedge practice, Shot shape and the Ball-flight explorer nearby.
+- **Progress** shows metrics visit by visit, with a session picker that links to the recap.
+- **Sessions** contains CSV import, session recaps and side-by-side comparisons.
+- **More** contains equipment, backups and optional Shot review. Personal carry and total-distance references live in each club profile.
+
 ## Import and review
 
 Choose CSV files under **Sessions & import**. A valid date in the filename fills the practice date automatically; it remains editable. Enter a valid date when the filename has none. No confirmation checkbox is needed. One export represents one session. Source row order is retained independently of the exported shot number.
 
-Import leaves intent unknown and requires no full-swing confirmation. If a different export conflicts with an existing session date, an explicit “Import as a separate session” retry preserves the same-day import safeguard without a checkbox. Select source-row ranges to tag partial drills, contact quality, club corrections or exclusions. Every dimension is independent. Exclusions require a reason. Undo restores earlier manual decisions while retaining the audit history.
+Import leaves manual intent unknown. Shotwise can infer intent or contact when there is enough evidence. Saved manual decisions take precedence and are reversible. If a different export conflicts with an existing session date, an explicit “Import as a separate session” retry preserves the same-day import safeguard without a checkbox. Select source-row ranges to tag partial drills, contact quality, club corrections or exclusions. Every dimension is independent. Exclusions require a reason. Undo restores earlier manual decisions while retaining the audit history.
 
 Duplicate complete exports return the existing session, including renamed files or changed line endings. Different exports on the same date need acknowledgement because overlapping exports cannot safely be merged automatically. Malformed measurements remain in the original file and appear as missing values with import warnings. Structurally invalid CSV files are rejected before saving.
 
 ## Read the analytics
 
 - **Recent** targets 50 shots per effective club within 60 calendar days ending today. It keeps the full cutoff date, so actual counts can exceed 50. It does not fill sparse clubs with older history.
-- **Progress** shows separate per-club session charts for median carry and carry spread (the middle half, or IQR), with readable values and matching tables. Higher medians mean more distance; narrower spreads mean more consistent carry. Fewer than ten measurements are marked sample limited; spread needs four. Missing carry stays blank. Bars avoid suggesting a trajectory or order between untimed sessions on the same date. Differences alone do not establish improvement.
+- **Progress** lets you choose a club and a metric, including median carry, strong-strike potential and carry spread (IQR). Each measured point represents a visit. The picker and tables give access to the exact session and sample counts. Fewer than ten measurements are marked sample limited. IQR requires four measured carries. Progress withholds a change when the first or latest measured visit cannot be determined from the recorded dates and times. A session difference alone cannot establish improvement.
 - **All-time** includes all non-archived sessions.
 
 Overview, Gapping, Progress and Shot shape share the selected analysis settings while you navigate. The “Hide likely mishits” toggle starts off and optionally hides automatic flags and reviewed mishits from the current view; unassessed shots remain included. Saved shots and reviews are unchanged. Recent is the default. Select All-time to see your full progression; changing a filter never changes saved shots. Filters reset when you reload or change accounts.
@@ -47,13 +55,17 @@ Gapping compares neighbouring medians. A gap of 0–10 m or a reversed gap is fl
 
 **Wedge practice**, under Gapping, shows target coverage and groups shots by effective wedge and exact positive target distance. Missing and zero targets are grouped by saved intent. Each group shows measured carry and spread on the selected basis, with expandable shot rows and session links. Recorded directions are shown for target shots with proximity. Target and carry are displayed side by side because the CSV target's carry reference is unverified.
 
-Premium flat carry is the default and is labelled as an estimate. Measurement alternatives are explicit; a missing premium measurement is never replaced by a range-ball measurement. Each statistic shows measured and missing counts. Quantiles use R7 interpolation; sample SD requires two values, IQR four, and P10–P90 ten.
+Premium flat carry is the default display basis and is labelled as an estimate. The selected basis determines which measurements a chart uses. Missing premium measurements stay missing. Quantiles use R7 interpolation. Sample SD requires two values, IQR four, and P10–P90 ten.
 
-“Reviewed typical” includes only shots you marked typical. Review coverage and full-swing mishit counts describe the reviewed subset, which can be selective. They are not estimates of unreviewed shots. Intent filtering is separate.
+Strong-strike potential is the 80th percentile (P80) of eligible full-swing carries with at least ten usable carries. Club ratings use a fixed premium-flat basis and show their category coverage and evidence strength. They are a provisional personal performance index. Compatible personal references are optional. See [the rating methodology](docs/adr/0005-ratings-proposal.md).
 
-Club-label flags use earlier range-flat carry and range ball speed: at least 30 shots across three sessions, both above median + 4 × scaled MAD. Zero-MAD, sparse, unknown-club and wedge cases abstain. Flags are review suggestions and never change inclusion or club assignment. The rule is deliberately conservative and has not been validated as a contact-quality classifier.
+Reviewed-only figures use your saved manual decisions. The main analytics use the resolved assessment, which may include automatic classifications when manual decisions are absent. Intent, contact, club and exclusions are tracked separately. See [assessment precedence and safeguards](docs/adr/0001-shot-assessment-precedence.md).
 
-Review offers **experimental likely-mishit flags for drivers, woods, hybrids, irons and wedges**: range-flat carry must be below 65% and range ball speed below 80% of their earlier 75th-percentile references, using at least 20 paired shots for the same effective club. Each flag shows measurements, medians, cutoffs and sample size. Browse all shows abstention reasons. These shots could be mishits or intentional partial swings; leave contact uncertain if you cannot tell. Review decisions remain explicit and reversible. See the [rule and evaluation limits](docs/assisted-iron-review.md).
+Sequence-aware assessments use the order of shots within a visit. They can suggest a missing club or flag a possible forgotten label change. A strong suspicion can withhold the shot from a club benchmark until there is clearer evidence. The original recorded club stays available for review.
+
+Automatic intent and contact assessment uses a separate versioned rule with range-preferred measurements. It can abstain when the evidence is sparse. Classifier usefulness and rating anchors still need real-world evaluation.
+
+Review also offers **unusual-shot flags** from a separate low-flight rule. A shot must be both unusually short and slow compared with earlier shots of the same club. The evidence shows the sample size and cutoffs. These provisional flags may include intentional partial swings. Contact remains uncertain until there is stronger evidence. See [the rule and evaluation limits](docs/assisted-iron-review.md).
 
 Inrange's Curve measures trajectory deviation from the launch-to-landing line, not landing dispersion. Lateral measurements follow the bay or selected-target aim line. The app does not infer club path or swing mechanics. See [Inrange's metric definitions](https://www.inrangegolf.com/players/faqs).
 
@@ -65,25 +77,28 @@ Inrange's Curve measures trajectory deviation from the launch-to-landing line, n
 npm test
 npm run typecheck
 npm run lint
-npm run build
+npm run build -- --base=/shotwise/
 npm run test:db
 npx playwright install chromium webkit
 npm run test:e2e
+npm run verify:performance
+npm run verify:import-restore
+npm run verify:classifier
 npm run verify:csv -- /absolute/path/to/session.csv
 ```
 
-Database tests use local PostgreSQL only. SQL tests roll back; concurrent tests clean up their synthetic owners. Browser tests create synthetic local Auth users and use the real local API. Personal exports are never CI fixtures. A local sample-specific check is available with `--sample-acceptance` after the CSV path.
+Database tests use local PostgreSQL only. SQL tests roll back; concurrent tests clean up their synthetic owners. Browser tests create synthetic local Auth users and use the real local API. Personal exports are never CI fixtures. A local sample-specific check is available with `--sample-acceptance` after the CSV path. Run the large import and restore verification against a disposable local stack. See [the database guide](docs/database.md).
 
 ## Back up and deploy
 
-Settings exports a versioned JSON backup containing original files, metadata and manual-review history. Store it privately. Restore validates original files and references and requires an empty account; it never silently overwrites existing history. Archive sessions when you want to hide them without deleting source data.
+Settings exports a versioned JSON backup containing original files, session metadata, review history, equipment, assignments and personal references. Store it privately. Restore validates original files and references and requires an empty account. Archive sessions when you want to hide them without deleting source data.
 
 The public app is hosted on GitHub Pages. Its sign-in and shot history use a separate Supabase project; public account registration is disabled.
 
-The verification workflow publishes `main` to Pages only after unit, database and browser checks pass. Set the repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to the project URL and publishable key, and select GitHub Actions as the Pages publishing source. These values are intended for browser use; never substitute a service-role or secret key.
+Pull-request verification runs type checking, lint, unit tests, build, database tests and browser tests. On `main`, the same workflow runs application checks and builds Pages before deploying. Set the repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to the project URL and publishable key, and select GitHub Actions as the Pages publishing source. These values are intended for browser use; never substitute a service-role or secret key.
 
 The Pages build runs `npm run build -- --base=/shotwise/` in `app/` and uploads `app/dist/`. For another deployment, use a dedicated Supabase project, apply the migrations, disable public/anonymous signup and provision your account. The tracked Sites manifest identifies the original private deployment.
 
 Free hosted projects can pause when inactive. Keep exported backups; a free tier is not a recovery plan. Never deploy test users, personal CSV files, service-role keys or local service credentials.
 
-The approved [design](docs/superpowers/specs/2026-11-16-shotwise-design.md), [implementation plan](docs/superpowers/plans/2026-11-16-shotwise-mvp.md) and [database guide](docs/database.md) describe the boundaries. Gapping, practice advice, wedge distance-control analysis and automatic contact classification are later work.
+See the [design system](docs/DESIGN_SYSTEM.md), [roadmap and completion history](docs/ROADMAP.md), and [database guide](docs/database.md) for implementation details and current limitations.

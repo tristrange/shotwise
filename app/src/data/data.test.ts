@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadConsistent } from './snapshot';
+import { createRepository } from './repository';
+import type { Database } from './database.types';
 import { parseBackup, serializeBackup } from '../domain/backup';
 import {
   csvFixture,
@@ -313,5 +316,60 @@ describe('equipment backups', () => {
     expect(restored.equipmentAssignments).toEqual([
       { shotId: corrected.id, equipmentId: club.id, clubLabel: '7i' },
     ]);
+  });
+});
+
+describe('repository error mapping', () => {
+  const stubClient = (error: unknown) =>
+    ({
+      rpc: async () => ({ data: null, error }),
+    }) as unknown as SupabaseClient<Database>;
+  const input = async () => ({
+    filename: 'a.csv',
+    date: '2026-11-16',
+    time: null,
+    venue: '',
+    notes: '',
+    confirmedFull: true,
+    allowSameDay: false,
+    preview: await parseCsv(new TextEncoder().encode(csvFixture([{}]))),
+  });
+
+  it('reports timeouts with recovery guidance for the operation', async () => {
+    const repo = createRepository(
+      stubClient({
+        code: '57014',
+        message: 'canceling statement due to statement timeout',
+        details: null,
+        hint: null,
+      }),
+    );
+    await expect(repo.importCsv(await input())).rejects.toThrow(
+      'Import timed out before saving. Retry or choose a smaller export.',
+    );
+    await expect(
+      repo.restore({
+        version: 0,
+        sessions: [],
+        shots: [],
+        imports: [],
+        events: [],
+        equipment: [],
+        equipmentAssignments: [],
+        userReferenceValues: [],
+      }),
+    ).rejects.toThrow('Restore timed out before saving. Keep your backup file and retry.');
+    await expect(repo.load()).rejects.toThrow(
+      'Shotwise timed out waiting for the server. Try again.',
+    );
+  });
+
+  it('passes other database errors through unchanged', async () => {
+    const repo = createRepository(
+      stubClient({ code: 'P0001', message: 'Invalid import' }),
+    );
+    await expect(repo.importCsv(await input())).rejects.toThrow(
+      'Invalid import',
+    );
   });
 });

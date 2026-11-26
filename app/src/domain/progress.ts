@@ -161,6 +161,10 @@ export type ClubMetricSummary = {
   best: ClubMetricPoint | null;
   /** latest − first; null unless at least two sessions measured (first and latest must be distinct points). */
   delta: number | null;
+  /** Why no delta is reported: 'insufficient' (< 2 measured visits) or 'ambiguous' (endpoint order unknown); null when a delta exists. */
+  deltaReason: DeltaWithheldReason | null;
+  firstAmbiguous: boolean;
+  latestAmbiguous: boolean;
 };
 
 /**
@@ -174,13 +178,37 @@ export function chronologyKnown(a: Session, b: Session): boolean {
   return a.time !== null && b.time !== null && a.time !== b.time;
 }
 
+/** Why a first→latest delta is withheld instead of reported (never as a silent zero). */
+export type DeltaWithheldReason = 'insufficient' | 'ambiguous';
+
+/**
+ * An endpoint visit is ambiguous when another measured visit shares its date
+ * but their relative order is not chronologically known (untimed or equal
+ * start times): the "first" (or "latest") endpoint could be either value, so
+ * no directional delta is fair — even when the two endpoint dates differ and
+ * the endpoint pair itself is ordered.
+ */
+function endpointDateAmbiguous<T extends { session: Session; value: number | null }>(
+  endpoint: T,
+  measured: readonly T[],
+): boolean {
+  return measured.some(
+    (p) =>
+      p !== endpoint &&
+      p.session.date === endpoint.session.date &&
+      !chronologyKnown(p.session, endpoint.session),
+  );
+}
+
 /**
  * Shared first/latest/delta rule for every per-session series (Progress trend
  * card, cross-club comparison, Club Profile history): the delta is
  * latest − first over the measured points in display order, withheld when
- * fewer than two distinct measured sessions exist or when the order of the
- * two endpoint visits is not chronologically known. One rule, so the screens
- * can never disagree.
+ * fewer than two distinct measured sessions exist, when the order of the two
+ * endpoint visits is not chronologically known, or when either endpoint's own
+ * date carries another measured visit whose order against the endpoint is
+ * unknown (an ambiguous endpoint date). One rule, so the screens can never
+ * disagree.
  */
 export function firstLatestDelta<T extends { session: Session; value: number | null }>(
   points: readonly T[],
@@ -188,19 +216,35 @@ export function firstLatestDelta<T extends { session: Session; value: number | n
   first: T | null;
   latest: T | null;
   delta: number | null;
+  deltaReason: DeltaWithheldReason | null;
+  firstAmbiguous: boolean;
+  latestAmbiguous: boolean;
 } {
-  const measured = points.filter((p) => p.value !== null);
+  const measured = points.filter(
+    (point): point is T & { value: number } => point.value !== null,
+  );
   const first = measured[0] ?? null;
   const latest = measured.at(-1) ?? null;
-  const delta =
-    measured.length >= 2 &&
-    first !== null &&
-    latest !== null &&
-    first !== latest &&
-    chronologyKnown(first.session, latest.session)
-      ? (latest.value as number) - (first.value as number)
-      : null;
-  return { first, latest, delta };
+  const firstAmbiguous = first !== null && endpointDateAmbiguous(first, measured);
+  const latestAmbiguous = latest !== null && endpointDateAmbiguous(latest, measured);
+  let delta: number | null = null;
+  let deltaReason: DeltaWithheldReason | null = null;
+  if (
+    measured.length < 2 ||
+    first === null ||
+    latest === null ||
+    first === latest
+  ) {
+    // Fewer than two distinct measured visits: a delta would be a meaningless "+0".
+    deltaReason = 'insufficient';
+  } else if (firstAmbiguous || latestAmbiguous) {
+    // The endpoint visits themselves, or another visit sharing an endpoint
+    // date, have no known order — the delta direction is ambiguous.
+    deltaReason = 'ambiguous';
+  } else {
+    delta = latest.value - first.value;
+  }
+  return { first, latest, delta, deltaReason, firstAmbiguous, latestAmbiguous };
 }
 
 /** Extract one metric's reading from a session point. */
@@ -244,9 +288,9 @@ export function summarizeClubMetric(
         : [{ session: point.session, value: reading.value, n: reading.n }];
     });
     // One shared first/latest/delta rule: with a single measured visit, or
-    // same-day endpoints whose order is unknown, the delta stays null instead
-    // of claiming a "+0.0" or an arbitrary direction.
-    const { first, latest, delta } = firstLatestDelta(measured);
+    // endpoints whose order (within their own date) is unknown, the delta
+    // stays null instead of claiming a "+0.0" or an arbitrary direction.
+    const endpoints = firstLatestDelta(measured);
     let best: ClubMetricPoint | null = null;
     for (const point of measured) {
       if (
@@ -259,10 +303,8 @@ export function summarizeClubMetric(
       club,
       sessions: sessions.length,
       measured: measured.length,
-      first,
-      latest,
+      ...endpoints,
       best,
-      delta,
     };
   });
 }

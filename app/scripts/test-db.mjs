@@ -133,7 +133,8 @@ function parseWithClient(csv) {
 const owner = randomUUID(),
   raceOwner = randomUUID(),
   sourceOwner = randomUUID(),
-  backupOwner = randomUUID();
+  backupOwner = randomUUID(),
+  timeoutOwner = randomUUID();
 try {
   const input = fixture('first');
   const importSql = `select public.commit_import(${literal(input)});`;
@@ -331,11 +332,51 @@ try {
     ),
     'restore validated source',
   );
+  // A1: a forced statement timeout (SQLSTATE 57014) cancels import and restore
+  // atomically — the destination stays empty and no version is bumped.
+  const forcedImport = await query(
+    asOwner(
+      timeoutOwner,
+      `\\set VERBOSITY verbose\nset statement_timeout='1ms'; select public.commit_import(${literal(sourceInput)});`,
+    ),
+  );
+  assert(
+    !forcedImport.ok &&
+      forcedImport.stderr.includes('57014') &&
+      forcedImport.stderr.includes('statement timeout'),
+    `forced-timeout import did not report 57014: ${forcedImport.stderr}`,
+  );
+  const forcedRestore = await query(
+    asOwner(
+      timeoutOwner,
+      `\\set VERBOSITY verbose\nset statement_timeout='1ms'; select public.restore_backup(${literal(sourceDataset)});`,
+    ),
+  );
+  assert(
+    !forcedRestore.ok &&
+      forcedRestore.stderr.includes('57014') &&
+      forcedRestore.stderr.includes('statement timeout'),
+    `forced-timeout restore did not report 57014: ${forcedRestore.stderr}`,
+  );
+  const afterTimeout = JSON.parse(
+    requireResult(
+      await query(asOwner(timeoutOwner, snapshotSql)),
+      'read state after forced timeouts',
+    ),
+  );
+  assert(
+    afterTimeout.version === 0 &&
+      afterTimeout.sessions.length === 0 &&
+      afterTimeout.shots.length === 0 &&
+      afterTimeout.imports.length === 0 &&
+      afterTimeout.events.length === 0,
+    'forced timeout left partial data behind',
+  );
   console.log(
     'Concurrent import, review, restore/import, and CSV provenance tests passed.',
   );
 } finally {
-  const owners = `'${owner}','${raceOwner}','${sourceOwner}','${backupOwner}'`;
+  const owners = `'${owner}','${raceOwner}','${sourceOwner}','${backupOwner}','${timeoutOwner}'`;
   const cleanup = await query(
     `delete from public.review_events where owner_id in (${owners}); delete from public.reviews where owner_id in (${owners}); delete from public.shots where owner_id in (${owners}); delete from public.imports where owner_id in (${owners}); delete from public.sessions where owner_id in (${owners}); delete from private.versions where owner_id in (${owners});`,
   );

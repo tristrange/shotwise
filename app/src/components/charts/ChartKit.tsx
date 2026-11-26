@@ -116,6 +116,12 @@ export type ChartPoint = {
   detail?: string;
   /** Sample counts for the comparison series at this x position. */
   compareDetail?: string;
+  /**
+   * The segment from the previous point to this one must not be drawn: the
+   * two visits share a date but their order is not chronologically known
+   * (untimed or equal start times), so no within-day trajectory is implied.
+   */
+  unordered?: boolean;
 };
 
 export function ChartSummary({

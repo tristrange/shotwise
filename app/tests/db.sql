@@ -400,6 +400,57 @@ do $$ declare b jsonb; v0 bigint; begin
  perform pg_temp.must_fail(format('select public.restore_backup(%L::jsonb)',b),'Restore requires empty dataset');
 end $$;
 
+-- Raw cells may contain control characters and quoted newlines. The CSV
+-- tokenizer must preserve both, including data adjacent to row delimiters.
+set local role postgres;
+do $$
+declare
+ preview jsonb:=pg_temp.input()->'preview';
+ note1 text:='cell ends here '||chr(2);
+ note2 text:=E'quoted, with "quotes"
+next line '||chr(1)||chr(2)||chr(3);
+ source text:=E'Shot #,Club,Carry Dist. Range (m),Note
+1,7i,0,'||note1||
+  E'
+2,PW,,"'||replace(note2,'"','""')||'"';
+begin
+ preview:=jsonb_set(preview,'{headers}',(preview->'headers')||'["Note"]'::jsonb);
+ preview:=jsonb_set(preview,'{shots,0,raw,Note}',to_jsonb(note1));
+ preview:=jsonb_set(preview,'{shots,1,raw,Note}',to_jsonb(note2));
+ perform private.validate_source(convert_to(source,'UTF8'),preview,'inrange-1');
+end $$;
+
+-- A1 regression: a realistic large import and its restore must complete under
+-- the authenticated role's default 8 s statement timeout (SQLSTATE 57014 used
+-- to cancel both). The fixtures are built as postgres because they call the
+-- private hash/measurement helpers; the RPCs then run as the fresh owner.
+set local statement_timeout='8s';
+set local role postgres;
+create temp table a1_map(key text primary key, header text);
+insert into a1_map values ('carryRange','Carry Dist. Range (m)'),('flatCarryRange','Flat Carry Dist. Range (m)'),('carryPremium','Carry Dist. Premium (m)'),('flatCarryPremium','Flat Carry Dist. Premium (m)'),('totalRange','Total Dist. Range (m)'),('flatTotalRange','Flat Total Dist. Range (m)'),('totalPremium','Total Dist. Premium (m)'),('flatTotalPremium','Flat Total Dist. Premium (m)'),('apexRange','Apex (m)'),('apexPremium','Apex (m) Premium'),('speedRange','Ball Speed (kph)'),('speedPremium','Ball Speed (kph) Premium'),('launchRange','Launch Angle (deg)'),('launchPremium','Launch Angle (deg) Premium'),('launchDirection','Launch Direction'),('fromCentre','From Centre (m)'),('curve','Curve'),('proximity','Prox to Hole (m)'),('target','Target (m)'),('strokesGained','Strokes Gained');
+create temp table a1_csv as select string_agg(line,E'\n' order by g)||E'\n' as text from (select 0 as g,'Shot #,Club,Carry Dist. Range (m),Ball Speed (kph),Launch Direction,Curve' as line union all select g,g::text||',7i,'||(100+g%50)::text||','||(200+g%7)::text||','||((g%9)-4)::text||'R,'||((g%7)-3)::text||'L' from generate_series(1,3000) g) x;
+create temp table a1_shots as select jsonb_agg(jsonb_build_object('rowIndex',g,'sourceNumber',g::text,'recordedClub','7i','raw',raw,'measurements',(select jsonb_object_agg(m.key,to_jsonb(private.measurement(coalesce(raw->>m.header,''),m.key))) from a1_map m)) order by g) as shots from (select g,jsonb_build_object('Shot #',g::text,'Club','7i','Carry Dist. Range (m)',(100+g%50)::text,'Ball Speed (kph)',(200+g%7)::text,'Launch Direction',((g%9)-4)::text||'R','Curve',((g%7)-3)::text||'L') as raw from generate_series(1,3000) g) y;
+create temp table a1_input as select jsonb_build_object('filename','a1-big.csv','date','2026-11-16','time',null,'venue','','notes','','confirmedFull',true,'allowSameDay',false,'preview',jsonb_build_object('originalBase64',encode(convert_to((select text from a1_csv),'UTF8'),'base64'),'fileHash',encode(extensions.digest(convert_to((select text from a1_csv),'UTF8'),'sha256'),'hex'),'contentHash',private.canonical_hash(jsonb_build_object('headers',jsonb_build_array('Shot #','Club','Carry Dist. Range (m)','Ball Speed (kph)','Launch Direction','Curve'),'shots',(select shots from a1_shots))),'parserVersion','inrange-1','headers',jsonb_build_array('Shot #','Club','Carry Dist. Range (m)','Ball Speed (kph)','Launch Direction','Curve'),'shots',(select shots from a1_shots),'warnings',jsonb_build_array())) as input;
+grant select on pg_temp.a1_input to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','cacacaca-caca-4cac-8cac-cacacacacaca',true);
+do $$ begin
+ perform public.commit_import((select input from a1_input));
+ if public.dataset_version()<>1 then raise exception 'A1 import version'; end if;
+ if (select count(*) from public.shots where owner_id=auth.uid())<>3000 then raise exception 'A1 import shot count'; end if;
+ if (public.commit_import((select input from a1_input))->>'duplicate')::boolean is not true then raise exception 'A1 import idempotency'; end if;
+ if public.dataset_version()<>1 then raise exception 'A1 duplicate bumped version'; end if;
+end $$;
+create temp table a1_dataset as select jsonb_build_object('version',public.dataset_version(),'sessions',(select coalesce(jsonb_agg(data order by id),'[]'::jsonb) from public.sessions where owner_id=auth.uid()),'shots',(select coalesce(jsonb_agg(s.payload || jsonb_build_object('id',s.id,'sessionId',s.session_id,'review',r.state,'revision',r.revision) order by s.id),'[]'::jsonb) from public.shots s join public.reviews r on r.shot_id=s.id and r.owner_id=s.owner_id where s.owner_id=auth.uid()),'imports',(select coalesce(jsonb_agg(jsonb_build_object('id',id,'sessionId',session_id,'originalBase64',replace(encode(original,'base64'),E'\n',''),'fileHash',file_hash,'contentHash',content_hash,'parserVersion',parser_version) order by id),'[]'::jsonb) from public.imports where owner_id=auth.uid()),'events',(select coalesce(jsonb_agg(jsonb_build_object('id',id,'shotId',shot_id,'before',before_state,'after',after_state,'createdAt',created_at,'undone',undone) order by id),'[]'::jsonb) from public.review_events where owner_id=auth.uid()),'equipment',public.dataset_page('equipment',0,1000),'equipmentAssignments',public.dataset_page('equipmentAssignments',0,1000),'userReferenceValues',public.dataset_page('userReferenceValues',0,1000)) as dataset;
+select set_config('request.jwt.claim.sub','cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd',true);
+do $$ begin
+ perform public.restore_backup((select dataset from a1_dataset));
+ if public.dataset_version()<>1 then raise exception 'A1 restore version'; end if;
+ if (select count(*) from public.shots where owner_id=auth.uid())<>3000 then raise exception 'A1 restore shot count'; end if;
+ if (select count(*) from public.imports i join public.shots s on s.session_id=i.session_id and s.owner_id=i.owner_id where i.owner_id=auth.uid())<>3000 then raise exception 'A1 restore provenance'; end if;
+end $$;
+set local statement_timeout=0;
+
 set local role authenticated;
 set local role anon;
 do $$ begin begin perform public.dataset_version(); raise exception 'anon allowed'; exception when insufficient_privilege then null; end; end $$;

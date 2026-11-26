@@ -1,31 +1,97 @@
 import {
   Area,
   AreaChart,
+  AreaRevealShape,
   CartesianGrid,
   Line,
+  LineDrawShape,
   Tooltip,
   XAxis,
   YAxis,
+  type AreaRevealShapeProps,
+  type LineDrawShapeProps,
 } from 'recharts';
 import { axisTick, ChartContainer, ChartTooltipContent, type ChartPoint } from './ChartKit';
 import { clamp, usePrefersReducedMotion } from './hooks';
 
-/**
- * Interactive trend chart (reference: interactive-charts screenshot). One
- * primary series with visible points; hover or tap shows the shared tooltip,
- * tapping the chart selects the nearest point (reported through onSelect with
- * the full point, so callers can key the selection by a stable `id`).
- * An optional comparison series (`compare`, e.g. strong-strike potential next
- * to median carry) renders as a dashed `--compare` line so the two stay
- * distinguishable. Missing values stay gaps — never zero. Animation is
- * disabled for reduced-motion users.
- */
+// Insert breaks in the drawn path only. Dots, axis labels and tooltips keep
+// one entry per real session, even when many days have unordered visits.
+function curveWithGaps(
+  points: AreaRevealShapeProps['points'],
+  data: readonly ChartPoint[],
+) {
+  return points?.flatMap((point, index) =>
+    data[index]?.unordered ? [{ x: point.x, y: null }, point] : [point],
+  );
+}
+
+function areaWithGaps(props: AreaRevealShapeProps, data: readonly ChartPoint[]) {
+  return <AreaRevealShape {...props} points={curveWithGaps(props.points, data)} />;
+}
+
+function lineWithGaps(props: LineDrawShapeProps, data: readonly ChartPoint[]) {
+  return <LineDrawShape {...props} points={curveWithGaps(props.points, data)} />;
+}
+
+type TrendDotProps = {
+  cx?: number;
+  cy?: number;
+  value?: number | null;
+  payload?: ChartPoint;
+};
+
+type Series = 'value' | 'compare';
+
+function TrendPoint({
+  cx,
+  cy,
+  value,
+  payload,
+  series,
+  tabLabel,
+  onSelect,
+}: TrendDotProps & {
+  series: Series;
+  tabLabel?: string;
+  onSelect?: (point: ChartPoint) => void;
+}) {
+  if (!payload || value == null) return null;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={series === 'value' ? 3.5 : 3}
+      className="trend-dot"
+      fill={series === 'value' ? 'var(--data)' : 'var(--compare)'}
+      stroke="transparent"
+      strokeWidth={8}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect && payload.label === tabLabel ? 0 : -1}
+      aria-label={onSelect ? `Select ${payload.label}` : undefined}
+      onClick={(event) => {
+        if (!onSelect) return;
+        event.stopPropagation();
+        onSelect(payload);
+      }}
+      onKeyDown={(event) => {
+        if (!onSelect) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(payload);
+        }
+      }}
+    />
+  );
+}
+
 export function TrendChart({
   data,
   unit,
   height = 220,
   label,
   onSelect,
+  selectedId,
   compare,
   name,
 }: {
@@ -34,6 +100,7 @@ export function TrendChart({
   height?: number;
   label: string;
   onSelect?: (point: ChartPoint) => void;
+  selectedId?: string | null;
   /** Comparison series label; rendered only when at least one point carries a compare value. */
   compare?: string;
   /** Short primary-series name for multi-series tooltips (defaults to `label`). */
@@ -48,6 +115,15 @@ export function TrendChart({
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   const pad = (max - min) * 0.15 || Math.max(1, max * 0.05);
+  const hasUnorderedVisits = data.some((point) => point.unordered);
+  // The native session picker exposes every visit to keyboard users. Keep
+  // just one dot tab stop so long histories do not bury that picker.
+  const keyboardSeries: Series = data.some((point) => point.value !== null)
+    ? 'value'
+    : 'compare';
+  const tabPoint =
+    data.find((point) => point.id === selectedId && point[keyboardSeries] != null) ??
+    data.find((point) => point[keyboardSeries] != null);
   return (
     <ChartContainer label={label} height={height}>
       <AreaChart
@@ -96,8 +172,15 @@ export function TrendChart({
           fillOpacity={0.14}
           connectNulls={false}
           isAnimationActive={!reduced}
-          dot={{ r: 3.5, strokeWidth: 0, fill: 'var(--data)' }}
-          activeDot={{ r: 6, strokeWidth: 0 }}
+          shape={hasUnorderedVisits ? (props) => areaWithGaps(props, data) : undefined}
+          dot={
+            <TrendPoint
+              series="value"
+              tabLabel={keyboardSeries === 'value' ? tabPoint?.label : undefined}
+              onSelect={onSelect}
+            />
+          }
+          activeDot={{ r: 6, strokeWidth: 0, pointerEvents: 'none' }}
         />
         {hasCompare && (
           <Line
@@ -110,8 +193,15 @@ export function TrendChart({
             fill="none"
             connectNulls={false}
             isAnimationActive={!reduced}
-            dot={{ r: 3, strokeWidth: 0, fill: 'var(--compare)' }}
-            activeDot={{ r: 5, strokeWidth: 0 }}
+            shape={hasUnorderedVisits ? (props) => lineWithGaps(props, data) : undefined}
+            dot={
+              <TrendPoint
+                series="compare"
+                tabLabel={keyboardSeries === 'compare' ? tabPoint?.label : undefined}
+                onSelect={onSelect}
+              />
+            }
+            activeDot={{ r: 5, strokeWidth: 0, pointerEvents: 'none' }}
           />
         )}
       </AreaChart>
