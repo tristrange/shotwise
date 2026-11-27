@@ -1111,7 +1111,10 @@ test('expands overview club cards inline with per-club measurements', async ({
   await expect(detail7i).toContainText('Launch');
   await expect(detail7i).toContainText('21.0');
   await expect(detail7i).toContainText('Apex');
-  await expect(detail7i).toContainText('Strong-strike P80');
+  // Strong-strike P80 lives in the card header ("potential") and is not
+  // repeated inside the expanded card (no duplicate P80 within one card).
+  await expect(detail7i).not.toContainText('Strong-strike P80');
+  await expect(card7i.locator('.club-card-header')).toContainText('potential');
   await expect(detail7i).toContainText('IQR');
   await expect(
     detail7i.getByRole('link', { name: /Full club profile/ }),

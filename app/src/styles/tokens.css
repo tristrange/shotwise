@@ -32,6 +32,16 @@
   --neg-text: #9a6145;
   --focus: #237b65;
 
+  /* rating score bands — visual bands on the displayed 0–100 rating, not
+     skill classes. Used for ring arcs, bar fills AND the numeric score, so
+     each token keeps 4.5:1 on surfaces (guarded by src/tokens.test.ts) and
+     ≥3:1 on the neutral track. */
+  --rating-critical: #9d3525; /* 0–39 muted red */
+  --rating-low: #a15e2b;      /* 40–59 muted orange */
+  --rating-mid: #856b23;      /* 60–74 amber */
+  --rating-good: #59792a;     /* 75–89 soft yellow-green */
+  --rating-high: #327b57;     /* 90–100 green */
+
   /* shape */
   --radius-s: 8px;
   --radius-m: 12px;
@@ -92,6 +102,13 @@
   --warn-text: #cdb26c;
   --neg-text: #de9573;
   --focus: #6fc7ac;
+
+  /* rating score bands (dark theme) — same visual bands as :root */
+  --rating-critical: #d97a68;
+  --rating-low: #d98a4e;
+  --rating-mid: #c9a44a;
+  --rating-good: #93b050;
+  --rating-high: #4cbb82;
 
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-2: 0 4px 16px rgb(0 0 0 / 0.5);

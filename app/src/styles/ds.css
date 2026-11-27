@@ -567,9 +567,40 @@
 .ds-score-ring .ring-track {
   stroke: var(--ring-track);
 }
+/* Score-band colour: the component root carries data-band (scoreBand()); each
+   band maps to a semantic --rating-* token via --score-fg, which cascades to
+   the arc, the bar fill and the numeric score. Tracks stay neutral in every
+   band; 'none' (withheld) stays neutral grey so a genuine 0 (critical red)
+   is always distinguishable from a missing rating. Provisional/early
+   outlines are independent of the score colour. */
+[data-band='critical'] {
+  --score-fg: var(--rating-critical);
+}
+[data-band='low'] {
+  --score-fg: var(--rating-low);
+}
+[data-band='mid'] {
+  --score-fg: var(--rating-mid);
+}
+[data-band='good'] {
+  --score-fg: var(--rating-good);
+}
+[data-band='high'] {
+  --score-fg: var(--rating-high);
+}
+[data-band='none'] {
+  --score-fg: var(--text-3);
+}
+.score-inline {
+  color: var(--score-fg, inherit);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .ds-score-ring .ring-fill {
-  stroke: var(--brand);
-  transition: stroke-dashoffset var(--dur) var(--ease);
+  stroke: var(--score-fg, var(--brand));
+  transition:
+    stroke-dashoffset var(--dur) var(--ease),
+    stroke var(--dur) var(--ease);
 }
 .ds-score-ring .ring-outline {
   stroke: var(--text-3);
@@ -580,7 +611,7 @@
 }
 .ds-score-ring .ring-value {
   font: 600 15px/1 var(--font-sans);
-  fill: var(--text);
+  fill: var(--score-fg, var(--text));
   font-variant-numeric: tabular-nums;
 }
 .ds-score-ring .ring-value.small {
@@ -615,8 +646,10 @@
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: var(--data);
-  transition: width var(--dur) var(--ease);
+  background: var(--score-fg, var(--data));
+  transition:
+    width var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 .ds-score-bar.withheld .ds-score-bar-track {
   opacity: 0.45;
@@ -628,7 +661,7 @@
   line-height: 1;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
+  color: var(--score-fg, var(--text));
 }
 .ds-score-bar.withheld .ds-score-bar-score {
   color: var(--text-3);
@@ -636,6 +669,11 @@
 }
 .rating-breakdown {
   margin: var(--space-3) 0;
+}
+/* the overall composite number takes the shared score-band colour */
+.rating-overall strong {
+  color: var(--score-fg, var(--text));
+  font-variant-numeric: tabular-nums;
 }
 .rating-sub {
   grid-column: 1 / -1;

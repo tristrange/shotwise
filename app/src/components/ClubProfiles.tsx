@@ -751,7 +751,7 @@ export function ClubProfileCard({
           </HelpPopover>
         </span>
         {rating ? (
-          <RatingBreakdown rating={rating} />
+          <RatingBreakdown rating={rating} referenceHref={clubHref(club)} />
         ) : (
           <p className="context">
             No rating yet — fewer than 10 measured shots on the rating basis.

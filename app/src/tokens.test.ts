@@ -61,6 +61,17 @@ const TEXT_PAIRS: [string, string][] = [
   ['--warn-text', '--surface'],
   ['--neg-text', '--bg'],
   ['--neg-text', '--surface'],
+  // rating bands also colour the numeric score, so they need full AA as text
+  ['--rating-critical', '--bg'],
+  ['--rating-critical', '--surface'],
+  ['--rating-low', '--bg'],
+  ['--rating-low', '--surface'],
+  ['--rating-mid', '--bg'],
+  ['--rating-mid', '--surface'],
+  ['--rating-good', '--bg'],
+  ['--rating-good', '--surface'],
+  ['--rating-high', '--bg'],
+  ['--rating-high', '--surface'],
 ];
 const GRAPHIC_PAIRS: [string, string][] = [
   ['--data', '--surface'],
@@ -68,6 +79,12 @@ const GRAPHIC_PAIRS: [string, string][] = [
   ['--pos', '--surface'],
   ['--warn', '--surface'],
   ['--neg', '--surface'],
+  // rating arcs/fills sit on the neutral track
+  ['--rating-critical', '--ring-track'],
+  ['--rating-low', '--ring-track'],
+  ['--rating-mid', '--ring-track'],
+  ['--rating-good', '--ring-track'],
+  ['--rating-high', '--ring-track'],
 ];
 
 describe('design tokens', () => {
