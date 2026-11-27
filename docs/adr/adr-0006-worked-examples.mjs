@@ -171,19 +171,20 @@ function upwardCheck(goalValueM, establishedTuple, postVisits) {
   };
 }
 
-// Deterministic visit builder: carries are a fixed offset pattern shifted so
-// the sample P80 lands exactly on the requested value (P80 via the real
-// `quantile`), so worked examples read cleanly and stay reproducible.
-const OFFSETS = [-9, -6.5, -5, -4, -3, -2.2, -1.6, -1.1, -0.6, -0.2, 0.2, 0.7, 1.3, 2.0, 3.1, 4.6, 6.5, 9.5];
+// Deterministic visit builder: exactly n carries — a linear offset ramp from
+// -9 to +9.5 shifted so the sample P80 lands exactly on the requested value
+// (P80 via the real `quantile`) — so worked examples read cleanly, the stated
+// n is the n actually scored, and output stays byte-for-byte reproducible.
 function visitWithP80(n, u, date, time = null, id = null, archived = false, equipmentOk = true) {
-  const offs = OFFSETS.slice(0, n);
+  if (n < 2) throw new Error('visit needs at least 2 carries');
+  const offs = Array.from({ length: n }, (_, i) => -9 + (18.5 * i) / (n - 1));
   const base = u - quantile(offs, 0.8);
   const carries = offs.map((o) => Math.max(1, base + o));
   return {
     tuple: `${date}T${time ?? '00:00'}#${id ?? date}`,
     date, time, id, archived, equipmentOk,
     carries,
-    n,
+    n: carries.length,
   };
 }
 
@@ -191,19 +192,19 @@ console.log('\n## Automatic-goal lifecycle worked examples (7i unless stated)\n'
 
 // --- cold-start thresholds ---------------------------------------------------
 {
-  console.log('\n### Cold start — minimum evidence\n');
+  console.log('\n### Cold start — minimum evidence and the establishment freeze\n');
   console.log('| Scenario | n | visits | result |');
   console.log('| --- | --- | --- | --- |');
   const v9 = visitWithP80(9, 128, '2026-09-05', null, 'S1');
   console.log(`| One visit, n = 9 | 9 | 1 | ${initialGoal([v9]) === null ? 'no goal — distance withheld (n < 10)' : 'goal'} |`);
   const v24 = visitWithP80(24, 129, '2026-10-03', null, 'S2');
   const g = initialGoal([v24]);
-  console.log(`| One visit, n = 24 | 24 | 1 | provisional goal ${fmt(g.valueM, 0)} m (P90 of 24 carries) — provisional even at n ≥ 20 single-visit, per owner clarification |`);
+  console.log(`| One visit, n = 24 | 24 | 1 | provisional goal ${fmt(g.valueM, 0)} m (P90 of 24 carries) — provisional even at n ≥ 20 single-visit, per owner clarification; logged and re-derivable while provisional |`);
   const v12 = visitWithP80(12, 131, '2026-10-17', null, 'S3');
   const g2 = initialGoal([v24, v12]);
-  console.log(`| Two visits | ${g2.n} | ${g2.visits} | value unchanged at ${fmt(g2.valueM, 0)} m; evidence strengthens (n ≥ 20 and ≥ 2 visits → established label) WITHOUT resetting the original goal |`);
+  console.log(`| Two visits | ${g2.n} | ${g2.visits} | provisional re-derived to ${fmt(g2.valueM, 0)} m over the full history (logged); n ≥ 20 and ≥ 2 visits → ESTABLISHMENT freezes ${fmt(g2.valueM, 0)} m — the evidence upgrade changes only the label, never the frozen value |`);
   const p80window = quantile([...v24.carries, ...v12.carries], 0.8);
-  console.log(`\nInitial self-referenced attainment: window P80 ${fmt(p80window)} m vs goal ${fmt(g2.valueM, 0)} m → distance score ${fmt(distanceScore(p80window, g2.valueM))} (provisional, self-referenced — labelled, never presented as independent evaluation).`);
+  console.log(`\nInitial self-referenced attainment: window P80 ${fmt(p80window)} m vs established goal ${fmt(g2.valueM, 0)} m → distance score ${fmt(distanceScore(p80window, g2.valueM))} (self-referenced while the evaluated window overlaps the calibration window — labelled, never presented as independent evaluation).`);
 }
 
 // --- upward adjustment -------------------------------------------------------
@@ -259,5 +260,33 @@ console.log('\n## Automatic-goal lifecycle worked examples (7i unless stated)\n'
   ];
   for (const r of rows) console.log(`| ${r.join(' | ')} |`);
   console.log('\n- **Recent vs All-time:** one persisted goal per club+equipment; both views rate their window against it. Upward evaluation always uses the all-time non-archived history. If the evaluated Recent (60-day) window still contains calibration sessions, the UI flags the attainment as partially self-referenced; it is never claimed to be an independent evaluation of a rolling cohort that still contains its calibration shots.');
-  console.log('- **Manual corrections** change future eligible populations and replay, never persisted goal values; **manual override** occupies its own source-class slot and always wins; returning to automatic restores the persisted automatic goal and its full history.');
+  console.log('- **Manual corrections** change future eligible populations and replay, never recorded history entries; **manual override** occupies its own source-class slot and always wins; returning to automatic restores the persisted automatic goal and its full history.');
+}
+
+// --- import-order independence -------------------------------------------------
+{
+  console.log('\n### Import-order independence — same final dataset, different import order\n');
+  console.log('S1 (2026-09-01, 10 carries) and S2 (2026-09-20, 10 carries) imported in both orders. While provisional, the goal is re-derived at each import boundary over the full tuple-ordered history and every distinct value is logged; the value freezes at establishment (n ≥ 20 and ≥ 2 visits).\n');
+  console.log('| Import order | after 1st import | after 2nd import | established (frozen) goal |');
+  console.log('| --- | --- | --- | --- |');
+  const s1 = visitWithP80(10, 100, '2026-09-01', '10:00', 'S1');
+  const s2 = visitWithP80(10, 130, '2026-09-20', '10:00', 'S2');
+  for (const order of [[s2, s1], [s1, s2]]) {
+    const known = [];
+    const states = [];
+    for (const s of order) {
+      known.push(s);
+      known.sort((a, b) => (a.tuple < b.tuple ? -1 : a.tuple > b.tuple ? 1 : 0));
+      const g = initialGoal(known);
+      const established = !!g && g.n >= 20 && g.visits >= 2;
+      states.push(
+        g
+          ? `n=${g.n}, visits=${g.visits}, goal ${fmt(g.valueM, 0)} m${established ? ' — establishment reached, value frozen' : ' — provisional, logged'}`
+          : 'no goal (n < 10)',
+      );
+    }
+    const final = initialGoal(known);
+    console.log(`| ${order.map((s) => s.id).join(' then ')} | ${states[0]} | ${states[1]} | ${fmt(final.valueM, 0)} m — identical for both import orders |`);
+  }
+  console.log('\nThe intermediate provisional values differ by import order and are both recorded in the append-only history (nothing is silently reset); the established goal is a deterministic function of the final dataset alone.');
 }

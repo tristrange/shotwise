@@ -172,20 +172,28 @@ the distance rating:
 Automatic goals are **persisted, stable, evolving targets** — never values
 recomputed on every render from the cohort currently being evaluated.
 
-### 6.1 Initial generation and persistence
+### 6.1 Initial generation, persistence and the provisional phase
 
-When §5's minimum (n ≥ 10 eligible carries, any visits) is first met, the
-provisional goal is **generated once and persisted** (active record +
-append-only history entry, §11). Later renders and imports read the persisted
-record; regeneration from identical inputs is idempotent and yields the same
-value (§11, §13).
+When §5's minimum (n ≥ 10 eligible carries, any visits) is first met, a
+provisional goal is generated and **persisted** (active record + append-only
+history entry, §11). **Renders only read the persisted record — the goal is
+never recomputed on render.** While the goal is still provisional (below the
+established threshold), its value is re-derived **only at import/evaluation
+boundaries**, deterministically over the full non-archived history in tuple
+order (sessions with tuple ≤ the evaluation today) — never from the evaluated
+window alone — and every distinct value is appended to the history with reason
+`initial`. Repeated imports/refreshes of an unchanged dataset recompute the
+same value and write nothing (idempotent, §11). Once n ≥ 20 **and** ≥ 2 visits
+at a boundary, the current value **freezes as the established goal** (§6.2).
 
-### 6.2 Evidence upgrades never reset the goal
+### 6.2 Establishment freezes the value; later evidence upgrades never reset it
 
-Crossing an evidence threshold (more shots, more visits) changes only the
-**label/evidence level** of the persisted goal. The value, calibration window
-and history entry stay untouched — upgrading evidence strength must not
-silently reset the original goal.
+Crossing the established threshold (n ≥ 20 and ≥ 2 visits) freezes the current
+persisted value as the established goal: the evidence upgrade changes only the
+**label/evidence level**, never the value. After establishment, only the §6.3
+upward rule can change the goal, always via a new logged history entry —
+upgrading evidence strength (more shots, more visits, "supported" level) never
+silently resets the original goal.
 
 ### 6.3 Upward adjustment — REVISED rule (replaces the v1 "20 shots × 3 consecutive visits" proposal)
 
@@ -259,11 +267,13 @@ remains viewable through the append-only history (§11).
 - **Out-of-order imports.** Sessions are ordered by the tuple
   `(date, time ?? '00:00', id)`, never by import order. Import idempotency
   (file/content hash, existing `imports` table) prevents duplicate sessions.
-  A late-imported older session sorts into history by its tuple: if its tuple
-  ≤ T₀ it is calibration history and does not change the persisted goal; if >
-  T₀ it is an ordinary qualifying visit. Goal-history replay (§ below)
-  processes sessions in tuple order, so replay converges to the same decision
-  sequence regardless of import order.
+  Goal re-derivation runs only at import/evaluation boundaries over the full
+  tuple-ordered dataset, so **the same final dataset yields the same active
+  goal regardless of import order** (worked example §12.4). Intermediate
+  provisional values produced while the dataset was still partial are all
+  recorded in the append-only history — nothing is silently reset. A
+  late-imported older session sorts into history by its tuple; recorded
+  history entries are never edited or deleted.
 - **Same-day sessions.** Distinct visits; ordered by `time` (missing time =
   `00:00`), then `id`. The establishment-tuple comparison handles them: a
   later same-day session qualifies, an earlier/equal one does not (worked
@@ -273,13 +283,17 @@ remains viewable through the append-only history (§11).
   Un-archiving a session makes it eligible again for future trigger
   evaluation (if tuple > T₀) and for replay.
 - **Manual corrections** (club/intent/contact/exclusion) change the eligible
-  populations going forward and in replay; they **never retroactively change
-  a persisted goal** (§9 leakage guard).
-- **Goal-history replay.** Recomputing the full decision sequence from the
-  current review state, in tuple order, must reproduce the persisted records
-  (idempotency check, §13). If corrections make a past decision
-  non-reproducible, replay appends a new entry going forward — history entries
-  are immutable and never edited (§11).
+  populations going forward; they never edit recorded history entries, and
+  corrections to evaluated-window shots never change an already-established
+  goal (§9 leakage guard).
+- **Goal-history replay.** Replay = recomputing the decision sequence from the
+  current dataset in tuple order at an evaluation boundary. The active goal is
+  the last replayed decision; the append-only history records every value that
+  was in force, with its calibration inputs and reason. Replay must reproduce
+  the latest recorded entry from the current dataset (regression-tested, §13).
+  If manual corrections or late imports make an older entry non-reproducible,
+  that is expected provenance: old entries stand, and any newly computed value
+  is **appended** as a new entry. History entries are immutable (§11).
 
 ## 8. Manual override precedence and UI (approved)
 
@@ -476,13 +490,17 @@ other:
   makes history inserts `ON CONFLICT DO NOTHING` — **idempotent under repeated
   imports, refreshes and multiple devices**.
 - **Active goal record** keeps the existing `revision` optimistic-concurrency
-  check: automatic writes bump `revision` **only when the value actually
-  changes** (a no-change write leaves the row untouched), inside one
-  SECURITY DEFINER transaction using the existing `private.lock_owner()`
-  pattern, which validates, upserts the active record and appends the history
-  entry atomically (transactionality). Cross-device conflicts still surface as
-  `Reference value conflict`; the automatic path is deterministic, so a
-  re-read + retry converges to the same state.
+  check. Automatic recomputation runs **only at import/evaluation boundaries**
+  over the full dataset in tuple order; an unchanged dataset recomputes the
+  same value and writes nothing, and the history natural-key
+  `ON CONFLICT DO NOTHING` guard makes duplicate entries no-ops — **idempotent
+  under repeated imports, refreshes and multiple devices**. A changed value is
+  written in one SECURITY DEFINER transaction using the existing
+  `private.lock_owner()` pattern, which validates, upserts the active record
+  (`revision` bumped only on change) and appends the history entry atomically
+  (transactionality). Cross-device conflicts still surface as
+  `Reference value conflict`; the automatic path is deterministic in the
+  dataset, so a re-read + retry converges to the same state.
 - **Owner isolation** is unchanged: `owner_id` on every table, RLS owner
   policies, `revoke` from `public`/`anon`, grants to `authenticated` only.
 - **Backup/restore compatibility:** `dataset_page` gains
@@ -498,21 +516,22 @@ other:
 
 All tables generated by
 [`docs/adr/adr-0006-worked-examples.mjs`](/Users/thomasstrange/Documents/projects/shotwise/docs/adr/adr-0006-worked-examples.mjs)
-(seeded, deterministic; per-visit carries are constructed so each visit's
-sample P80 — computed with the app's real `quantile` — lands on the stated
-value).
+(seeded, deterministic; each visit contains exactly n carries, constructed so
+the visit's sample P80 — computed with the app's real `quantile` — lands on
+the stated value).
 
-### 12.1 Cold start — minimum evidence
+### 12.1 Cold start — minimum evidence and the establishment freeze
 
 | Scenario | n | visits | result |
 | --- | --- | --- | --- |
 | One visit, n = 9 | 9 | 1 | no goal — distance withheld (n < 10) |
-| One visit, n = 24 | 24 | 1 | provisional goal 132 m (P90 of 24 carries) — provisional even at n ≥ 20 single-visit, per owner clarification |
-| Two visits | 30 | 2 | value unchanged at 132 m; evidence strengthens (n ≥ 20 and ≥ 2 visits → established label) WITHOUT resetting the original goal |
+| One visit, n = 24 | 24 | 1 | provisional goal 131 m (P90 of 24 carries) — provisional even at n ≥ 20 single-visit, per owner clarification; logged and re-derivable while provisional |
+| Two visits | 36 | 2 | provisional re-derived to 132 m over the full history (logged); n ≥ 20 and ≥ 2 visits → ESTABLISHMENT freezes 132 m — the evidence upgrade changes only the label, never the frozen value |
 
-Initial self-referenced attainment: window P80 130.7 m vs goal 132 m → distance
-score 99.0 (provisional, self-referenced — labelled, never presented as
-independent evaluation).
+Initial self-referenced attainment: window P80 129.7 m vs established goal
+132 m → distance score 98.2 (self-referenced while the evaluated window
+overlaps the calibration window — labelled, never presented as independent
+evaluation).
 
 ### 12.2 Upward adjustment — goal g = 130 m established at 2026-10-03T00:00#S2 (revised rule)
 
@@ -557,11 +576,27 @@ import converges to the same decision sequence.
   self-referenced; it is never claimed to be an independent evaluation of a
   rolling cohort that still contains its calibration shots.
 - **Manual corrections** change future eligible populations and replay, never
-  persisted goal values; **manual override** occupies its own source-class slot
-  and always wins; returning to automatic restores the persisted automatic
-  goal and its full history.
+  recorded history entries; **manual override** occupies its own source-class
+  slot and always wins; returning to automatic restores the persisted
+  automatic goal and its full history.
 
-### 12.4 Longer-horizon examples
+### 12.4 Import-order independence — same final dataset, different import order
+
+S1 (2026-09-01, 10 carries) and S2 (2026-09-20, 10 carries) imported in both
+orders. While provisional, the goal is re-derived at each import boundary over
+the full tuple-ordered history and every distinct value is logged; the value
+freezes at establishment (n ≥ 20 and ≥ 2 visits).
+
+| Import order | after 1st import | after 2nd import | established (frozen) goal |
+| --- | --- | --- | --- |
+| S2 then S1 | n=10, visits=1, goal 132 m — provisional, logged | n=20, visits=2, goal 130 m — establishment reached, value frozen | 130 m — identical for both import orders |
+| S1 then S2 | n=10, visits=1, goal 102 m — provisional, logged | n=20, visits=2, goal 130 m — establishment reached, value frozen | 130 m — identical for both import orders |
+
+The intermediate provisional values differ by import order and are both
+recorded in the append-only history (nothing is silently reset); the
+established goal is a deterministic function of the final dataset alone.
+
+### 12.5 Longer-horizon examples
 
 **Intermediate golfer with a fitting goal (7i = 150 m):** the manual record
 wins (§8); the automatic goal (say 146 m) remains computed, persisted and
@@ -590,11 +625,12 @@ fixtures via the shared calculation source):
   applies; `mixed` withholds with the distinct reason.
 - Wrong-club exclusion, zero/negative carry as missing, no range/premium
   pooling, basis compatibility, `unknown` basis never applies.
-- Leakage/idempotency: mutating evaluated-window shots never changes a
-  persisted goal; same inputs → same goal; repeated imports/refreshes and
-  goal-history replay (tuple order, incl. out-of-order imports, same-day
-  sessions, archived sessions, manual corrections) converge to the persisted
-  sequence.
+- Leakage/idempotency: mutating evaluated-window shots never changes an
+  established goal; same dataset → same value at every boundary (nothing
+  written); goal-history replay (tuple order, incl. out-of-order imports,
+  same-day sessions, archived sessions, manual corrections) reproduces the
+  latest recorded entry from the final dataset, with the §12.4 import-order
+  example as a fixture.
 - Upward rule: examples A–F of §12.2 as fixtures (trigger, single-strong-visit
   rejection, insufficient visits/carries, no-downward, no-retrigger); threshold
   = max(3 m, 3%) at goals 80/130/150 m.
