@@ -72,6 +72,15 @@ export function clubHref(club: string) {
   return `#clubs/${encodeURIComponent(club)}`;
 }
 
+/**
+ * Deep link to a club profile that opens its personal-reference editor
+ * (`?reference=edit`, handled by ClubProfiles/PersonalReference). Used by the
+ * rating breakdown's "set a personal reference" action.
+ */
+export function referenceEditHref(club: string) {
+  return `#clubs/${encodeURIComponent(club)}?reference=edit`;
+}
+
 const fmt = (n: number | null) => (n === null ? '—' : decimal.format(n));
 
 function cohortLabel(cohort: 'reviewed' | 'broader') {
@@ -279,6 +288,7 @@ function PersonalReference({
   onSave,
   onDelete,
   error,
+  autoEdit = false,
 }: {
   club: string;
   values: UserReferenceValueRecord[];
@@ -286,6 +296,8 @@ function PersonalReference({
   onSave: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDelete: (id: string, expectedRevision: number) => Promise<void>;
   error: string;
+  /** Open the reference editor on mount (?reference=edit deep link). */
+  autoEdit?: boolean;
 }) {
   const [editing, setEditing] = useState<ReferenceMetric | null>(null);
   const [metric, setMetric] = useState<ReferenceMetric>('carry');
@@ -362,8 +374,32 @@ function PersonalReference({
     }
   };
 
+  // Deep link (?reference=edit): open the editor once and scroll to it. The
+  // timeout lets the profile card's heading scroll (parent effect) run first.
+  // startEdit lives in a ref so the effect only depends on autoEdit.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const autoEdited = useRef(false);
+  const startEditRef = useRef(startEdit);
+  useEffect(() => {
+    startEditRef.current = startEdit;
+  });
+  useEffect(() => {
+    if (!autoEdit || autoEdited.current) return;
+    autoEdited.current = true;
+    startEditRef.current('carry');
+    const timer = setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ block: 'start' });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [autoEdit]);
+
   return (
-    <section className="profile-section personal-reference" aria-label="Personal reference">
+    <section
+      className="profile-section personal-reference"
+      aria-label="Personal reference"
+      id="personal-reference"
+      ref={sectionRef}
+    >
       <span className="ds-field-label">Personal reference</span>
       {own.length > 0 &&
         !editing &&
@@ -567,6 +603,7 @@ export function ClubProfileCard({
   onSaveReference,
   onDeleteReference,
   referenceError,
+  openReferenceEdit = false,
 }: {
   view: ClubProfileView;
   focus: boolean;
@@ -578,6 +615,8 @@ export function ClubProfileCard({
   onSaveReference: (input: UserReferenceValueSaveInput) => Promise<void>;
   onDeleteReference: (id: string, expectedRevision: number) => Promise<void>;
   referenceError: string;
+  /** Open the personal-reference editor (?reference=edit deep link). */
+  openReferenceEdit?: boolean;
 }) {
   const { profile, scores, rating, band } = view;
   const {
@@ -751,7 +790,7 @@ export function ClubProfileCard({
           </HelpPopover>
         </span>
         {rating ? (
-          <RatingBreakdown rating={rating} referenceHref={clubHref(club)} />
+          <RatingBreakdown rating={rating} referenceHref={referenceEditHref(club)} />
         ) : (
           <p className="context">
             No rating yet — fewer than 10 measured shots on the rating basis.
@@ -945,6 +984,7 @@ export function ClubProfileCard({
         onSave={onSaveReference}
         onDelete={onDeleteReference}
         error={referenceError}
+        autoEdit={openReferenceEdit}
       />
 
       <section className="profile-section">
@@ -1007,6 +1047,7 @@ export function ClubProfiles({
   onManageBag,
   repository,
   refresh,
+  referenceEdit = false,
 }: {
   data: Dataset;
   settings: AnalysisSettings;
@@ -1015,6 +1056,8 @@ export function ClubProfiles({
   onManageBag: () => void;
   repository: Repository;
   refresh: () => Promise<void>;
+  /** ?reference=edit on the clubs route — opens the focused club's reference editor. */
+  referenceEdit?: boolean;
 }) {
   const { basis } = settings;
   // All figures come from the shared domain functions via clubProfileViews;
@@ -1135,6 +1178,7 @@ export function ClubProfiles({
             onSaveReference={saveReference}
             onDeleteReference={deleteReference}
             referenceError={referenceError}
+            openReferenceEdit={referenceEdit && focusClub === view.profile.club}
           />
         ))}
       </div>

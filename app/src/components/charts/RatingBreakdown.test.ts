@@ -77,6 +77,41 @@ describe('RatingBreakdown withheld reasons (coverage audit)', () => {
     expect(renderBreakdown(launchOnly)).toContain('insufficient lateral finishing-position measurements');
   });
 
+  it('attributes a withheld direction score to missing carries when lateral samples suffice', () => {
+    // Range-only import: lateral finishing positions measured on 12 shots,
+    // but no positive premium-flat carries to normalize them with.
+    const data = structuredClone(emptyDataset);
+    const session = makeSession({ date: TODAY });
+    data.sessions.push(session);
+    for (let i = 0; i < 12; i++) {
+      data.shots.push(
+        makeShot({
+          sessionId: session.id,
+          rowIndex: i + 1,
+          recordedClub: '7i',
+          measurements: {
+            flatCarryPremium: null,
+            flatCarryRange: 140 + i,
+            fromCentre: 3,
+            launchDirection: null,
+            curve: null,
+          },
+          review: { intent: 'full', contact: 'typical' },
+        }),
+      );
+    }
+    const r = clubRating(data, query, '7i', [])!;
+    expect(r.directionalControl.measurementBasis).toBe('lateral');
+    expect(r.directionalControl.n).toBe(12);
+    expect(r.directionalControl.score).toBeNull();
+    const html = renderBreakdown(r);
+    const dirRow =
+      html.match(/rating-label">Direction<\/span>[\s\S]*?rating-sub">([\s\S]*?)<\/span>/)?.[1] ?? '';
+    // The blocker is the carry denominator, not the lateral sample count.
+    expect(dirRow).toContain('insufficient eligible carry measurements');
+    expect(dirRow).not.toContain('insufficient lateral finishing-position measurements');
+  });
+
   it('offers the personal-reference configuration when no compatible distance reference exists', () => {
     const r = clubRating(clubDataset(12), query, '7i', [])!;
     expect(r.distancePotential.p80).not.toBeNull();

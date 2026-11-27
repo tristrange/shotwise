@@ -162,6 +162,11 @@ function routeFromHash() {
   const [name, id, extra] = (path ?? '').split('/');
   const page = pages.find((item) => item === name) ?? 'overview';
   const sessionsPath = page === 'sessions' && !extra;
+  // #clubs/<club>?reference=edit opens that club's reference editor.
+  const referenceEdit =
+    page === 'clubs' &&
+    !extra &&
+    new URLSearchParams(query ?? '').get('reference') === 'edit';
   return {
     hash,
     page,
@@ -178,6 +183,7 @@ function routeFromHash() {
           : ('shape' as const)
         : undefined,
     evidence: query ?? '',
+    referenceEdit,
   };
 }
 
@@ -211,8 +217,10 @@ export default function App() {
   const [data, setData] = useState<Dataset>(emptyDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [{ hash, page, sessionId, compare, club, shapeView, evidence }, setRoute] =
-    useState(routeFromHash);
+  const [
+    { hash, page, sessionId, compare, club, shapeView, evidence, referenceEdit },
+    setRoute,
+  ] = useState(routeFromHash);
   useScrollReveal(`${page}:${data.sessions.length}:${data.shots.length}`);
   const identity = useRef<string | null>(null);
   const generation = useRef(0);
@@ -481,6 +489,7 @@ export default function App() {
                 focusClub={club}
                 repository={repository}
                 refresh={refresh}
+                referenceEdit={referenceEdit}
                 onManageBag={() => {
                   pendingBagFocus.current = true;
                   window.location.hash = 'settings';

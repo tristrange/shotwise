@@ -49,12 +49,15 @@ function withheldReason(id: CategoryId, cat: CategoryRating): string | null {
         : 'no compatible distance reference';
     case 'consistency':
       return 'insufficient eligible carry measurements';
-    case 'directionalControl':
-      // Lateral data present but under-sampled, or launch-only fallback: both
-      // mean too few lateral finishing-position measurements.
-      return (cat as ClubRating['directionalControl']).measurementBasis === 'none'
-        ? 'no direction measurements'
-        : 'insufficient lateral finishing-position measurements';
+    case 'directionalControl': {
+      const dir = cat as ClubRating['directionalControl'];
+      if (dir.measurementBasis === 'none') return 'no direction measurements';
+      // Enough lateral samples but no median carry to normalize them (e.g. a
+      // range-only import): the blocker is the carry denominator, not lateral.
+      if (dir.measurementBasis === 'lateral' && dir.n >= MIN_RATING_SAMPLES.directionalControl)
+        return 'insufficient eligible carry measurements';
+      return 'insufficient lateral finishing-position measurements';
+    }
     case 'reliability':
       return 'insufficient assessed full swings';
   }
@@ -64,6 +67,14 @@ function withheldReason(id: CategoryId, cat: CategoryRating): string | null {
 function withheldDetail(id: CategoryId, cat: CategoryRating): string | null {
   const reason = withheldReason(id, cat);
   if (!reason) return null;
+  // A missing carry denominator is counted on the carry population (shown in
+  // the consistency line of this help), not on the lateral sample count.
+  if (
+    id === 'directionalControl' &&
+    (cat as ClubRating['directionalControl']).measurementBasis === 'lateral' &&
+    cat.n >= MIN_RATING_SAMPLES.directionalControl
+  )
+    return `${reason} — no measured carries on the rating basis to scale direction`;
   return `${reason} (${cat.n} of ${MIN_RATING_SAMPLES[id]} needed)`;
 }
 
@@ -92,6 +103,29 @@ export function RatingBreakdown({
     categories.filter((cat) => cat.score !== null).map((cat) => cat.evidence),
   );
   const noReference = d.p80 !== null && d.reference === null;
+  // No relative lateral figure exists without a median carry, so a withheld
+  // lateral score with no P80 just names the reason.
+  const directionSub: ReactNode =
+    dir.measurementBasis === 'lateral'
+      ? dir.score === null && dir.relLatP80 === null
+        ? withheldReason('directionalControl', dir)
+        : (
+          <>
+            P80 offline {dir.relLatP80 === null ? '—' : percent.format(dir.relLatP80)} of carry
+            {dir.score === null && <> · {withheldReason('directionalControl', dir)}</>}
+          </>
+        )
+      : dir.measurementBasis === 'launch'
+        ? (
+          <>
+            launch-only view (
+            <span className="score-inline" data-band={scoreBand(dir.launchScore)}>
+              {scoreText(dir.launchScore)}
+            </span>
+            ), not in the composite · {withheldReason('directionalControl', dir)}
+          </>
+        )
+        : withheldReason('directionalControl', dir);
   const rows: { label: string; score: number | null; sub: ReactNode }[] = [
     {
       label: 'Distance',
@@ -123,23 +157,7 @@ export function RatingBreakdown({
     {
       label: 'Direction',
       score: dir.score,
-      sub:
-        dir.measurementBasis === 'lateral' ? (
-          <>
-            P80 offline {dir.relLatP80 === null ? '—' : percent.format(dir.relLatP80)} of carry
-            {dir.score === null && <> · {withheldReason('directionalControl', dir)}</>}
-          </>
-        ) : dir.measurementBasis === 'launch' ? (
-          <>
-            launch-only view (
-            <span className="score-inline" data-band={scoreBand(dir.launchScore)}>
-              {scoreText(dir.launchScore)}
-            </span>
-            ), not in the composite · {withheldReason('directionalControl', dir)}
-          </>
-        ) : (
-          withheldReason('directionalControl', dir)
-        ),
+      sub: directionSub,
     },
     {
       label: 'Reliability',

@@ -4,6 +4,7 @@ import { RATING_BASIS, weakestEvidence } from '../domain/ratings';
 import { BASES } from '../domain/model';
 import type { ClubCardData } from './clubCardData';
 import { clubDisplayName } from './clubNames';
+import { referenceEditHref } from './ClubProfiles';
 import { HelpPopover, Metric, MetricGrid } from './ds';
 import {
   BenchmarkBar,
@@ -171,7 +172,7 @@ export function ClubCard({
               unit={data.apex.median === null ? undefined : 'm'}
             />
           </MetricGrid>
-          {rating && <RatingBreakdown rating={rating} referenceHref={href} />}
+          {rating && <RatingBreakdown rating={rating} referenceHref={referenceEditHref(data.club)} />}
           {!rating && (
             <p className="context">
               No rating yet — fewer than 10 measured shots on the rating basis.
