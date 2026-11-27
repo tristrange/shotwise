@@ -1,10 +1,13 @@
 import { clamp } from './hooks';
+import { scoreBand } from './scoreBand';
 
 /**
  * Compact score ring for a 0–100 rating (reference: club-card screenshot).
- * The ring arc is the score; provisional (dashed) and early (dotted) outlines
- * wrap the ring so evidence state is never colour-only. A missing rating
- * shows an empty ring with an em dash — never zero.
+ * The ring arc AND the numeric score take the shared score-band colour
+ * (data-band → --rating-* tokens in ds.css); provisional (dashed) and early
+ * (dotted) outlines wrap the ring so evidence state is never colour-only and
+ * stays independent of the score colour. A missing rating shows an empty
+ * ring with a grey em dash — never zero; a genuine 0 shows a red "0".
  */
 export function ScoreRing({
   value,
@@ -25,6 +28,7 @@ export function ScoreRing({
   const circumference = 2 * Math.PI * r;
   const fraction = value === null ? 0 : clamp(value, 0, 100) / 100;
   const text = value === null ? '—' : String(Math.round(value));
+  const band = scoreBand(value);
   const outlineR = size / 2 - 1.5;
   const ariaLabel =
     label ??
@@ -34,6 +38,7 @@ export function ScoreRing({
   return (
     <span
       className={`ds-score-ring${provisional ? ' provisional' : ''}${early ? ' early' : ''}`}
+      data-band={band}
       role="img"
       aria-label={ariaLabel}
     >

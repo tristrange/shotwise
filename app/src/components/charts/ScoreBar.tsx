@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import { clamp } from './hooks';
+import { scoreBand } from './scoreBand';
 
 /**
- * One labelled rating bar: label, track, numeric score. A withheld category
- * (insufficient data) renders a dimmed track and an em dash — never zero.
+ * One labelled rating bar: label, track, numeric score. The fill AND the
+ * numeric score take the shared score-band colour (data-band → --rating-*
+ * tokens in ds.css). A withheld category (insufficient data) renders a dimmed
+ * track and a grey em dash — never zero; a genuine 0 shows a red "0".
  * Keeps the legacy rating-row classes so existing e2e selectors still match.
  */
 export function ScoreBar({
@@ -16,7 +19,10 @@ export function ScoreBar({
   sub?: ReactNode;
 }) {
   return (
-    <div className={`ds-score-bar rating-row${score === null ? ' withheld' : ''}`}>
+    <div
+      className={`ds-score-bar rating-row${score === null ? ' withheld' : ''}`}
+      data-band={scoreBand(score)}
+    >
       <span className="ds-score-bar-label rating-label">{label}</span>
       <span className="ds-score-bar-score rating-score">
         {score === null ? '—' : String(Math.round(score))}

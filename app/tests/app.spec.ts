@@ -1111,8 +1111,15 @@ test('expands overview club cards inline with per-club measurements', async ({
   await expect(detail7i).toContainText('Launch');
   await expect(detail7i).toContainText('21.0');
   await expect(detail7i).toContainText('Apex');
-  await expect(detail7i).toContainText('Strong-strike P80');
-  await expect(detail7i).toContainText('IQR');
+  // Strong-strike P80 lives in the card header ("potential") and is not
+  // repeated inside the expanded card (no duplicate P80 within one card).
+  await expect(detail7i).not.toContainText('Strong-strike P80');
+  await expect(card7i.locator('.club-card-header')).toContainText('potential');
+  // The distribution plot stretches full-width; its label carries the range,
+  // and withheld rating categories name their actual reason.
+  await expect(detail7i).toContainText('Carry distribution');
+  await expect(detail7i).toContainText('P10–P90');
+  await expect(detail7i).toContainText('insufficient eligible carry measurements');
   await expect(
     detail7i.getByRole('link', { name: /Full club profile/ }),
   ).toHaveAttribute('href', '#clubs/7i');
@@ -1138,6 +1145,23 @@ test('expands overview club cards inline with per-club measurements', async ({
       ),
     )
     .toBeLessThanOrEqual(1);
+});
+
+test('?reference=edit deep link opens the personal-reference editor', async ({
+  page,
+  account,
+}) => {
+  await seed(account);
+  await login(page, account);
+  // The rating breakdown's "set a personal reference" action links here.
+  await page.evaluate(() => {
+    window.location.hash = 'clubs/7i?reference=edit';
+  });
+  await expect(page).toHaveURL(/#clubs\/7i\?reference=edit$/);
+  const personal = page.locator('.personal-reference');
+  await expect(personal).toBeVisible();
+  await expect(personal.getByLabel(/Value \(m\)/)).toBeVisible();
+  await expect(personal.getByRole('button', { name: 'Save' })).toBeVisible();
 });
 
 test('shows non-authoritative automatic assessment badges in review', async ({
@@ -3744,6 +3768,14 @@ test('shows derived read-only club profiles that agree with the recap and fit a 
   await expect(rating.locator('.rating-overall')).toContainText('Overall');
   await expect(rating.locator('.rating-row').first()).toContainText('Distance');
   await expect(rating.locator('.rating-row')).toHaveCount(4);
+  // No compatible reference: the distance row names it and links straight to
+  // this club's reference editor (?reference=edit), not just the profile.
+  await expect(rating.locator('.rating-row').first()).toContainText(
+    'no compatible distance reference',
+  );
+  await expect(
+    rating.getByRole('link', { name: 'set a personal reference' }),
+  ).toHaveAttribute('href', '#clubs/7i?reference=edit');
   await expect(scores).not.toContainText('clubs in your bag');
   const ratingMethodology = rating.locator('details');
   await ratingMethodology.locator('summary').click();

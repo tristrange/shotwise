@@ -4,7 +4,8 @@ import { RATING_BASIS, weakestEvidence } from '../domain/ratings';
 import { BASES } from '../domain/model';
 import type { ClubCardData } from './clubCardData';
 import { clubDisplayName } from './clubNames';
-import { Badge, HelpPopover, Metric, MetricGrid } from './ds';
+import { referenceEditHref } from './ClubProfiles';
+import { HelpPopover, Metric, MetricGrid } from './ds';
 import {
   BenchmarkBar,
   DistributionPlot,
@@ -149,6 +150,8 @@ export function ClubCard({
               </HelpPopover>
             </span>
           </div>
+          {/* Strong-strike P80 is already in the card header ("potential"), so it
+              is not repeated here. */}
           <MetricGrid>
             <Metric
               small
@@ -168,14 +171,8 @@ export function ClubCard({
               value={data.apex.median === null ? '—' : data.apex.median.toFixed(0)}
               unit={data.apex.median === null ? undefined : 'm'}
             />
-            <Metric
-              small
-              label="Strong-strike P80"
-              value={data.potential === null ? '—' : data.potential.toFixed(0)}
-              unit={data.potential === null ? undefined : 'm'}
-            />
           </MetricGrid>
-          {rating && <RatingBreakdown rating={rating} />}
+          {rating && <RatingBreakdown rating={rating} referenceHref={referenceEditHref(data.club)} />}
           {!rating && (
             <p className="context">
               No rating yet — fewer than 10 measured shots on the rating basis.
@@ -183,12 +180,19 @@ export function ClubCard({
           )}
           <div className="club-card-row">
             <span className="ds-field-label">
-              Carry distribution · P10–P90 band, IQR, median
+              {/* Stretched to the full card width (shared scale across clubs);
+                  the P10–P90 range sits in this label because stretched SVG
+                  text would distort. */}
+              Carry distribution ·{' '}
+              {data.band.p10 !== null && data.band.p90 !== null
+                ? `P10–P90 ${data.band.p10.toFixed(0)}–${data.band.p90.toFixed(0)} m`
+                : 'P10–P90 needs 10+ measured shots'}
               <HelpPopover label="How to read this distribution">
                 <p>
                   The wide band is the middle 80% of carries (P10–P90); the darker band is the
                   middle half (IQR, Q1–Q3); the line is the median. Spread comes from all
-                  eligible shots, not just the selected performance mode.
+                  eligible shots, not just the selected performance mode. The plot spans the
+                  shared scale of every club on this page, so bands compare across clubs.
                 </p>
               </HelpPopover>
             </span>
@@ -197,6 +201,8 @@ export function ClubCard({
               min={plotMin}
               max={plotMax}
               label={`${data.club} carry distribution`}
+              labels={false}
+              stretch
             />
           </div>
           {data.benchmark && (
@@ -221,19 +227,18 @@ export function ClubCard({
             <a className="text-button" href={href}>
               Full club profile →
             </a>
-            <span className="context">
-              Ratings use the fixed {BASES[RATING_BASIS].label} basis — independent of the{' '}
-              {basisLabel} view.
-            </span>
+            {/* Only worth spelling out when the view's basis differs from the
+                fixed rating basis — otherwise the breakdown help already states
+                it and this line is pure repetition. */}
+            {BASES[RATING_BASIS].label !== basisLabel && (
+              <span className="context">
+                Ratings use the fixed {BASES[RATING_BASIS].label} basis — independent of the{' '}
+                {basisLabel} view.
+              </span>
+            )}
           </div>
-          {(composite?.provisional || weakest === 'early') && (
-            <p className="context">
-              {composite?.provisional && (
-                <Badge provisional>provisional {composite.coverage}/4 categories</Badge>
-              )}{' '}
-              {weakest === 'early' && <Badge early>early estimate</Badge>}
-            </p>
-          )}
+          {/* Provisional/early indicators are not repeated here: the ring
+              outline and the rating breakdown already carry them. */}
         </div>
       </div>
     </article>

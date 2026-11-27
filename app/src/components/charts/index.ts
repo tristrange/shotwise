@@ -4,6 +4,8 @@ export { bandPercent, bandX, BAND_VIEWBOX } from './DistributionPlot';
 export { TrendChart } from './TrendChart';
 export { ScoreRing } from './ScoreRing';
 export { ScoreBar } from './ScoreBar';
+export { scoreBand } from './scoreBand';
+export type { ScoreBand } from './scoreBand';
 export { RatingBreakdown } from './RatingBreakdown';
 export { Sparkline } from './Sparkline';
 export type { SparklinePoint } from './Sparkline';
